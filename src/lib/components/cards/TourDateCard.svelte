@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { TourDate } from '$lib/server/schema';
 	import { invalidateAll } from '$app/navigation';
+	import { getPlatformInfoFromUrl } from '$lib/utils/platforms';
 
 	interface Props {
 		tourDate: TourDate;
@@ -9,11 +10,17 @@
 
 	let { tourDate, isAdmin }: Props = $props();
 
+	// Derive event platform info from URL
+	const eventPlatform = $derived(
+		tourDate.eventUrl ? getPlatformInfoFromUrl(tourDate.eventUrl) : null
+	);
+
 	let isEditing = $state(false);
 	let editDate = $state('');
 	let editVenue = $state('');
 	let editCity = $state('');
 	let editTicketUrl = $state('');
+	let editEventUrl = $state('');
 	let editSoldOut = $state(false);
 
 	// Sync edit values when tourDate prop changes
@@ -23,6 +30,7 @@
 			editVenue = tourDate.venue;
 			editCity = tourDate.city;
 			editTicketUrl = tourDate.ticketUrl ?? '';
+			editEventUrl = tourDate.eventUrl ?? '';
 			editSoldOut = tourDate.soldOut ?? false;
 		}
 	});
@@ -49,6 +57,7 @@
 					venue: editVenue,
 					city: editCity,
 					ticketUrl: editTicketUrl || null,
+					eventUrl: editEventUrl || null,
 					soldOut: editSoldOut
 				})
 			});
@@ -66,6 +75,7 @@
 		editVenue = tourDate.venue;
 		editCity = tourDate.city;
 		editTicketUrl = tourDate.ticketUrl ?? '';
+		editEventUrl = tourDate.eventUrl ?? '';
 		editSoldOut = tourDate.soldOut ?? false;
 		isEditing = false;
 	}
@@ -113,6 +123,16 @@
 			/>
 		</div>
 		<div class="mb-3">
+			<label for="edit-tour-event-{tourDate.id}" class="mb-1 block text-sm text-gray-400">Event URL</label>
+			<input
+				id="edit-tour-event-{tourDate.id}"
+				type="url"
+				bind:value={editEventUrl}
+				class="w-full rounded border border-gray-600 bg-transparent p-2 text-white focus:border-[var(--theme-primary)] focus:outline-none"
+				placeholder="https://facebook.com/events/..."
+			/>
+		</div>
+		<div class="mb-3">
 			<label for="edit-tour-soldout-{tourDate.id}" class="flex items-center gap-2 text-sm text-gray-400">
 				<input
 					id="edit-tour-soldout-{tourDate.id}"
@@ -141,7 +161,7 @@
 		onclick={isAdmin ? () => (isEditing = true) : undefined}
 		class="group flex w-full items-center gap-4 rounded-xl p-4 text-left transition-all {isAdmin ? 'cursor-pointer hover:scale-[1.02]' : ''}"
 		style="background-color: var(--theme-secondary)"
-		disabled={!isAdmin && !tourDate.ticketUrl}
+		disabled={!isAdmin && !tourDate.ticketUrl && !tourDate.eventUrl}
 	>
 		<div class="flex-shrink-0 text-center">
 			<div class="text-2xl font-bold" style="color: var(--theme-primary)">{formattedDate()}</div>
@@ -152,17 +172,37 @@
 		</div>
 		{#if tourDate.soldOut}
 			<span class="rounded bg-red-600 px-3 py-1 text-sm font-medium text-white">Sold Out</span>
-		{:else if tourDate.ticketUrl && !isAdmin}
-			<a
-				href={tourDate.ticketUrl}
-				target="_blank"
-				rel="noopener noreferrer"
-				class="rounded px-4 py-2 text-sm font-medium text-white transition-colors hover:opacity-90"
-				style="background-color: var(--theme-primary)"
-				onclick={(e) => e.stopPropagation()}
-			>
-				Tickets
-			</a>
+		{:else if !isAdmin && (tourDate.ticketUrl || tourDate.eventUrl)}
+			<div class="flex gap-2">
+				{#if tourDate.eventUrl}
+					<a
+						href={tourDate.eventUrl}
+						target="_blank"
+						rel="noopener noreferrer"
+						class="flex items-center gap-2 rounded border border-gray-600 px-3 py-2 text-sm font-medium text-gray-300 transition-colors hover:border-gray-500 hover:text-white"
+						onclick={(e) => e.stopPropagation()}
+					>
+						{#if eventPlatform?.icon}
+							<svg viewBox="0 0 24 24" class="h-4 w-4" style="fill: {eventPlatform.color}">
+								<path d={eventPlatform.icon} />
+							</svg>
+						{/if}
+						<span>{eventPlatform?.platform ? eventPlatform.platform.charAt(0).toUpperCase() + eventPlatform.platform.slice(1) : 'Event'}</span>
+					</a>
+				{/if}
+				{#if tourDate.ticketUrl}
+					<a
+						href={tourDate.ticketUrl}
+						target="_blank"
+						rel="noopener noreferrer"
+						class="rounded px-4 py-2 text-sm font-medium text-white transition-colors hover:opacity-90"
+						style="background-color: var(--theme-primary)"
+						onclick={(e) => e.stopPropagation()}
+					>
+						Tickets
+					</a>
+				{/if}
+			</div>
 		{:else if isAdmin}
 			<span class="text-sm text-gray-400 opacity-0 transition-opacity group-hover:opacity-100">
 				Edit

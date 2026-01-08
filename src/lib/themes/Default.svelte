@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Profile, Link, TourDate } from '$lib/server/schema';
 	import { BandcampEmbed, SpotifyEmbed, YouTubeEmbed } from '$lib/components/embeds';
+	import { getPlatformInfoFromUrl } from '$lib/utils/platforms';
 
 	let {
 		profile,
@@ -138,8 +139,8 @@
 	};
 </script>
 
-<main class="flex min-h-screen items-start justify-center px-4 pb-0 pt-4 sm:px-8 sm:pb-0 sm:pt-16" style="background-color: var(--color-bg)">
-	<div class="relative w-full max-w-2xl overflow-visible rounded-t-3xl px-6 pb-8 pt-16 sm:min-h-[calc(100vh-4rem)] sm:shadow-xl sm:ring-1 sm:ring-white/5" style="background-color: var(--color-card)">
+<main class="flex min-h-screen items-start justify-center px-0 pb-0 pt-0 sm:px-8 sm:pb-0 sm:pt-16" style="background-color: var(--color-bg)">
+	<div class="relative min-h-screen w-full max-w-2xl overflow-visible rounded-t-3xl px-4 pb-8 pt-16 sm:min-h-[calc(100vh-4rem)] sm:px-6 sm:shadow-xl sm:ring-1 sm:ring-white/5" style="background-color: var(--color-card)">
 	<!-- Logo in top right corner (only if we have both photo and logo) -->
 	{#if showLogo && profile.logoUrl && showPhoto && profile.photoUrl}
 		<button
@@ -370,13 +371,11 @@
 		<h2 class="mb-3 text-[10px] font-semibold uppercase tracking-widest" style="color: var(--color-accent)">Upcoming Shows</h2>
 		<div class="space-y-2">
 			{#each tourDates as tour (tour.id)}
-				<a
-					href={tour.soldOut ? undefined : (tour.ticketUrl || '#')}
-					target={tour.ticketUrl && !tour.soldOut ? '_blank' : undefined}
-					rel={tour.ticketUrl && !tour.soldOut ? 'noopener noreferrer' : undefined}
-					class="group flex items-center gap-4 rounded-2xl bg-white/5 p-4 transition-all {tour.soldOut ? 'opacity-60' : 'hover:bg-white/10 active:scale-[0.98]'}"
+				{@const eventInfo = tour.eventUrl ? getPlatformInfoFromUrl(tour.eventUrl) : null}
+				<div
+					class="group flex items-center gap-3 rounded-2xl bg-white/5 py-4 pl-3 pr-4 transition-all {tour.soldOut ? 'opacity-60' : 'hover:bg-white/10'}"
 				>
-					<div class="w-12 text-center">
+					<div class="w-12 flex-shrink-0 text-center">
 						<p class="text-2xl font-bold leading-none" style="color: var(--color-accent)">
 							{new Date(tour.date).toLocaleDateString('en-US', { day: 'numeric' })}
 						</p>
@@ -391,7 +390,7 @@
 					<div class="flex items-center gap-2">
 						{#if !tour.soldOut}
 							<button
-								onclick={(e) => { e.preventDefault(); e.stopPropagation(); addToCalendar(tour); }}
+								onclick={() => addToCalendar(tour)}
 								class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-white/10 transition-all hover:bg-white/20 active:scale-95"
 								style="color: var(--color-text-muted)"
 								title="Add to calendar"
@@ -402,21 +401,48 @@
 							</button>
 						{/if}
 						{#if tour.soldOut}
-							<span
-								class="rounded-full bg-red-500/20 px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-red-400"
-							>
+							<span class="rounded-full bg-red-500/20 px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-red-400">
 								Sold Out
 							</span>
-						{:else if tour.ticketUrl}
-							<span
-								class="rounded-full px-4 py-1.5 text-xs font-bold uppercase tracking-wide transition-transform group-hover:scale-105"
-								style="background: var(--color-accent); color: var(--color-text)"
-							>
-								Tickets
-							</span>
+						{:else}
+							{#if tour.eventUrl}
+								<a
+									href={tour.eventUrl}
+									target="_blank"
+									rel="noopener noreferrer"
+									class="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 transition-all hover:bg-white/20 active:scale-95"
+									style="color: var(--color-text)"
+									title="View event on {eventInfo?.platform || 'site'}"
+								>
+									{#if eventInfo?.icon}
+										<svg viewBox="0 0 24 24" class="h-4 w-4" style="fill: currentColor">
+											<path d={eventInfo.icon} />
+										</svg>
+									{:else}
+										<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+										</svg>
+									{/if}
+								</a>
+							{/if}
+							{#if tour.ticketUrl}
+								<a
+									href={tour.ticketUrl}
+									target="_blank"
+									rel="noopener noreferrer"
+									class="flex h-8 w-8 items-center justify-center rounded-full transition-all hover:opacity-90 active:scale-95 sm:h-auto sm:w-auto sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-1.5"
+									style="background: var(--color-accent); color: var(--color-text)"
+									title="Buy tickets"
+								>
+									<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+									</svg>
+									<span class="hidden text-xs font-bold uppercase tracking-wide sm:inline">Tickets</span>
+								</a>
+							{/if}
 						{/if}
 					</div>
-				</a>
+				</div>
 			{/each}
 		</div>
 	</section>

@@ -215,27 +215,5 @@ export function isBandcampUrl(url: string): boolean {
 	return url.includes('bandcamp.com/');
 }
 
-/**
- * Detects platform and category from a URL
- */
-export function detectPlatformFromUrl(url: string): { platform: string; category: 'streaming' | 'social' } | null {
-	const lowerUrl = url.toLowerCase();
-
-	// Streaming platforms
-	if (lowerUrl.includes('open.spotify.com')) return { platform: 'spotify', category: 'streaming' };
-	if (lowerUrl.includes('music.apple.com')) return { platform: 'apple_music', category: 'streaming' };
-	if (lowerUrl.includes('music.youtube.com')) return { platform: 'youtube_music', category: 'streaming' };
-	if (lowerUrl.includes('soundcloud.com')) return { platform: 'soundcloud', category: 'streaming' };
-	if (lowerUrl.includes('bandcamp.com')) return { platform: 'bandcamp', category: 'streaming' };
-	if (lowerUrl.includes('deezer.com')) return { platform: 'deezer', category: 'streaming' };
-	if (lowerUrl.includes('tidal.com')) return { platform: 'tidal', category: 'streaming' };
-
-	// Social platforms
-	if (lowerUrl.includes('instagram.com')) return { platform: 'instagram', category: 'social' };
-	if (lowerUrl.includes('tiktok.com')) return { platform: 'tiktok', category: 'social' };
-	if (lowerUrl.includes('twitter.com') || lowerUrl.includes('x.com')) return { platform: 'twitter', category: 'social' };
-	if (lowerUrl.includes('facebook.com')) return { platform: 'facebook', category: 'social' };
-	if (lowerUrl.includes('youtube.com') || lowerUrl.includes('youtu.be')) return { platform: 'youtube', category: 'social' };
-
-	return null;
-}
+// Re-export detectPlatformFromUrl from shared utility
+export { detectPlatformFromUrl } from '$lib/utils/platforms';

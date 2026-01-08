@@ -15,6 +15,7 @@
 	let venue = $state('');
 	let city = $state('');
 	let ticketUrl = $state('');
+	let eventUrl = $state('');
 	let soldOut = $state(false);
 	let saving = $state(false);
 
@@ -28,6 +29,7 @@
 			venue = tourDate.venue;
 			city = tourDate.city;
 			ticketUrl = tourDate.ticketUrl || '';
+			eventUrl = tourDate.eventUrl || '';
 			soldOut = tourDate.soldOut || false;
 
 			dialogEl?.showModal();
@@ -50,6 +52,7 @@
 				venue,
 				city,
 				ticketUrl: ticketUrl || null,
+				eventUrl: eventUrl || null,
 				soldOut
 			});
 
@@ -128,6 +131,18 @@
 						placeholder="https://..."
 						class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
 					/>
+				</div>
+
+				<div>
+					<label for="tour-event-url" class="mb-1 block text-sm text-gray-400">Event URL</label>
+					<input
+						id="tour-event-url"
+						type="url"
+						bind:value={eventUrl}
+						placeholder="https://facebook.com/events/..."
+						class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+					/>
+					<p class="mt-1 text-xs text-gray-500">Facebook, Bandsintown, etc.</p>
 				</div>
 
 				<label class="flex cursor-pointer items-center justify-between">

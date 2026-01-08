@@ -36,7 +36,8 @@ const tourDateSchema = v.object({
 	date: v.pipe(v.string(), v.nonEmpty('Date is required')),
 	venue: v.pipe(v.string(), v.nonEmpty('Venue is required')),
 	city: v.pipe(v.string(), v.nonEmpty('City is required')),
-	ticketUrl: v.optional(v.string())
+	ticketUrl: v.optional(v.string()),
+	eventUrl: v.optional(v.string())
 });
 
 const reorderSchema = v.array(
@@ -95,7 +96,9 @@ export const addLink = form(linkSchema, async ({ url, category, label }) => {
 	const detected = detectPlatformFromUrl(url);
 	if (detected) {
 		detectedPlatform = detected.platform;
-		detectedCategory = detectedCategory || detected.category;
+		// Map 'event' category to 'other' for links (event is only used for tour date URLs)
+		const mappedCategory = detected.category === 'event' ? 'other' : detected.category;
+		detectedCategory = detectedCategory || mappedCategory;
 	} else {
 		// Fallback to 'other' category and extract domain as platform
 		detectedCategory = detectedCategory || 'other';
@@ -273,7 +276,7 @@ export const reorderLinks = command(reorderSchema, async (items) => {
 // Tour Date Forms & Commands
 // ============================================================================
 
-export const addTourDate = form(tourDateSchema, async ({ date, venue, city, ticketUrl }) => {
+export const addTourDate = form(tourDateSchema, async ({ date, venue, city, ticketUrl, eventUrl }) => {
 	// Get next position
 	const existing = await db.select().from(tourDates);
 	const position = getNextPosition(existing);
@@ -285,6 +288,7 @@ export const addTourDate = form(tourDateSchema, async ({ date, venue, city, tick
 			venue,
 			city,
 			ticketUrl: ticketUrl || null,
+			eventUrl: eventUrl || null,
 			soldOut: false,
 			position
 		})
@@ -309,6 +313,7 @@ const updateTourDateSchema = v.object({
 	venue: v.optional(v.string()),
 	city: v.optional(v.string()),
 	ticketUrl: v.optional(v.nullable(v.string())),
+	eventUrl: v.optional(v.nullable(v.string())),
 	soldOut: v.optional(v.boolean())
 });
 
@@ -319,6 +324,7 @@ export const updateTourDate = command(updateTourDateSchema, async ({ id, ...upda
 	if (updates.venue !== undefined) updateData.venue = updates.venue;
 	if (updates.city !== undefined) updateData.city = updates.city;
 	if (updates.ticketUrl !== undefined) updateData.ticketUrl = updates.ticketUrl;
+	if (updates.eventUrl !== undefined) updateData.eventUrl = updates.eventUrl;
 	if (updates.soldOut !== undefined) updateData.soldOut = updates.soldOut;
 
 	if (Object.keys(updateData).length === 0) {

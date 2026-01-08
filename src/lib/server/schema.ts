@@ -49,6 +49,7 @@ export const tourDates = sqliteTable('tour_dates', {
 	venue: text('venue').notNull(),
 	city: text('city').notNull(),
 	ticketUrl: text('ticket_url'),
+	eventUrl: text('event_url'), // Link to event page (Facebook, Bandsintown, etc.)
 	soldOut: integer('sold_out', { mode: 'boolean' }).default(false),
 	position: integer('position').default(0)
 });
