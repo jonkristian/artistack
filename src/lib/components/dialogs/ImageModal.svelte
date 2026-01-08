@@ -19,7 +19,7 @@
 		oncancel
 	}: Props = $props();
 
-	let shape = $state<Shape>(defaultShape);
+	let shape = $derived<Shape>(defaultShape);
 
 	// Determine aspect from shape
 	const isWideShape = $derived(shape === 'wide' || shape === 'wide-rounded');
