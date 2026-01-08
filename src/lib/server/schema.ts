@@ -1,0 +1,154 @@
+import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+
+// Artist profile (single row for single-artist setup)
+export const profile = sqliteTable('profile', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	name: text('name').notNull(),
+	bio: text('bio'),
+	email: text('email'),
+	logoUrl: text('logo_url'),
+	logoShape: text('logo_shape').default('circle'), // circle, rounded, square
+	photoUrl: text('photo_url'),
+	photoShape: text('photo_shape').default('wide-rounded'), // circle, rounded, square, wide, wide-rounded
+	backgroundUrl: text('background_url'),
+	// Theme colors
+	colorBg: text('color_bg').default('#0f0f0f'),
+	colorCard: text('color_card').default('#1a1a1a'),
+	colorAccent: text('color_accent').default('#8b5cf6'),
+	colorText: text('color_text').default('#ffffff'),
+	colorTextMuted: text('color_text_muted').default('#9ca3af'),
+	// Display options
+	showName: integer('show_name', { mode: 'boolean' }).default(true),
+	showLogo: integer('show_logo', { mode: 'boolean' }).default(true),
+	showPhoto: integer('show_photo', { mode: 'boolean' }).default(true),
+	showBio: integer('show_bio', { mode: 'boolean' }).default(true),
+	showStreaming: integer('show_streaming', { mode: 'boolean' }).default(true),
+	showSocial: integer('show_social', { mode: 'boolean' }).default(true),
+	showTourDates: integer('show_tour_dates', { mode: 'boolean' }).default(true),
+	// Layout theme
+	layout: text('layout').default('default')
+});
+
+// Links with categories
+export const links = sqliteTable('links', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	category: text('category').notNull(), // 'streaming', 'social', 'merch', 'other'
+	platform: text('platform').notNull(), // 'spotify', 'instagram', etc.
+	url: text('url').notNull(),
+	label: text('label'),
+	thumbnailUrl: text('thumbnail_url'), // Auto-fetched from YouTube, etc.
+	embedData: text('embed_data', { mode: 'json' }).$type<EmbedData>(), // Embed info for supported platforms
+	position: integer('position').default(0),
+	visible: integer('visible', { mode: 'boolean' }).default(true)
+});
+
+// Tour dates
+export const tourDates = sqliteTable('tour_dates', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	date: text('date').notNull(),
+	venue: text('venue').notNull(),
+	city: text('city').notNull(),
+	ticketUrl: text('ticket_url'),
+	soldOut: integer('sold_out', { mode: 'boolean' }).default(false),
+	position: integer('position').default(0)
+});
+
+// Media library
+export const media = sqliteTable('media', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	filename: text('filename').notNull(),
+	url: text('url').notNull(),
+	mimeType: text('mime_type').notNull(),
+	width: integer('width'),
+	height: integer('height'),
+	size: integer('size'), // bytes
+	alt: text('alt'),
+	createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
+});
+
+// Press kit files
+export const pressAssets = sqliteTable('press_assets', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	type: text('type').notNull(), // 'bio', 'photo', 'logo', 'rider'
+	label: text('label').notNull(),
+	fileUrl: text('file_url').notNull(),
+	position: integer('position').default(0)
+});
+
+// Integrations config
+export const integrations = sqliteTable('integrations', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	provider: text('provider').notNull().unique(), // 'spotify', 'facebook', 'youtube'
+	enabled: integer('enabled', { mode: 'boolean' }).default(false),
+	config: text('config', { mode: 'json' }), // Store API keys, artist IDs, etc.
+	lastSync: integer('last_sync', { mode: 'timestamp' }),
+	cachedData: text('cached_data', { mode: 'json' }) // Cache fetched data
+});
+
+// Types
+export type Profile = typeof profile.$inferSelect;
+export type NewProfile = typeof profile.$inferInsert;
+export type Link = typeof links.$inferSelect;
+export type NewLink = typeof links.$inferInsert;
+export type TourDate = typeof tourDates.$inferSelect;
+export type NewTourDate = typeof tourDates.$inferInsert;
+export type Media = typeof media.$inferSelect;
+export type NewMedia = typeof media.$inferInsert;
+export type PressAsset = typeof pressAssets.$inferSelect;
+export type NewPressAsset = typeof pressAssets.$inferInsert;
+export type Integration = typeof integrations.$inferSelect;
+export type NewIntegration = typeof integrations.$inferInsert;
+
+// Bandcamp embed options
+export interface BandcampEmbedData {
+	platform: 'bandcamp';
+	id: string;
+	type: 'album' | 'track';
+	enabled?: boolean; // Show as embed or link card
+	size?: 'small' | 'large';
+	bgColor?: string | null;
+	linkColor?: string | null;
+	tracklist?: boolean;
+	artwork?: 'small' | 'large' | 'none';
+}
+
+// Spotify embed options
+export interface SpotifyEmbedData {
+	platform: 'spotify';
+	id: string;
+	type: 'track' | 'album' | 'playlist' | 'artist';
+	enabled?: boolean;
+	theme?: 'dark' | 'light'; // 0 = dark, 1 = light
+	compact?: boolean; // Compact view (152px vs 352px)
+}
+
+// YouTube embed options
+export interface YouTubeEmbedData {
+	platform: 'youtube';
+	id: string; // Video ID
+	enabled?: boolean;
+}
+
+// Union type for all embed data
+export type EmbedData = BandcampEmbedData | SpotifyEmbedData | YouTubeEmbedData;
+
+// Facebook Events types
+export interface FacebookConfig {
+	pageId: string;
+	accessToken: string;
+}
+
+export interface FacebookEvent {
+	id: string;
+	name: string;
+	startTime: string;
+	endTime?: string;
+	place?: {
+		name: string;
+		location?: {
+			city: string;
+			country: string;
+		};
+	};
+	ticketUri?: string;
+}

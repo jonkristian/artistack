@@ -1,0 +1,108 @@
+<script lang="ts">
+	import { page } from '$app/stores';
+	import { authClient } from '$lib/auth-client';
+	import { goto } from '$app/navigation';
+	import type { LayoutData } from './$types';
+
+	let { children, data }: { children: any; data: LayoutData } = $props();
+
+	const currentPath = $derived($page.url.pathname);
+	const artistName = $derived(data.profile?.name ?? 'Artist');
+	const pageTitle = $derived(`Artistack - ${artistName}`);
+
+	const navItems = [
+		{ href: '/admin', label: 'Dashboard', icon: 'home' },
+		{ href: '/admin/media', label: 'Media', icon: 'image' },
+		{ href: '/admin/appearance', label: 'Appearance', icon: 'palette' },
+		{ href: '/admin/integrations', label: 'Integrations', icon: 'plug' },
+		{ href: '/admin/users', label: 'Users', icon: 'users' }
+	];
+
+	async function signOut() {
+		await authClient.signOut();
+		goto('/');
+	}
+</script>
+
+<svelte:head>
+	<title>{pageTitle}</title>
+</svelte:head>
+
+<div class="flex min-h-screen">
+	<!-- Sidebar -->
+	<aside class="fixed left-0 top-0 flex h-screen w-56 flex-col border-r border-gray-800 bg-gray-900">
+		<!-- Logo / Artist Name -->
+		<div class="flex h-14 items-center gap-3 border-b border-gray-800 px-4">
+			{#if data.profile?.logoUrl}
+				<img src={data.profile.logoUrl} alt="Logo" class="h-8 w-8 rounded-full object-cover" />
+			{/if}
+			<span class="truncate font-semibold text-white">{artistName}</span>
+		</div>
+
+		<!-- Navigation -->
+		<nav class="flex-1 p-3">
+			<ul class="space-y-1">
+				{#each navItems as item (item.href)}
+					<li>
+						<a
+							href={item.href}
+							class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors {currentPath === item.href
+								? 'bg-gray-800 text-white'
+								: 'text-gray-400 hover:bg-gray-800/50 hover:text-white'}"
+						>
+							{#if item.icon === 'home'}
+								<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+								</svg>
+							{:else if item.icon === 'image'}
+								<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+								</svg>
+							{:else if item.icon === 'palette'}
+								<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+								</svg>
+							{:else if item.icon === 'plug'}
+								<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+								</svg>
+							{:else if item.icon === 'users'}
+								<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+								</svg>
+							{/if}
+							{item.label}
+						</a>
+					</li>
+				{/each}
+			</ul>
+		</nav>
+
+		<!-- Bottom Actions -->
+		<div class="border-t border-gray-800 p-3">
+			<a
+				href="/"
+				class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-400 transition-colors hover:bg-gray-800/50 hover:text-white"
+			>
+				<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+				</svg>
+				View Site
+			</a>
+			<button
+				onclick={signOut}
+				class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-400 transition-colors hover:bg-gray-800/50 hover:text-white"
+			>
+				<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+				</svg>
+				Sign Out
+			</button>
+		</div>
+	</aside>
+
+	<!-- Main Content -->
+	<main class="ml-56 flex-1">
+		{@render children()}
+	</main>
+</div>
