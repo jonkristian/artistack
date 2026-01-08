@@ -12,8 +12,11 @@
 
 	// Form state
 	let date = $state('');
+	let time = $state('');
+	let title = $state('');
 	let venue = $state('');
 	let city = $state('');
+	let lineup = $state('');
 	let ticketUrl = $state('');
 	let eventUrl = $state('');
 	let soldOut = $state(false);
@@ -26,8 +29,11 @@
 	$effect(() => {
 		if (tourDate) {
 			date = tourDate.date;
+			time = tourDate.time || '';
+			title = tourDate.title || '';
 			venue = tourDate.venue;
 			city = tourDate.city;
+			lineup = tourDate.lineup || '';
 			ticketUrl = tourDate.ticketUrl || '';
 			eventUrl = tourDate.eventUrl || '';
 			soldOut = tourDate.soldOut || false;
@@ -49,8 +55,11 @@
 			await updateTourDate({
 				id: tourDate.id,
 				date,
+				time: time || null,
+				title: title || null,
 				venue,
 				city,
+				lineup: lineup || null,
 				ticketUrl: ticketUrl || null,
 				eventUrl: eventUrl || null,
 				soldOut
@@ -89,7 +98,7 @@
 			</div>
 
 			<div class="space-y-4">
-				<div class="grid grid-cols-2 gap-3">
+				<div class="grid grid-cols-3 gap-3">
 					<div>
 						<label for="tour-date" class="mb-1 block text-sm text-gray-400">Date</label>
 						<input
@@ -97,6 +106,17 @@
 							type="date"
 							bind:value={date}
 							class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-gray-600 focus:outline-none"
+						/>
+					</div>
+					<div>
+						<label for="tour-time" class="mb-1 block text-sm text-gray-400">Time</label>
+						<input
+							id="tour-time"
+							type="text"
+							bind:value={time}
+							placeholder="20:00"
+							pattern="[0-2][0-9]:[0-5][0-9]"
+							class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
 						/>
 					</div>
 					<div>
@@ -112,12 +132,34 @@
 				</div>
 
 				<div>
+					<label for="tour-title" class="mb-1 block text-sm text-gray-400">Title</label>
+					<input
+						id="tour-title"
+						type="text"
+						bind:value={title}
+						placeholder="Event or show title (optional)"
+						class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+					/>
+				</div>
+
+				<div>
 					<label for="tour-venue" class="mb-1 block text-sm text-gray-400">Venue</label>
 					<input
 						id="tour-venue"
 						type="text"
 						bind:value={venue}
 						placeholder="Venue name"
+						class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+					/>
+				</div>
+
+				<div>
+					<label for="tour-lineup" class="mb-1 block text-sm text-gray-400">Line-up</label>
+					<input
+						id="tour-lineup"
+						type="text"
+						bind:value={lineup}
+						placeholder="e.g., with Special Guest, DJ Support"
 						class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
 					/>
 				</div>

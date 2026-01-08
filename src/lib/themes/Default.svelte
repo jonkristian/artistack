@@ -49,11 +49,24 @@
 		// Format: YYYYMMDDTHHMMSS
 		const formatDate = (d: Date) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
 
-		// Assume 3 hour event starting at 8pm
+		// Use tour time if available, otherwise assume 8pm
 		const startDate = new Date(eventDate);
-		startDate.setHours(20, 0, 0, 0);
+		if (tour.time) {
+			const [hours, minutes] = tour.time.split(':').map(Number);
+			startDate.setHours(hours, minutes, 0, 0);
+		} else {
+			startDate.setHours(20, 0, 0, 0);
+		}
 		const endDate = new Date(startDate);
-		endDate.setHours(23, 0, 0, 0);
+		endDate.setHours(startDate.getHours() + 3, startDate.getMinutes(), 0, 0);
+
+		// Build event summary
+		const eventTitle = tour.title || `${profile.name} at ${tour.venue}`;
+		const description = [
+			tour.title ? `${profile.name} live at ${tour.venue}` : `${profile.name} live`,
+			tour.lineup ? `Line-up: ${tour.lineup}` : '',
+			tour.ticketUrl ? `Tickets: ${tour.ticketUrl}` : ''
+		].filter(Boolean).join('\\n');
 
 		const icsContent = [
 			'BEGIN:VCALENDAR',
@@ -62,10 +75,10 @@
 			'BEGIN:VEVENT',
 			`DTSTART:${formatDate(startDate)}`,
 			`DTEND:${formatDate(endDate)}`,
-			`SUMMARY:${profile.name} at ${tour.venue}`,
+			`SUMMARY:${eventTitle}`,
 			`LOCATION:${tour.venue}, ${tour.city}`,
-			`DESCRIPTION:${profile.name} live at ${tour.venue}${tour.ticketUrl ? `\\nTickets: ${tour.ticketUrl}` : ''}`,
-			`URL:${tour.ticketUrl || window.location.href}`,
+			`DESCRIPTION:${description}`,
+			`URL:${tour.ticketUrl || tour.eventUrl || window.location.href}`,
 			'END:VEVENT',
 			'END:VCALENDAR'
 		].join('\r\n');
@@ -382,10 +395,23 @@
 						<p class="mt-1 text-[10px] font-semibold uppercase tracking-wider" style="color: var(--color-text-muted)">
 							{new Date(tour.date).toLocaleDateString('en-US', { month: 'short' })}
 						</p>
+						{#if tour.time}
+							<p class="mt-1 text-[10px] font-medium" style="color: var(--color-text-muted)">
+								{tour.time}
+							</p>
+						{/if}
 					</div>
 					<div class="min-w-0 flex-1">
-						<p class="truncate font-semibold" style="color: var(--color-text)">{tour.venue}</p>
-						<p class="text-sm" style="color: var(--color-text-muted)">{tour.city}</p>
+						{#if tour.title}
+							<p class="truncate font-semibold" style="color: var(--color-text)">{tour.title}</p>
+							<p class="text-sm" style="color: var(--color-text-muted)">{tour.venue} · {tour.city}</p>
+						{:else}
+							<p class="truncate font-semibold" style="color: var(--color-text)">{tour.venue}</p>
+							<p class="text-sm" style="color: var(--color-text-muted)">{tour.city}</p>
+						{/if}
+						{#if tour.lineup}
+							<p class="mt-0.5 truncate text-xs" style="color: var(--color-text-muted); opacity: 0.75">{tour.lineup}</p>
+						{/if}
 					</div>
 					<div class="flex items-center gap-2">
 						{#if !tour.soldOut}
@@ -400,46 +426,44 @@
 								</svg>
 							</button>
 						{/if}
+						{#if tour.eventUrl}
+							<a
+								href={tour.eventUrl}
+								target="_blank"
+								rel="noopener noreferrer"
+								class="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 transition-all hover:bg-white/20 active:scale-95"
+								style="color: var(--color-text)"
+								title="View event on {eventInfo?.platform || 'site'}"
+							>
+								{#if eventInfo?.icon}
+									<svg viewBox="0 0 24 24" class="h-4 w-4" style="fill: currentColor">
+										<path d={eventInfo.icon} />
+									</svg>
+								{:else}
+									<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+									</svg>
+								{/if}
+							</a>
+						{/if}
 						{#if tour.soldOut}
 							<span class="rounded-full bg-red-500/20 px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-red-400">
 								Sold Out
 							</span>
-						{:else}
-							{#if tour.eventUrl}
-								<a
-									href={tour.eventUrl}
-									target="_blank"
-									rel="noopener noreferrer"
-									class="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 transition-all hover:bg-white/20 active:scale-95"
-									style="color: var(--color-text)"
-									title="View event on {eventInfo?.platform || 'site'}"
-								>
-									{#if eventInfo?.icon}
-										<svg viewBox="0 0 24 24" class="h-4 w-4" style="fill: currentColor">
-											<path d={eventInfo.icon} />
-										</svg>
-									{:else}
-										<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-										</svg>
-									{/if}
-								</a>
-							{/if}
-							{#if tour.ticketUrl}
-								<a
-									href={tour.ticketUrl}
-									target="_blank"
-									rel="noopener noreferrer"
-									class="flex h-8 w-8 items-center justify-center rounded-full transition-all hover:opacity-90 active:scale-95 sm:h-auto sm:w-auto sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-1.5"
-									style="background: var(--color-accent); color: var(--color-text)"
-									title="Buy tickets"
-								>
-									<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
-									</svg>
-									<span class="hidden text-xs font-bold uppercase tracking-wide sm:inline">Tickets</span>
-								</a>
-							{/if}
+						{:else if tour.ticketUrl}
+							<a
+								href={tour.ticketUrl}
+								target="_blank"
+								rel="noopener noreferrer"
+								class="flex h-8 w-8 items-center justify-center rounded-full transition-all hover:opacity-90 active:scale-95 sm:h-auto sm:w-auto sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-1.5"
+								style="background: var(--color-accent); color: var(--color-text)"
+								title="Buy tickets"
+							>
+								<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+								</svg>
+								<span class="hidden text-xs font-bold uppercase tracking-wide sm:inline">Tickets</span>
+							</a>
 						{/if}
 					</div>
 				</div>

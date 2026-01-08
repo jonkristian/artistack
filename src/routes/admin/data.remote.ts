@@ -34,8 +34,11 @@ const linkSchema = v.object({
 
 const tourDateSchema = v.object({
 	date: v.pipe(v.string(), v.nonEmpty('Date is required')),
+	time: v.optional(v.string()),
+	title: v.optional(v.string()),
 	venue: v.pipe(v.string(), v.nonEmpty('Venue is required')),
 	city: v.pipe(v.string(), v.nonEmpty('City is required')),
+	lineup: v.optional(v.string()),
 	ticketUrl: v.optional(v.string()),
 	eventUrl: v.optional(v.string())
 });
@@ -276,7 +279,7 @@ export const reorderLinks = command(reorderSchema, async (items) => {
 // Tour Date Forms & Commands
 // ============================================================================
 
-export const addTourDate = form(tourDateSchema, async ({ date, venue, city, ticketUrl, eventUrl }) => {
+export const addTourDate = form(tourDateSchema, async ({ date, time, title, venue, city, lineup, ticketUrl, eventUrl }) => {
 	// Get next position
 	const existing = await db.select().from(tourDates);
 	const position = getNextPosition(existing);
@@ -285,8 +288,11 @@ export const addTourDate = form(tourDateSchema, async ({ date, venue, city, tick
 		.insert(tourDates)
 		.values({
 			date,
+			time: time || null,
+			title: title || null,
 			venue,
 			city,
+			lineup: lineup || null,
 			ticketUrl: ticketUrl || null,
 			eventUrl: eventUrl || null,
 			soldOut: false,
@@ -310,8 +316,11 @@ export const deleteTourDate = command(idSchema, async (id) => {
 const updateTourDateSchema = v.object({
 	id: v.number(),
 	date: v.optional(v.string()),
+	time: v.optional(v.nullable(v.string())),
+	title: v.optional(v.nullable(v.string())),
 	venue: v.optional(v.string()),
 	city: v.optional(v.string()),
+	lineup: v.optional(v.nullable(v.string())),
 	ticketUrl: v.optional(v.nullable(v.string())),
 	eventUrl: v.optional(v.nullable(v.string())),
 	soldOut: v.optional(v.boolean())
@@ -321,8 +330,11 @@ export const updateTourDate = command(updateTourDateSchema, async ({ id, ...upda
 	const updateData: Record<string, unknown> = {};
 
 	if (updates.date !== undefined) updateData.date = updates.date;
+	if (updates.time !== undefined) updateData.time = updates.time;
+	if (updates.title !== undefined) updateData.title = updates.title;
 	if (updates.venue !== undefined) updateData.venue = updates.venue;
 	if (updates.city !== undefined) updateData.city = updates.city;
+	if (updates.lineup !== undefined) updateData.lineup = updates.lineup;
 	if (updates.ticketUrl !== undefined) updateData.ticketUrl = updates.ticketUrl;
 	if (updates.eventUrl !== undefined) updateData.eventUrl = updates.eventUrl;
 	if (updates.soldOut !== undefined) updateData.soldOut = updates.soldOut;
