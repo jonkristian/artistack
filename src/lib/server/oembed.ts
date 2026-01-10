@@ -5,6 +5,72 @@ export interface OEmbedData {
 	type?: string;
 }
 
+// Request timeout in milliseconds
+const FETCH_TIMEOUT = 10000;
+// Maximum response size in bytes (1MB)
+const MAX_RESPONSE_SIZE = 1024 * 1024;
+
+/**
+ * Fetch with timeout and size limit
+ */
+async function safeFetch(url: string, options: RequestInit = {}): Promise<Response> {
+	const controller = new AbortController();
+	const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+
+	try {
+		const response = await fetch(url, {
+			...options,
+			signal: controller.signal,
+			headers: {
+				'User-Agent': 'Artistack/1.0',
+				...options.headers
+			}
+		});
+
+		// Check content-length if available
+		const contentLength = response.headers.get('content-length');
+		if (contentLength && parseInt(contentLength) > MAX_RESPONSE_SIZE) {
+			throw new Error('Response too large');
+		}
+
+		return response;
+	} finally {
+		clearTimeout(timeoutId);
+	}
+}
+
+/**
+ * Read response text with size limit
+ */
+async function safeText(response: Response): Promise<string> {
+	const reader = response.body?.getReader();
+	if (!reader) {
+		return '';
+	}
+
+	const chunks: Uint8Array[] = [];
+	let totalSize = 0;
+
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+
+			totalSize += value.length;
+			if (totalSize > MAX_RESPONSE_SIZE) {
+				reader.cancel();
+				throw new Error('Response too large');
+			}
+			chunks.push(value);
+		}
+	} finally {
+		reader.releaseLock();
+	}
+
+	const decoder = new TextDecoder();
+	return chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join('');
+}
+
 /**
  * Fetches oEmbed metadata from YouTube/YouTube Music URLs
  * No API key required!
@@ -22,14 +88,15 @@ export async function fetchYouTubeMetadata(url: string): Promise<OEmbedData | nu
 
 	try {
 		const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(normalizedUrl)}&format=json`;
-		const response = await fetch(oembedUrl);
+		const response = await safeFetch(oembedUrl);
 
 		if (!response.ok) {
 			console.error('YouTube oEmbed failed:', response.status);
 			return null;
 		}
 
-		const data = await response.json();
+		const text = await safeText(response);
+		const data = JSON.parse(text);
 
 		return {
 			title: data.title,
@@ -81,14 +148,15 @@ export async function fetchSpotifyMetadata(url: string): Promise<OEmbedData | nu
 
 	try {
 		const oembedUrl = `https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`;
-		const response = await fetch(oembedUrl);
+		const response = await safeFetch(oembedUrl);
 
 		if (!response.ok) {
 			console.error('Spotify oEmbed failed:', response.status);
 			return null;
 		}
 
-		const data = await response.json();
+		const text = await safeText(response);
+		const data = JSON.parse(text);
 
 		// Extract type from URL
 		let type = 'track';
@@ -149,14 +217,14 @@ export async function fetchBandcampMetadata(url: string): Promise<(OEmbedData & 
 
 	try {
 		// Fetch the page HTML directly
-		const response = await fetch(url);
+		const response = await safeFetch(url);
 
 		if (!response.ok) {
 			console.error('Bandcamp page fetch failed:', response.status);
 			return null;
 		}
 
-		const html = await response.text();
+		const html = await safeText(response);
 
 		// Extract embed info from bc-page-properties meta tag
 		// Format: {"item_type":"a","item_id":1285143494,...}
@@ -166,9 +234,29 @@ export async function fetchBandcampMetadata(url: string): Promise<(OEmbedData & 
 
 		if (bcPropsMatch) {
 			try {
-				const props = JSON.parse(bcPropsMatch[1].replace(/&quot;/g, '"'));
-				embedId = String(props.item_id);
-				embedType = props.item_type === 'a' ? 'album' : 'track';
+				const rawJson = bcPropsMatch[1].replace(/&quot;/g, '"');
+				const props = JSON.parse(rawJson);
+
+				// Validate the parsed object has expected structure
+				if (
+					typeof props === 'object' &&
+					props !== null &&
+					('item_id' in props || 'item_type' in props)
+				) {
+					// Safely extract and validate item_id
+					if ('item_id' in props) {
+						const itemId = props.item_id;
+						// Ensure it's a number or string that looks like a number
+						if (typeof itemId === 'number' || (typeof itemId === 'string' && /^\d+$/.test(itemId))) {
+							embedId = String(itemId);
+						}
+					}
+
+					// Safely extract and validate item_type
+					if ('item_type' in props && typeof props.item_type === 'string') {
+						embedType = props.item_type === 'a' ? 'album' : 'track';
+					}
+				}
 			} catch {
 				// Try extracting from og:video URL as fallback
 				const ogVideoMatch = html.match(/og:video[^>]+content="[^"]*(?:album|track)=(\d+)/);

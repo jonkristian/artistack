@@ -19,8 +19,8 @@
 	let editDate = $state('');
 	let editTime = $state('');
 	let editTitle = $state('');
-	let editVenue = $state('');
-	let editCity = $state('');
+	let editVenueName = $state('');
+	let editVenueCity = $state('');
 	let editLineup = $state('');
 	let editTicketUrl = $state('');
 	let editEventUrl = $state('');
@@ -32,8 +32,8 @@
 			editDate = tourDate.date;
 			editTime = tourDate.time ?? '';
 			editTitle = tourDate.title ?? '';
-			editVenue = tourDate.venue;
-			editCity = tourDate.city;
+			editVenueName = tourDate.venue.name;
+			editVenueCity = tourDate.venue.city;
 			editLineup = tourDate.lineup ?? '';
 			editTicketUrl = tourDate.ticketUrl ?? '';
 			editEventUrl = tourDate.eventUrl ?? '';
@@ -62,8 +62,15 @@
 					date: editDate,
 					time: editTime || null,
 					title: editTitle || null,
-					venue: editVenue,
-					city: editCity,
+					venue: {
+						name: editVenueName,
+						city: editVenueCity,
+						// Preserve existing venue data
+						address: tourDate.venue.address,
+						placeId: tourDate.venue.placeId,
+						lat: tourDate.venue.lat,
+						lng: tourDate.venue.lng
+					},
 					lineup: editLineup || null,
 					ticketUrl: editTicketUrl || null,
 					eventUrl: editEventUrl || null,
@@ -83,8 +90,8 @@
 		editDate = tourDate.date;
 		editTime = tourDate.time ?? '';
 		editTitle = tourDate.title ?? '';
-		editVenue = tourDate.venue;
-		editCity = tourDate.city;
+		editVenueName = tourDate.venue.name;
+		editVenueCity = tourDate.venue.city;
 		editLineup = tourDate.lineup ?? '';
 		editTicketUrl = tourDate.ticketUrl ?? '';
 		editEventUrl = tourDate.eventUrl ?? '';
@@ -95,7 +102,7 @@
 
 {#if isEditing && isAdmin}
 	<div class="rounded-xl border border-gray-600 p-4" style="background-color: var(--theme-secondary)">
-		<div class="mb-3 grid grid-cols-3 gap-3">
+		<div class="mb-3 grid grid-cols-2 gap-3">
 			<div>
 				<label for="edit-tour-date-{tourDate.id}" class="mb-1 block text-sm text-gray-400">Date</label>
 				<input
@@ -109,19 +116,8 @@
 				<label for="edit-tour-time-{tourDate.id}" class="mb-1 block text-sm text-gray-400">Time</label>
 				<input
 					id="edit-tour-time-{tourDate.id}"
-					type="text"
+					type="time"
 					bind:value={editTime}
-					placeholder="20:00"
-					pattern="[0-2][0-9]:[0-5][0-9]"
-					class="w-full rounded border border-gray-600 bg-transparent p-2 text-white focus:border-[var(--theme-primary)] focus:outline-none"
-				/>
-			</div>
-			<div>
-				<label for="edit-tour-city-{tourDate.id}" class="mb-1 block text-sm text-gray-400">City</label>
-				<input
-					id="edit-tour-city-{tourDate.id}"
-					type="text"
-					bind:value={editCity}
 					class="w-full rounded border border-gray-600 bg-transparent p-2 text-white focus:border-[var(--theme-primary)] focus:outline-none"
 				/>
 			</div>
@@ -141,7 +137,16 @@
 			<input
 				id="edit-tour-venue-{tourDate.id}"
 				type="text"
-				bind:value={editVenue}
+				bind:value={editVenueName}
+				class="w-full rounded border border-gray-600 bg-transparent p-2 text-white focus:border-[var(--theme-primary)] focus:outline-none"
+			/>
+		</div>
+		<div class="mb-3">
+			<label for="edit-tour-city-{tourDate.id}" class="mb-1 block text-sm text-gray-400">City</label>
+			<input
+				id="edit-tour-city-{tourDate.id}"
+				type="text"
+				bind:value={editVenueCity}
 				class="w-full rounded border border-gray-600 bg-transparent p-2 text-white focus:border-[var(--theme-primary)] focus:outline-none"
 			/>
 		</div>
@@ -210,8 +215,8 @@
 			<div class="text-2xl font-bold" style="color: var(--theme-primary)">{formattedDate()}</div>
 		</div>
 		<div class="flex-1">
-			<div class="font-medium text-white">{tourDate.venue}</div>
-			<div class="text-sm text-gray-400">{tourDate.city}</div>
+			<div class="font-medium text-white">{tourDate.venue.name}</div>
+			<div class="text-sm text-gray-400">{tourDate.venue.city}</div>
 		</div>
 		{#if tourDate.soldOut}
 			<span class="rounded bg-red-600 px-3 py-1 text-sm font-medium text-white">Sold Out</span>

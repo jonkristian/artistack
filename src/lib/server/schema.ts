@@ -26,7 +26,11 @@ export const profile = sqliteTable('profile', {
 	showSocial: integer('show_social', { mode: 'boolean' }).default(true),
 	showTourDates: integer('show_tour_dates', { mode: 'boolean' }).default(true),
 	// Layout theme
-	layout: text('layout').default('default')
+	layout: text('layout').default('default'),
+	// Locale for date/time formatting
+	locale: text('locale').default('nb-NO'),
+	// API Keys
+	googlePlacesApiKey: text('google_places_api_key')
 });
 
 // Links with categories
@@ -48,8 +52,7 @@ export const tourDates = sqliteTable('tour_dates', {
 	date: text('date').notNull(),
 	time: text('time'), // Show time (e.g., "20:00")
 	title: text('title'), // Event/show title
-	venue: text('venue').notNull(),
-	city: text('city').notNull(),
+	venue: text('venue', { mode: 'json' }).$type<Venue>().notNull(),
 	lineup: text('lineup'), // Other acts (free-form text)
 	ticketUrl: text('ticket_url'),
 	eventUrl: text('event_url'), // Link to event page (Facebook, Bandsintown, etc.)
@@ -88,6 +91,16 @@ export const integrations = sqliteTable('integrations', {
 	lastSync: integer('last_sync', { mode: 'timestamp' }),
 	cachedData: text('cached_data', { mode: 'json' }) // Cache fetched data
 });
+
+// Venue type for tour dates
+export interface Venue {
+	name: string;
+	city: string;
+	address?: string;
+	placeId?: string;
+	lat?: number;
+	lng?: number;
+}
 
 // Types
 export type Profile = typeof profile.$inferSelect;

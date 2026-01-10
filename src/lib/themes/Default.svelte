@@ -61,9 +61,9 @@
 		endDate.setHours(startDate.getHours() + 3, startDate.getMinutes(), 0, 0);
 
 		// Build event summary
-		const eventTitle = tour.title || `${profile.name} at ${tour.venue}`;
+		const eventTitle = tour.title || `${profile.name} at ${tour.venue.name}`;
 		const description = [
-			tour.title ? `${profile.name} live at ${tour.venue}` : `${profile.name} live`,
+			tour.title ? `${profile.name} live at ${tour.venue.name}` : `${profile.name} live`,
 			tour.lineup ? `Line-up: ${tour.lineup}` : '',
 			tour.ticketUrl ? `Tickets: ${tour.ticketUrl}` : ''
 		].filter(Boolean).join('\\n');
@@ -76,7 +76,7 @@
 			`DTSTART:${formatDate(startDate)}`,
 			`DTEND:${formatDate(endDate)}`,
 			`SUMMARY:${eventTitle}`,
-			`LOCATION:${tour.venue}, ${tour.city}`,
+			`LOCATION:${tour.venue.name}, ${tour.venue.city}`,
 			`DESCRIPTION:${description}`,
 			`URL:${tour.ticketUrl || tour.eventUrl || window.location.href}`,
 			'END:VEVENT',
@@ -87,7 +87,7 @@
 		const url = URL.createObjectURL(blob);
 		const link = document.createElement('a');
 		link.href = url;
-		link.download = `${profile.name}-${tour.venue}.ics`;
+		link.download = `${profile.name}-${tour.venue.name}.ics`;
 		link.click();
 		URL.revokeObjectURL(url);
 	}
@@ -105,6 +105,9 @@
 	const showSocial = $derived(profile.showSocial !== false);
 	const showStreaming = $derived(profile.showStreaming !== false);
 	const showTourDates = $derived(profile.showTourDates !== false);
+
+	// Locale for date formatting
+	const locale = $derived(profile.locale || 'nb-NO');
 
 	// Shape styling helpers
 	const photoShape = $derived(profile.photoShape || 'wide-rounded');
@@ -153,7 +156,7 @@
 </script>
 
 <main class="flex min-h-screen items-start justify-center px-0 pb-0 pt-0 sm:px-8 sm:pb-0 sm:pt-16" style="background-color: var(--color-bg)">
-	<div class="relative min-h-screen w-full max-w-2xl overflow-visible rounded-t-3xl px-4 pb-8 pt-16 sm:min-h-[calc(100vh-4rem)] sm:px-6 sm:shadow-xl sm:ring-1 sm:ring-white/5" style="background-color: var(--color-card)">
+	<div class="relative min-h-screen w-full max-w-2xl overflow-visible rounded-t-3xl px-2 pb-8 pt-16 sm:min-h-[calc(100vh-4rem)] sm:px-6 sm:shadow-xl sm:ring-1 sm:ring-white/5" style="background-color: var(--color-card)">
 	<!-- Logo in top right corner (only if we have both photo and logo) -->
 	{#if showLogo && profile.logoUrl && showPhoto && profile.photoUrl}
 		<button
@@ -225,7 +228,7 @@
 
 		<!-- Bio below name -->
 		{#if showBio && profile.bio}
-			<p class="mx-auto max-w-md text-base leading-relaxed {showName ? 'mt-3' : 'mt-6'}" style="color: var(--color-text-muted)">{profile.bio}</p>
+			<p class="mx-auto max-w-md text-base leading-relaxed px-2 {showName ? 'mt-3' : 'mt-6'}" style="color: var(--color-text-muted)">{profile.bio}</p>
 		{/if}
 	</div>
 
@@ -385,15 +388,23 @@
 		<div class="space-y-2">
 			{#each tourDates as tour (tour.id)}
 				{@const eventInfo = tour.eventUrl ? getPlatformInfoFromUrl(tour.eventUrl) : null}
+				{@const mapsUrl = tour.venue.placeId
+					? `https://www.google.com/maps/place/?q=place_id:${tour.venue.placeId}`
+					: tour.venue.lat && tour.venue.lng
+						? `https://www.google.com/maps?q=${tour.venue.lat},${tour.venue.lng}`
+						: tour.venue.address
+							? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(tour.venue.address)}`
+							: null}
 				<div
-					class="group flex items-center gap-3 rounded-2xl bg-white/5 py-4 pl-3 pr-4 transition-all {tour.soldOut ? 'opacity-60' : 'hover:bg-white/10'}"
+					class="group flex gap-5 rounded-2xl bg-white/5 p-4 transition-all {tour.soldOut ? 'opacity-60' : 'hover:bg-white/10'}"
 				>
-					<div class="w-12 flex-shrink-0 text-center">
+					<!-- Date column -->
+					<div class="w-fit flex-shrink-0 self-center text-center">
 						<p class="text-2xl font-bold leading-none" style="color: var(--color-accent)">
-							{new Date(tour.date).toLocaleDateString('en-US', { day: 'numeric' })}
+							{new Date(tour.date).getDate()}
 						</p>
-						<p class="mt-1 text-[10px] font-semibold uppercase tracking-wider" style="color: var(--color-text-muted)">
-							{new Date(tour.date).toLocaleDateString('en-US', { month: 'short' })}
+						<p class="mt-1 text-xs font-semibold uppercase tracking-wider" style="color: var(--color-text-muted)">
+							{new Date(tour.date).toLocaleDateString(locale, { month: 'short' })}
 						</p>
 						{#if tour.time}
 							<p class="mt-1 text-[10px] font-medium" style="color: var(--color-text-muted)">
@@ -401,23 +412,56 @@
 							</p>
 						{/if}
 					</div>
+
+					<!-- Content column: Title, then Venue -->
 					<div class="min-w-0 flex-1">
 						{#if tour.title}
 							<p class="truncate font-semibold" style="color: var(--color-text)">{tour.title}</p>
-							<p class="text-sm" style="color: var(--color-text-muted)">{tour.venue} · {tour.city}</p>
-						{:else}
-							<p class="truncate font-semibold" style="color: var(--color-text)">{tour.venue}</p>
-							<p class="text-sm" style="color: var(--color-text-muted)">{tour.city}</p>
 						{/if}
+						<p class="truncate text-sm" style="color: var(--color-text-muted)">
+							{#if mapsUrl}
+								<a href={mapsUrl} target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 hover:underline" title="Open in Google Maps">
+									{tour.venue.name} · {tour.venue.city}
+									<svg class="h-3 w-3 flex-shrink-0 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+									</svg>
+								</a>
+							{:else}
+								{tour.venue.name} · {tour.venue.city}
+							{/if}
+						</p>
 						{#if tour.lineup}
 							<p class="mt-0.5 truncate text-xs" style="color: var(--color-text-muted); opacity: 0.75">{tour.lineup}</p>
 						{/if}
 					</div>
-					<div class="flex items-center gap-2">
+
+					<!-- Actions -->
+					<div class="flex flex-shrink-0 items-center gap-2">
+						{#if tour.soldOut}
+							<span class="rounded-full bg-red-500/20 px-3 py-1 text-xs font-bold uppercase tracking-wide text-red-400">
+								Sold Out
+							</span>
+						{:else if tour.ticketUrl}
+							<a
+								href={tour.ticketUrl}
+								target="_blank"
+								rel="noopener noreferrer"
+								class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-all hover:opacity-90 active:scale-95 sm:h-auto sm:w-auto sm:gap-1.5 sm:px-3 sm:py-1.5"
+								style="background: var(--color-accent); color: var(--color-text)"
+								title="Buy tickets"
+							>
+								<svg class="h-4 w-4 sm:h-3.5 sm:w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+								</svg>
+								<span class="hidden text-xs font-bold uppercase tracking-wide sm:inline">Tickets</span>
+							</a>
+						{/if}
+
 						{#if !tour.soldOut}
 							<button
 								onclick={() => addToCalendar(tour)}
-								class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-white/10 transition-all hover:bg-white/20 active:scale-95"
+								class="hidden h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-white/10 transition-all hover:bg-white/20 active:scale-95 sm:flex"
 								style="color: var(--color-text-muted)"
 								title="Add to calendar"
 							>
@@ -426,14 +470,15 @@
 								</svg>
 							</button>
 						{/if}
+
 						{#if tour.eventUrl}
 							<a
 								href={tour.eventUrl}
 								target="_blank"
 								rel="noopener noreferrer"
-								class="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 transition-all hover:bg-white/20 active:scale-95"
+								class="hidden h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-white/10 transition-all hover:bg-white/20 active:scale-95 sm:flex"
 								style="color: var(--color-text)"
-								title="View event on {eventInfo?.platform || 'site'}"
+								title="View on {eventInfo?.platform || 'event page'}"
 							>
 								{#if eventInfo?.icon}
 									<svg viewBox="0 0 24 24" class="h-4 w-4" style="fill: currentColor">
@@ -441,29 +486,79 @@
 									</svg>
 								{:else}
 									<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
 									</svg>
 								{/if}
 							</a>
 						{/if}
-						{#if tour.soldOut}
-							<span class="rounded-full bg-red-500/20 px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-red-400">
-								Sold Out
-							</span>
-						{:else if tour.ticketUrl}
-							<a
-								href={tour.ticketUrl}
-								target="_blank"
-								rel="noopener noreferrer"
-								class="flex h-8 w-8 items-center justify-center rounded-full transition-all hover:opacity-90 active:scale-95 sm:h-auto sm:w-auto sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-1.5"
-								style="background: var(--color-accent); color: var(--color-text)"
-								title="Buy tickets"
-							>
-								<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
-								</svg>
-								<span class="hidden text-xs font-bold uppercase tracking-wide sm:inline">Tickets</span>
-							</a>
+
+						<!-- Mobile menu -->
+						{#if !tour.soldOut || tour.eventUrl}
+							<div class="relative sm:hidden">
+								<button
+									onclick={(e) => {
+										const menu = e.currentTarget.nextElementSibling;
+										const isHidden = menu?.classList.contains('hidden');
+										document.querySelectorAll('[data-tour-menu]').forEach(m => m.classList.add('hidden'));
+										if (isHidden) {
+											menu?.classList.remove('hidden');
+											const closeMenu = (evt: Event) => {
+												if (!e.currentTarget?.closest('.relative')?.contains(evt.target as Node)) {
+													menu?.classList.add('hidden');
+													document.removeEventListener('click', closeMenu);
+												}
+											};
+											setTimeout(() => document.addEventListener('click', closeMenu), 0);
+										}
+									}}
+									class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-white/10 transition-all hover:bg-white/20 active:scale-95"
+									style="color: var(--color-text-muted)"
+									title="More options"
+								>
+									<svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+										<circle cx="12" cy="5" r="2" />
+										<circle cx="12" cy="12" r="2" />
+										<circle cx="12" cy="19" r="2" />
+									</svg>
+								</button>
+								<div data-tour-menu class="absolute right-0 top-full z-10 mt-1 hidden min-w-[160px] rounded-xl p-1 shadow-xl" style="background: var(--color-card); border: 1px solid rgba(255,255,255,0.1)">
+									{#if !tour.soldOut}
+										<button
+											onclick={(e) => {
+												addToCalendar(tour);
+												e.currentTarget.closest('[data-tour-menu]')?.classList.add('hidden');
+											}}
+											class="flex w-full cursor-pointer items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-white/10"
+											style="color: var(--color-text)"
+										>
+											<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+											</svg>
+											Add to calendar
+										</button>
+									{/if}
+									{#if tour.eventUrl}
+										<a
+											href={tour.eventUrl}
+											target="_blank"
+											rel="noopener noreferrer"
+											class="flex w-full items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-white/10"
+											style="color: var(--color-text)"
+										>
+											{#if eventInfo?.icon}
+												<svg viewBox="0 0 24 24" class="h-4 w-4" style="fill: currentColor">
+													<path d={eventInfo.icon} />
+												</svg>
+											{:else}
+												<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+												</svg>
+											{/if}
+											View on {eventInfo?.platform || 'event page'}
+										</a>
+									{/if}
+								</div>
+							</div>
 						{/if}
 					</div>
 				</div>
@@ -509,4 +604,5 @@
 			transform: translate(-50%, 0);
 		}
 	}
+
 </style>

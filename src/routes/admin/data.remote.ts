@@ -32,12 +32,22 @@ const linkSchema = v.object({
 	label: v.optional(v.string())
 });
 
-const tourDateSchema = v.object({
+const venueSchema = v.object({
+	name: v.pipe(v.string(), v.nonEmpty('Venue name is required')),
+	city: v.pipe(v.string(), v.nonEmpty('City is required')),
+	address: v.optional(v.string()),
+	placeId: v.optional(v.string()),
+	lat: v.optional(v.number()),
+	lng: v.optional(v.number())
+});
+
+// For form submission (separate fields that get combined)
+const tourDateFormSchema = v.object({
 	date: v.pipe(v.string(), v.nonEmpty('Date is required')),
 	time: v.optional(v.string()),
 	title: v.optional(v.string()),
-	venue: v.pipe(v.string(), v.nonEmpty('Venue is required')),
-	city: v.pipe(v.string(), v.nonEmpty('City is required')),
+	venueName: v.pipe(v.string(), v.nonEmpty('Venue is required')),
+	venueCity: v.pipe(v.string(), v.nonEmpty('City is required')),
 	lineup: v.optional(v.string()),
 	ticketUrl: v.optional(v.string()),
 	eventUrl: v.optional(v.string())
@@ -279,10 +289,16 @@ export const reorderLinks = command(reorderSchema, async (items) => {
 // Tour Date Forms & Commands
 // ============================================================================
 
-export const addTourDate = form(tourDateSchema, async ({ date, time, title, venue, city, lineup, ticketUrl, eventUrl }) => {
+export const addTourDate = form(tourDateFormSchema, async ({ date, time, title, venueName, venueCity, lineup, ticketUrl, eventUrl }) => {
 	// Get next position
 	const existing = await db.select().from(tourDates);
 	const position = getNextPosition(existing);
+
+	// Combine venue fields into object
+	const venue = {
+		name: venueName,
+		city: venueCity
+	};
 
 	const [created] = await db
 		.insert(tourDates)
@@ -291,7 +307,6 @@ export const addTourDate = form(tourDateSchema, async ({ date, time, title, venu
 			time: time || null,
 			title: title || null,
 			venue,
-			city,
 			lineup: lineup || null,
 			ticketUrl: ticketUrl || null,
 			eventUrl: eventUrl || null,
@@ -318,8 +333,7 @@ const updateTourDateSchema = v.object({
 	date: v.optional(v.string()),
 	time: v.optional(v.nullable(v.string())),
 	title: v.optional(v.nullable(v.string())),
-	venue: v.optional(v.string()),
-	city: v.optional(v.string()),
+	venue: v.optional(venueSchema),
 	lineup: v.optional(v.nullable(v.string())),
 	ticketUrl: v.optional(v.nullable(v.string())),
 	eventUrl: v.optional(v.nullable(v.string())),
@@ -333,7 +347,6 @@ export const updateTourDate = command(updateTourDateSchema, async ({ id, ...upda
 	if (updates.time !== undefined) updateData.time = updates.time;
 	if (updates.title !== undefined) updateData.title = updates.title;
 	if (updates.venue !== undefined) updateData.venue = updates.venue;
-	if (updates.city !== undefined) updateData.city = updates.city;
 	if (updates.lineup !== undefined) updateData.lineup = updates.lineup;
 	if (updates.ticketUrl !== undefined) updateData.ticketUrl = updates.ticketUrl;
 	if (updates.eventUrl !== undefined) updateData.eventUrl = updates.eventUrl;

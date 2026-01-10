@@ -81,6 +81,9 @@ const resetPasswordSchema = v.pipe(
 
 // ============================================================================
 // User Management Commands
+// Note: These commands are protected at the page level - only admins can access
+// the /admin/users page. The page load function verifies admin role before
+// rendering the UI that uses these commands.
 // ============================================================================
 
 export const addUser = form(addUserSchema, async ({ name, email, password, role }) => {

@@ -346,7 +346,7 @@
 						{...tourForm.enhance(async ({ submit }) => {
 							await submit();
 							showTourForm = false;
-							tourForm.fields.set({ date: '', venue: '', city: '', ticketUrl: '' });
+							tourForm.fields.set({ date: '', venueName: '', venueCity: '', ticketUrl: '' });
 						})}
 						class="mb-4 space-y-3 rounded-lg border border-gray-700 bg-gray-800/50 p-4"
 					>
@@ -356,13 +356,13 @@
 								class="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-gray-600 focus:outline-none"
 							/>
 							<input
-								{...tourForm.fields.city.as('text')}
+								{...tourForm.fields.venueCity.as('text')}
 								placeholder="City"
 								class="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
 							/>
 						</div>
 						<input
-							{...tourForm.fields.venue.as('text')}
+							{...tourForm.fields.venueName.as('text')}
 							placeholder="Venue"
 							class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
 						/>
@@ -390,8 +390,8 @@
 							<div class="text-sm">
 								<span class="text-gray-400">{t.date}</span>
 								<span class="mx-2 text-gray-600">-</span>
-								<span class="text-white">{t.venue}</span>
-								<span class="text-gray-500">, {t.city}</span>
+								<span class="text-white">{t.venue.name}</span>
+								<span class="text-gray-500">, {t.venue.city}</span>
 								{#if t.soldOut}
 									<span class="ml-2 text-xs text-red-400">Sold out</span>
 								{/if}
@@ -453,4 +453,8 @@
 <LinkEditDialog link={editingLink} {themeColors} onclose={closeLinkDialog} />
 
 <!-- Tour Date Edit Dialog -->
-<TourDateEditDialog tourDate={editingTourDate} onclose={closeTourDateDialog} />
+<TourDateEditDialog
+	tourDate={editingTourDate}
+	googlePlacesApiKey={data.profile?.googlePlacesApiKey}
+	onclose={closeTourDateDialog}
+/>

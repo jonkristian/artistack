@@ -8,29 +8,9 @@ import { eq } from 'drizzle-orm';
 // Validation Schemas
 // ============================================================================
 
-// Hex color validator (accepts #RGB, #RRGGBB, or #RRGGBBAA formats)
-const hexColor = v.pipe(
-	v.string(),
-	v.regex(/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/, 'Invalid hex color format')
-);
-
-const appearanceSchema = v.object({
-	// Colors - validated as hex colors
-	colorBg: v.optional(v.nullable(hexColor)),
-	colorCard: v.optional(v.nullable(hexColor)),
-	colorAccent: v.optional(v.nullable(hexColor)),
-	colorText: v.optional(v.nullable(hexColor)),
-	colorTextMuted: v.optional(v.nullable(hexColor)),
-	// Display options
-	showName: v.optional(v.boolean()),
-	showLogo: v.optional(v.boolean()),
-	showPhoto: v.optional(v.boolean()),
-	showBio: v.optional(v.boolean()),
-	showStreaming: v.optional(v.boolean()),
-	showSocial: v.optional(v.boolean()),
-	showTourDates: v.optional(v.boolean()),
-	// Layout - restricted to valid options
-	layout: v.optional(v.picklist(['default', 'minimal', 'card']))
+const settingsSchema = v.object({
+	locale: v.optional(v.string()),
+	googlePlacesApiKey: v.optional(v.nullable(v.string()))
 });
 
 // ============================================================================
@@ -49,10 +29,10 @@ async function getOrCreateProfile() {
 }
 
 // ============================================================================
-// Appearance Command (for auto-save)
+// Settings Command (for auto-save)
 // ============================================================================
 
-export const updateAppearance = command(appearanceSchema, async (data) => {
+export const updateSettings = command(settingsSchema, async (data) => {
 	const existing = await getOrCreateProfile();
 
 	// Filter out undefined values

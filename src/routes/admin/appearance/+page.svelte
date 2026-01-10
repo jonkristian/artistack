@@ -27,7 +27,7 @@
 	let showTourDates = $state(true);
 
 	// Layout
-	let layout = $state('default');
+	let layout = $state<'default' | 'minimal' | 'card'>('default');
 
 	// Sync from data.profile on load (only when profile id changes)
 	let syncedProfileId: number | null = null;
@@ -46,7 +46,7 @@
 			showStreaming = data.profile.showStreaming ?? true;
 			showSocial = data.profile.showSocial ?? true;
 			showTourDates = data.profile.showTourDates ?? true;
-			layout = data.profile.layout ?? 'default';
+			layout = (data.profile.layout as 'default' | 'minimal' | 'card') ?? 'default';
 		}
 	});
 

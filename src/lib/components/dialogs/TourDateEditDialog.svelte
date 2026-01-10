@@ -1,21 +1,22 @@
 <script lang="ts">
-	import type { TourDate } from '$lib/server/schema';
+	import type { TourDate, Venue } from '$lib/server/schema';
 	import { invalidateAll } from '$app/navigation';
 	import { updateTourDate, deleteTourDate } from '../../../routes/admin/data.remote';
+	import VenueAutocomplete from '../inputs/VenueAutocomplete.svelte';
 
 	interface Props {
 		tourDate: TourDate | null;
+		googlePlacesApiKey?: string | null;
 		onclose: () => void;
 	}
 
-	let { tourDate, onclose }: Props = $props();
+	let { tourDate, googlePlacesApiKey, onclose }: Props = $props();
 
 	// Form state
 	let date = $state('');
 	let time = $state('');
 	let title = $state('');
-	let venue = $state('');
-	let city = $state('');
+	let venue = $state<Venue>({ name: '', city: '' });
 	let lineup = $state('');
 	let ticketUrl = $state('');
 	let eventUrl = $state('');
@@ -31,8 +32,7 @@
 			date = tourDate.date;
 			time = tourDate.time || '';
 			title = tourDate.title || '';
-			venue = tourDate.venue;
-			city = tourDate.city;
+			venue = { ...tourDate.venue };
 			lineup = tourDate.lineup || '';
 			ticketUrl = tourDate.ticketUrl || '';
 			eventUrl = tourDate.eventUrl || '';
@@ -47,6 +47,10 @@
 		onclose();
 	}
 
+	function handleVenueChange(newVenue: Venue) {
+		venue = newVenue;
+	}
+
 	async function handleSave() {
 		if (!tourDate) return;
 
@@ -58,7 +62,6 @@
 				time: time || null,
 				title: title || null,
 				venue,
-				city,
 				lineup: lineup || null,
 				ticketUrl: ticketUrl || null,
 				eventUrl: eventUrl || null,
@@ -98,7 +101,7 @@
 			</div>
 
 			<div class="space-y-4">
-				<div class="grid grid-cols-3 gap-3">
+				<div class="grid grid-cols-2 gap-3">
 					<div>
 						<label for="tour-date" class="mb-1 block text-sm text-gray-400">Date</label>
 						<input
@@ -112,21 +115,9 @@
 						<label for="tour-time" class="mb-1 block text-sm text-gray-400">Time</label>
 						<input
 							id="tour-time"
-							type="text"
+							type="time"
 							bind:value={time}
-							placeholder="20:00"
-							pattern="[0-2][0-9]:[0-5][0-9]"
-							class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
-						/>
-					</div>
-					<div>
-						<label for="tour-city" class="mb-1 block text-sm text-gray-400">City</label>
-						<input
-							id="tour-city"
-							type="text"
-							bind:value={city}
-							placeholder="City"
-							class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+							class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-gray-600 focus:outline-none"
 						/>
 					</div>
 				</div>
@@ -144,14 +135,46 @@
 
 				<div>
 					<label for="tour-venue" class="mb-1 block text-sm text-gray-400">Venue</label>
-					<input
-						id="tour-venue"
-						type="text"
-						bind:value={venue}
-						placeholder="Venue name"
-						class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+					<VenueAutocomplete
+						apiKey={googlePlacesApiKey}
+						{venue}
+						onchange={handleVenueChange}
 					/>
+					{#if venue.address}
+						<p class="mt-1 flex items-center gap-1 text-xs text-gray-500">
+							<span>{venue.address}</span>
+							<a
+								href={venue.placeId
+									? `https://www.google.com/maps/place/?q=place_id:${venue.placeId}`
+									: venue.lat && venue.lng
+										? `https://www.google.com/maps?q=${venue.lat},${venue.lng}`
+										: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venue.address)}`}
+								target="_blank"
+								rel="noopener noreferrer"
+								class="cursor-pointer text-gray-400 hover:text-white"
+								title="Open in Google Maps"
+							>
+								<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+								</svg>
+							</a>
+						</p>
+					{/if}
 				</div>
+
+				{#if !googlePlacesApiKey}
+					<div>
+						<label for="tour-city" class="mb-1 block text-sm text-gray-400">City</label>
+						<input
+							id="tour-city"
+							type="text"
+							bind:value={venue.city}
+							placeholder="City"
+							class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+						/>
+					</div>
+				{/if}
 
 				<div>
 					<label for="tour-lineup" class="mb-1 block text-sm text-gray-400">Line-up</label>
