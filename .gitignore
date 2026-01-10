@@ -25,13 +25,9 @@ vite.config.ts.timestamp-*
 # npm (using bun)
 package-lock.json
 
-# Uploads
-/static/uploads/*
-!/static/uploads/.gitkeep
-
-# Database
-*.db
-*.db-journal
+# Data (uploads + database)
+/data/*
+!/data/.gitkeep
 
 # Generated favicons
 /static/favicon.ico

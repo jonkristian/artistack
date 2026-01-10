@@ -75,7 +75,7 @@ export const deleteMedia = command(deleteMediaSchema, async (id) => {
 
 		// Try to delete the main file
 		try {
-			const filePath = join('static', item.url);
+			const filePath = join('data', item.url);
 			await unlink(filePath);
 		} catch {
 			// File might not exist, ignore
@@ -84,7 +84,7 @@ export const deleteMedia = command(deleteMediaSchema, async (id) => {
 		// Try to delete the thumbnail file
 		if (item.thumbnailUrl) {
 			try {
-				const thumbPath = join('static', item.thumbnailUrl);
+				const thumbPath = join('data', item.thumbnailUrl);
 				await unlink(thumbPath);
 			} catch {
 				// Thumbnail might not exist, ignore

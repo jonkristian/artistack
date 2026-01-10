@@ -5,6 +5,6 @@ export default defineConfig({
 	out: './drizzle',
 	dialect: 'sqlite',
 	dbCredentials: {
-		url: 'artistack.db'
+		url: 'data/artistack.db'
 	}
 });

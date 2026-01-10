@@ -4,7 +4,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import type { RequestHandler } from './$types';
 
-const UPLOAD_DIR = 'static/uploads';
+const UPLOAD_DIR = 'data/uploads';
 
 const MIME_TYPES: Record<string, string> = {
 	jpg: 'image/jpeg',

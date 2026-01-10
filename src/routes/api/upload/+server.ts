@@ -6,7 +6,7 @@ import { join } from 'path';
 import sharp from 'sharp';
 import type { RequestHandler } from './$types';
 
-const UPLOAD_DIR = 'static/uploads';
+const UPLOAD_DIR = 'data/uploads';
 const THUMBNAIL_SIZE = 400; // Thumbnail max dimension
 const MAX_DIMENSION = 2048; // Max dimension for full-size images
 const JPEG_QUALITY = 85;
