@@ -151,8 +151,8 @@ export const generateFavicon = command(generateFaviconSchema, async ({ sourceUrl
 
 		generatedImages.push({ name, size, buffer });
 
-		// Write to static folder
-		await writeFile(join('static', name), buffer);
+		// Write to data folder
+		await writeFile(join('data', name), buffer);
 	}
 
 	// Create ICO file from 16, 32, 48 sizes
@@ -161,7 +161,7 @@ export const generateFavicon = command(generateFaviconSchema, async ({ sourceUrl
 		.map((img) => ({ size: img.size, buffer: img.buffer }));
 
 	const icoBuffer = createIco(icoImages);
-	await writeFile(join('static', 'favicon.ico'), icoBuffer);
+	await writeFile(join('data', 'favicon.ico'), icoBuffer);
 
 	// Update profile
 	const [updated] = await db
