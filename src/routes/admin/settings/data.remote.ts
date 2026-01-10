@@ -124,8 +124,8 @@ export const updateSettings = command(settingsSchema, async (data) => {
 export const generateFavicon = command(generateFaviconSchema, async ({ sourceUrl }) => {
 	const existing = await getOrCreateProfile();
 
-	// Convert URL path to file path (e.g., /uploads/image.jpg -> static/uploads/image.jpg)
-	const sourcePath = join('static', sourceUrl.replace(/^\//, ''));
+	// Convert URL path to file path (e.g., /uploads/image.jpg -> data/uploads/image.jpg)
+	const sourcePath = join('data', sourceUrl.replace(/^\//, ''));
 
 	// Read source image
 	const sourceBuffer = await readFile(sourcePath);

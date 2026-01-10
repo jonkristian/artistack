@@ -26,7 +26,15 @@
 		input.value = '';
 	}
 
+	const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
 	async function uploadFile(file: File) {
+		// Client-side size check
+		if (file.size > MAX_FILE_SIZE) {
+			alert(`File "${file.name}" is too large. Maximum size is 10MB.`);
+			return;
+		}
+
 		uploading = true;
 
 		try {
@@ -40,8 +48,17 @@
 			});
 
 			if (!res.ok) {
-				const err = await res.json();
-				alert(err.message || 'Upload failed');
+				let message = 'Upload failed';
+				try {
+					const err = await res.json();
+					message = err.message || message;
+				} catch {
+					// Response might not be JSON (e.g., body limit error)
+					if (res.status === 413) {
+						message = 'File too large. Maximum size is 10MB.';
+					}
+				}
+				alert(message);
 				return;
 			}
 
