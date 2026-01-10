@@ -133,6 +133,7 @@
 						<img
 							src={item.thumbnailUrl || item.url}
 							alt={item.alt || item.filename}
+							loading="lazy"
 							class="h-full w-full object-cover"
 						/>
 					</div>

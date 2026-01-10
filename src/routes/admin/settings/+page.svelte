@@ -20,7 +20,8 @@
 		{ code: 'nl-NL', name: 'Dutch', example: '31 jan. 2026' }
 	];
 
-	// Current locale
+	// Settings state
+	let siteTitle = $state('');
 	let locale = $state('nb-NO');
 	let googlePlacesApiKey = $state('');
 
@@ -39,6 +40,7 @@
 	$effect(() => {
 		if (data.profile && data.profile.id !== syncedProfileId) {
 			syncedProfileId = data.profile.id;
+			siteTitle = data.profile.siteTitle ?? '';
 			locale = data.profile.locale ?? 'nb-NO';
 			googlePlacesApiKey = data.profile.googlePlacesApiKey ?? '';
 			selectedFaviconUrl = data.profile.faviconUrl ?? null;
@@ -52,7 +54,11 @@
 
 	$effect(() => {
 		// Track values to trigger on change
-		const values = { locale, googlePlacesApiKey: googlePlacesApiKey || null };
+		const values = {
+			siteTitle: siteTitle || null,
+			locale,
+			googlePlacesApiKey: googlePlacesApiKey || null
+		};
 
 		if (!initialized) {
 			initialized = true;
@@ -92,6 +98,26 @@
 	</header>
 
 	<div class="max-w-2xl space-y-6">
+		<SectionCard title="Site">
+			<div class="space-y-4">
+				<div>
+					<label for="site-title" class="mb-2 block text-sm font-medium text-gray-300">
+						Site Title
+					</label>
+					<input
+						id="site-title"
+						type="text"
+						bind:value={siteTitle}
+						placeholder={data.profile?.name || 'Artist Name'}
+						class="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+					/>
+					<p class="mt-2 text-sm text-gray-500">
+						Used for browser tab and PWA. Leave empty to use artist name.
+					</p>
+				</div>
+			</div>
+		</SectionCard>
+
 		<SectionCard title="Regional">
 			<div class="space-y-4">
 				<div>
@@ -154,6 +180,7 @@
 									<img
 										src={item.thumbnailUrl || item.url}
 										alt={item.alt || item.filename}
+										loading="lazy"
 										class="h-full w-full object-cover"
 									/>
 									{#if selectedFaviconUrl === item.url}

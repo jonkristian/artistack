@@ -117,6 +117,7 @@
 		<img
 			src={link.thumbnailUrl}
 			alt={displayLabel}
+			loading="lazy"
 			class="h-16 w-16 flex-shrink-0 rounded-lg object-cover"
 		/>
 		<div class="min-w-0 flex-1">

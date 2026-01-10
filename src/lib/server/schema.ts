@@ -4,6 +4,7 @@ import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 export const profile = sqliteTable('profile', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
 	name: text('name').notNull(),
+	siteTitle: text('site_title'), // Overrides name for browser title, falls back to name if empty
 	bio: text('bio'),
 	email: text('email'),
 	logoUrl: text('logo_url'),

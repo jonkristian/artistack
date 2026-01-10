@@ -292,7 +292,7 @@
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16" />
 									</svg>
 									{#if link.thumbnailUrl}
-										<img src={link.thumbnailUrl} alt="" class="h-8 w-8 rounded object-cover" />
+										<img src={link.thumbnailUrl} alt="" loading="lazy" class="h-8 w-8 rounded object-cover" />
 									{/if}
 									<div class="min-w-0 flex-1">
 										<div class="flex items-center gap-2">

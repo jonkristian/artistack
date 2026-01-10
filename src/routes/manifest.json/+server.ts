@@ -7,7 +7,7 @@ export const GET: RequestHandler = async () => {
 	// Get profile data for dynamic manifest
 	const [profileData] = await db.select().from(profile).limit(1);
 
-	const name = profileData?.name || 'Artistack';
+	const name = profileData?.siteTitle || profileData?.name || 'Artistack';
 	const shortName = name.length > 12 ? name.substring(0, 12) : name;
 	const bgColor = profileData?.colorBg || '#0f0f0f';
 	const themeColor = profileData?.colorAccent || '#8b5cf6';

@@ -1,6 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import { requireAuth } from '$lib/server/api';
-import { mkdir } from 'fs/promises';
+import { mkdir, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import sharp from 'sharp';
@@ -167,8 +167,8 @@ export const POST: RequestHandler = async ({ request }) => {
 	const thumbnailFilename = `${baseFilename}-thumb.webp`;
 
 	await Promise.all([
-		sharp(outputBuffer).toFile(join(UPLOAD_DIR, filename)),
-		sharp(thumbnailBuffer).toFile(join(UPLOAD_DIR, thumbnailFilename))
+		writeFile(join(UPLOAD_DIR, filename), outputBuffer),
+		writeFile(join(UPLOAD_DIR, thumbnailFilename), thumbnailBuffer)
 	]);
 
 	// Return URLs and metadata

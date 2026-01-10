@@ -9,7 +9,7 @@
 	const tourDates = $derived(data.tourDates);
 
 	// SEO
-	const pageTitle = $derived(profile?.name ?? 'Artist');
+	const pageTitle = $derived(profile?.siteTitle || profile?.name || 'Artist');
 	const pageDescription = $derived(profile?.bio ?? `Check out ${profile?.name ?? 'this artist'} - links, music, and more.`);
 
 	// Layout components registry - add new layouts here

@@ -156,7 +156,12 @@
 </script>
 
 <main class="flex min-h-screen items-start justify-center px-0 pb-0 pt-0 sm:px-8 sm:pb-0 sm:pt-16" style="background-color: var(--color-bg)">
-	<div class="relative min-h-screen w-full max-w-2xl overflow-visible rounded-t-3xl px-2 pb-8 pt-16 sm:min-h-[calc(100vh-4rem)] sm:px-6 sm:shadow-xl sm:ring-1 sm:ring-white/5" style="background-color: var(--color-card)">
+	<!-- Card wrapper with gradient border -->
+	<div class="relative min-h-screen w-full max-w-2xl sm:min-h-[calc(100vh-4rem)]">
+		<!-- Gradient border (hidden on mobile) -->
+		<div class="pointer-events-none absolute -inset-px hidden rounded-t-3xl sm:block" style="background: linear-gradient(160deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05) 40%, transparent 70%)"></div>
+		<!-- Card content -->
+		<div class="relative min-h-screen w-full overflow-visible rounded-t-3xl px-2 pb-8 pt-16 sm:min-h-[calc(100vh-4rem)] sm:px-6 sm:shadow-xl" style="background-color: var(--color-card)">
 	<!-- Logo in top right corner (only if we have both photo and logo) -->
 	{#if showLogo && profile.logoUrl && showPhoto && profile.photoUrl}
 		<button
@@ -310,6 +315,7 @@
 						<img
 							src={link.thumbnailUrl}
 							alt={link.label || link.platform}
+							loading="lazy"
 							class="h-16 w-16 flex-shrink-0 rounded-xl object-cover shadow-lg"
 						/>
 						<div class="min-w-0 flex-1">
@@ -581,6 +587,7 @@
 	</button>
 </section>
 	</div>
+	</div>
 
 <!-- Copied Toast -->
 {#if showCopiedToast}
@@ -604,5 +611,4 @@
 			transform: translate(-50%, 0);
 		}
 	}
-
 </style>

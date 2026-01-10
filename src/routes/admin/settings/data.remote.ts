@@ -12,6 +12,7 @@ import { join } from 'path';
 // ============================================================================
 
 const settingsSchema = v.object({
+	siteTitle: v.optional(v.nullable(v.string())),
 	locale: v.optional(v.string()),
 	googlePlacesApiKey: v.optional(v.nullable(v.string()))
 });

@@ -210,8 +210,9 @@
 								class="group relative aspect-square overflow-hidden rounded-lg ring-2 transition-all ring-transparent hover:ring-violet-500"
 							>
 								<img
-									src={item.url}
+									src={item.thumbnailUrl || item.url}
 									alt={item.alt || item.filename}
+									loading="lazy"
 									class="h-full w-full object-cover"
 								/>
 							</button>

@@ -7,22 +7,47 @@ A self-hosted link-in-bio page for musicians and bands.
 - Profile with logo, photo, and bio
 - Social media links
 - Streaming links with embedded players (Spotify, YouTube, Bandcamp)
-- Tour dates with ticket links and calendar export
+- Tour dates with venue autocomplete and calendar export
 - Customizable colors and layout
-- Media library with image cropping
+- Media library with image cropping and automatic optimization
+- Favicon generator with PWA support
 
 ## Tech Stack
 
 - SvelteKit
 - SQLite with Drizzle ORM
 - Tailwind CSS
+- Sharp for image processing
+- Better Auth for authentication
 
 ## Getting Started
 
-```bash
-bun install
-bun run dev
-```
+1. Install dependencies:
+   ```bash
+   bun install
+   ```
+
+2. Copy the example environment file and configure:
+   ```bash
+   cp .env.example .env
+   ```
+
+3. Set up the database:
+   ```bash
+   npx drizzle-kit push
+   ```
+
+4. Start the dev server:
+   ```bash
+   bun run dev
+   ```
+
+## Environment Variables
+
+See `.env.example` for all available options:
+
+- `ORIGIN` - Your site URL (e.g., `https://example.com`)
+- `BETTER_AUTH_SECRET` - Secret key for authentication
 
 ## License
 
