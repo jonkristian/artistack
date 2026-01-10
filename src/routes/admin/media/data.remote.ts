@@ -13,6 +13,7 @@ import { join } from 'path';
 const addMediaSchema = v.object({
 	filename: v.string(),
 	url: v.string(),
+	thumbnailUrl: v.optional(v.string()),
 	mimeType: v.string(),
 	width: v.optional(v.number()),
 	height: v.optional(v.number()),
@@ -38,6 +39,7 @@ export const addMedia = command(addMediaSchema, async (data) => {
 		.values({
 			filename: data.filename,
 			url: data.url,
+			thumbnailUrl: data.thumbnailUrl,
 			mimeType: data.mimeType,
 			width: data.width,
 			height: data.height,
@@ -64,19 +66,29 @@ export const updateMedia = command(updateMediaSchema, async ({ id, alt, url }) =
 });
 
 export const deleteMedia = command(deleteMediaSchema, async (id) => {
-	// Get the media item first to get the file path
+	// Get the media item first to get the file paths
 	const [item] = await db.select().from(media).where(eq(media.id, id)).limit(1);
 
 	if (item) {
 		// Delete from database
 		await db.delete(media).where(eq(media.id, id));
 
-		// Try to delete the file
+		// Try to delete the main file
 		try {
 			const filePath = join('static', item.url);
 			await unlink(filePath);
 		} catch {
 			// File might not exist, ignore
+		}
+
+		// Try to delete the thumbnail file
+		if (item.thumbnailUrl) {
+			try {
+				const thumbPath = join('static', item.thumbnailUrl);
+				await unlink(thumbPath);
+			} catch {
+				// Thumbnail might not exist, ignore
+			}
 		}
 	}
 

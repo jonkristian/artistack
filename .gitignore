@@ -32,3 +32,9 @@ package-lock.json
 # Database
 *.db
 *.db-journal
+
+# Generated favicons
+/static/favicon.ico
+/static/favicon-*.png
+/static/apple-touch-icon.png
+/static/icon-*.png

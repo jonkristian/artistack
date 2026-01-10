@@ -7,6 +7,12 @@
 
 	let fileInput: HTMLInputElement;
 	let uploading = $state(false);
+	let displayCount = $state(20);
+
+	// Paginated media
+	const visibleMedia = $derived(data.media.slice(0, displayCount));
+	const hasMore = $derived(data.media.length > displayCount);
+	const remainingCount = $derived(data.media.length - displayCount);
 
 	async function handleFileSelect(e: Event) {
 		const input = e.target as HTMLInputElement;
@@ -39,23 +45,17 @@
 				return;
 			}
 
-			const { url } = await res.json();
+			const { url, thumbnailUrl, width, height, size, mimeType } = await res.json();
 
-			// Get image dimensions
-			const img = new Image();
-			await new Promise<void>((resolve) => {
-				img.onload = () => resolve();
-				img.src = url;
-			});
-
-			// Add to media library
+			// Add to media library with all metadata from server
 			await addMedia({
 				filename: file.name,
 				url,
-				mimeType: file.type,
-				width: img.naturalWidth,
-				height: img.naturalHeight,
-				size: file.size
+				thumbnailUrl,
+				mimeType,
+				width,
+				height,
+				size
 			});
 
 			await invalidateAll();
@@ -125,12 +125,13 @@
 			</button>
 		</div>
 	{:else}
+		<p class="mb-4 text-sm text-gray-500">{data.media.length} images</p>
 		<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-			{#each data.media as item (item.id)}
+			{#each visibleMedia as item (item.id)}
 				<div class="group relative overflow-hidden rounded-xl bg-gray-800">
 					<div class="aspect-square">
 						<img
-							src={item.url}
+							src={item.thumbnailUrl || item.url}
 							alt={item.alt || item.filename}
 							class="h-full w-full object-cover"
 						/>
@@ -160,6 +161,16 @@
 				</div>
 			{/each}
 		</div>
+
+		{#if hasMore}
+			<button
+				type="button"
+				onclick={() => (displayCount += 20)}
+				class="mt-6 w-full rounded-lg border border-gray-700 bg-gray-800/50 px-4 py-3 text-sm text-gray-400 transition-colors hover:border-gray-600 hover:text-gray-300"
+			>
+				Load more ({remainingCount} remaining)
+			</button>
+		{/if}
 	{/if}
 
 	<input

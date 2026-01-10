@@ -30,7 +30,10 @@ export const profile = sqliteTable('profile', {
 	// Locale for date/time formatting
 	locale: text('locale').default('nb-NO'),
 	// API Keys
-	googlePlacesApiKey: text('google_places_api_key')
+	googlePlacesApiKey: text('google_places_api_key'),
+	// Favicon & PWA
+	faviconUrl: text('favicon_url'), // Source image from media library
+	faviconGenerated: integer('favicon_generated', { mode: 'boolean' }).default(false)
 });
 
 // Links with categories
@@ -65,6 +68,7 @@ export const media = sqliteTable('media', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
 	filename: text('filename').notNull(),
 	url: text('url').notNull(),
+	thumbnailUrl: text('thumbnail_url'), // Smaller version for grids/previews
 	mimeType: text('mime_type').notNull(),
 	width: integer('width'),
 	height: integer('height'),

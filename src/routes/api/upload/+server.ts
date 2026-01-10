@@ -1,11 +1,16 @@
 import { json, error } from '@sveltejs/kit';
 import { requireAuth } from '$lib/server/api';
-import { writeFile, mkdir } from 'fs/promises';
+import { mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
+import sharp from 'sharp';
 import type { RequestHandler } from './$types';
 
 const UPLOAD_DIR = 'static/uploads';
+const THUMBNAIL_SIZE = 400; // Thumbnail max dimension
+const MAX_DIMENSION = 2048; // Max dimension for full-size images
+const JPEG_QUALITY = 85;
+const WEBP_QUALITY = 85;
 
 // Magic bytes for allowed image types
 const MAGIC_BYTES: Record<string, { bytes: number[]; offset?: number }[]> = {
@@ -15,16 +20,8 @@ const MAGIC_BYTES: Record<string, { bytes: number[]; offset?: number }[]> = {
 	'image/webp': [{ bytes: [0x52, 0x49, 0x46, 0x46], offset: 0 }, { bytes: [0x57, 0x45, 0x42, 0x50], offset: 8 }]
 };
 
-// Map magic bytes to file extensions
-const MIME_TO_EXT: Record<string, string> = {
-	'image/jpeg': 'jpg',
-	'image/png': 'png',
-	'image/gif': 'gif',
-	'image/webp': 'webp'
-};
-
 // Allowed type parameter values (sanitized)
-const ALLOWED_TYPES = ['logo', 'photo', 'background', 'image'];
+const ALLOWED_TYPES = ['logo', 'photo', 'background', 'image', 'media'];
 
 /**
  * Validates file content by checking magic bytes
@@ -72,10 +69,10 @@ export const POST: RequestHandler = async ({ request }) => {
 		throw error(400, 'No file provided');
 	}
 
-	// Validate file size first (max 5MB)
-	const maxSize = 5 * 1024 * 1024;
+	// Validate file size first (max 10MB for raw uploads, will be compressed)
+	const maxSize = 10 * 1024 * 1024;
 	if (file.size > maxSize) {
-		throw error(400, 'File too large. Maximum size is 5MB');
+		throw error(400, 'File too large. Maximum size is 10MB');
 	}
 
 	// Read file buffer for content validation
@@ -90,7 +87,6 @@ export const POST: RequestHandler = async ({ request }) => {
 	// Verify the claimed MIME type matches the detected type (optional strictness)
 	const allowedTypes = Object.keys(MAGIC_BYTES);
 	if (!allowedTypes.includes(file.type) || file.type !== detectedMimeType) {
-		// Log potential spoofing attempt but allow if content is valid
 		console.warn(`MIME type mismatch: claimed ${file.type}, detected ${detectedMimeType}`);
 	}
 
@@ -102,16 +98,89 @@ export const POST: RequestHandler = async ({ request }) => {
 		await mkdir(UPLOAD_DIR, { recursive: true });
 	}
 
-	// Use detected MIME type for extension (don't trust user-provided extension)
-	const ext = MIME_TO_EXT[detectedMimeType];
-	const filename = `${sanitizedType}-${Date.now()}.${ext}`;
-	const filepath = join(UPLOAD_DIR, filename);
+	const timestamp = Date.now();
+	const baseFilename = `${sanitizedType}-${timestamp}`;
 
-	// Write file
-	await writeFile(filepath, buffer);
+	// Process image with sharp
+	let sharpInstance = sharp(buffer)
+		.rotate() // Auto-rotate based on EXIF orientation
+		.withMetadata({ orientation: undefined }); // Strip EXIF but keep color profile
 
-	// Return the URL path
+	// Get original dimensions
+	const metadata = await sharp(buffer).metadata();
+	const originalWidth = metadata.width || 0;
+	const originalHeight = metadata.height || 0;
+
+	// Resize if too large (maintain aspect ratio)
+	if (originalWidth > MAX_DIMENSION || originalHeight > MAX_DIMENSION) {
+		sharpInstance = sharpInstance.resize(MAX_DIMENSION, MAX_DIMENSION, {
+			fit: 'inside',
+			withoutEnlargement: true
+		});
+	}
+
+	// Determine output format - convert PNG to WebP for better compression, keep JPEG as JPEG
+	let outputBuffer: Buffer;
+	let outputExt: string;
+	let outputMimeType: string;
+
+	if (detectedMimeType === 'image/gif') {
+		// Keep GIFs as-is (for animations)
+		outputBuffer = buffer;
+		outputExt = 'gif';
+		outputMimeType = 'image/gif';
+	} else if (detectedMimeType === 'image/png' || detectedMimeType === 'image/webp') {
+		// Convert to WebP for better compression
+		outputBuffer = await sharpInstance.webp({ quality: WEBP_QUALITY }).toBuffer();
+		outputExt = 'webp';
+		outputMimeType = 'image/webp';
+	} else {
+		// JPEG stays as JPEG
+		outputBuffer = await sharpInstance.jpeg({ quality: JPEG_QUALITY, mozjpeg: true }).toBuffer();
+		outputExt = 'jpg';
+		outputMimeType = 'image/jpeg';
+	}
+
+	// Generate thumbnail
+	let thumbnailBuffer: Buffer;
+	if (detectedMimeType === 'image/gif') {
+		// For GIFs, just resize (loses animation but that's OK for thumbnails)
+		thumbnailBuffer = await sharp(buffer, { animated: false })
+			.resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE, { fit: 'inside', withoutEnlargement: true })
+			.webp({ quality: 80 })
+			.toBuffer();
+	} else {
+		thumbnailBuffer = await sharp(buffer)
+			.rotate()
+			.resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE, { fit: 'inside', withoutEnlargement: true })
+			.webp({ quality: 80 })
+			.toBuffer();
+	}
+
+	// Get final dimensions
+	const finalMetadata = await sharp(outputBuffer).metadata();
+	const width = finalMetadata.width || originalWidth;
+	const height = finalMetadata.height || originalHeight;
+
+	// Write files
+	const filename = `${baseFilename}.${outputExt}`;
+	const thumbnailFilename = `${baseFilename}-thumb.webp`;
+
+	await Promise.all([
+		sharp(outputBuffer).toFile(join(UPLOAD_DIR, filename)),
+		sharp(thumbnailBuffer).toFile(join(UPLOAD_DIR, thumbnailFilename))
+	]);
+
+	// Return URLs and metadata
 	const url = `/uploads/${filename}`;
+	const thumbnailUrl = `/uploads/${thumbnailFilename}`;
 
-	return json({ url });
+	return json({
+		url,
+		thumbnailUrl,
+		width,
+		height,
+		size: outputBuffer.length,
+		mimeType: outputMimeType
+	});
 };
