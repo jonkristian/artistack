@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { SectionCard } from '$lib/components/cards';
 	import type { PageData } from './$types';
-	import { updateSettings, generateFavicon } from './data.remote';
+	import { updateSettings, generateFavicon, updateSmtpSettings, testSmtp } from './data.remote';
 	import { invalidateAll } from '$app/navigation';
 
 	let { data }: { data: PageData } = $props();
@@ -31,6 +31,17 @@
 	let isGenerating = $state(false);
 	let mediaDisplayCount = $state(12); // Show 12 images initially
 
+	// SMTP state
+	let smtpHost = $state('');
+	let smtpPort = $state(587);
+	let smtpUser = $state('');
+	let smtpPassword = $state('');
+	let smtpFromAddress = $state('');
+	let smtpFromName = $state('');
+	let smtpTls = $state(true);
+	let smtpTestLoading = $state(false);
+	let smtpTestResult = $state<{ success: boolean; error?: string } | null>(null);
+
 	// Paginated media for favicon selection
 	const visibleMedia = $derived(data.media?.slice(0, mediaDisplayCount) ?? []);
 	const hasMoreMedia = $derived((data.media?.length ?? 0) > mediaDisplayCount);
@@ -45,6 +56,14 @@
 			googlePlacesApiKey = data.profile.googlePlacesApiKey ?? '';
 			selectedFaviconUrl = data.profile.faviconUrl ?? null;
 			faviconGenerated = data.profile.faviconGenerated ?? false;
+			// SMTP
+			smtpHost = data.profile.smtpHost ?? '';
+			smtpPort = data.profile.smtpPort ?? 587;
+			smtpUser = data.profile.smtpUser ?? '';
+			smtpPassword = data.profile.smtpPassword ?? '';
+			smtpFromAddress = data.profile.smtpFromAddress ?? '';
+			smtpFromName = data.profile.smtpFromName ?? '';
+			smtpTls = data.profile.smtpTls ?? true;
 		}
 	});
 
@@ -87,6 +106,44 @@
 			console.error('Failed to generate favicon:', error);
 		} finally {
 			isGenerating = false;
+		}
+	}
+
+	// Auto-save SMTP settings with debounce
+	let smtpSaveTimeout: ReturnType<typeof setTimeout>;
+	let smtpInitialized = false;
+
+	$effect(() => {
+		const smtpValues = {
+			smtpHost: smtpHost || null,
+			smtpPort: smtpPort || null,
+			smtpUser: smtpUser || null,
+			smtpPassword: smtpPassword || null,
+			smtpFromAddress: smtpFromAddress || null,
+			smtpFromName: smtpFromName || null,
+			smtpTls
+		};
+
+		if (!smtpInitialized) {
+			smtpInitialized = true;
+			return;
+		}
+
+		clearTimeout(smtpSaveTimeout);
+		smtpSaveTimeout = setTimeout(async () => {
+			await updateSmtpSettings(smtpValues);
+			smtpTestResult = null;
+		}, 500);
+	});
+
+	// Test SMTP connection
+	async function handleTestSmtp() {
+		smtpTestLoading = true;
+		smtpTestResult = null;
+		try {
+			smtpTestResult = await testSmtp({});
+		} finally {
+			smtpTestLoading = false;
 		}
 	}
 </script>
@@ -157,6 +214,147 @@
 						Enables venue autocomplete when adding tour dates.
 						Get a key from <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" class="text-violet-400 hover:text-violet-300">Google Cloud Console</a>.
 					</p>
+				</div>
+			</div>
+		</SectionCard>
+
+		<SectionCard title="Email / SMTP">
+			<div class="space-y-4">
+				<p class="text-sm text-gray-400">
+					Configure SMTP settings for sending password reset emails.
+				</p>
+
+				<div class="grid grid-cols-2 gap-4">
+					<div>
+						<label for="smtp-host" class="mb-2 block text-sm font-medium text-gray-300">
+							SMTP Host
+						</label>
+						<input
+							id="smtp-host"
+							type="text"
+							bind:value={smtpHost}
+							placeholder="smtp.example.com"
+							class="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+						/>
+					</div>
+
+					<div>
+						<label for="smtp-port" class="mb-2 block text-sm font-medium text-gray-300">
+							Port
+						</label>
+						<input
+							id="smtp-port"
+							type="number"
+							bind:value={smtpPort}
+							placeholder="587"
+							class="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+						/>
+					</div>
+				</div>
+
+				<div class="grid grid-cols-2 gap-4">
+					<div>
+						<label for="smtp-user" class="mb-2 block text-sm font-medium text-gray-300">
+							Username
+						</label>
+						<input
+							id="smtp-user"
+							type="text"
+							bind:value={smtpUser}
+							placeholder="user@example.com"
+							class="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+						/>
+					</div>
+
+					<div>
+						<label for="smtp-password" class="mb-2 block text-sm font-medium text-gray-300">
+							Password
+						</label>
+						<input
+							id="smtp-password"
+							type="password"
+							bind:value={smtpPassword}
+							placeholder="••••••••"
+							class="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+						/>
+					</div>
+				</div>
+
+				<div class="grid grid-cols-2 gap-4">
+					<div>
+						<label for="smtp-from-address" class="mb-2 block text-sm font-medium text-gray-300">
+							From Address
+						</label>
+						<input
+							id="smtp-from-address"
+							type="email"
+							bind:value={smtpFromAddress}
+							placeholder="noreply@example.com"
+							class="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+						/>
+						<p class="mt-1 text-xs text-gray-500">Defaults to username if empty</p>
+					</div>
+
+					<div>
+						<label for="smtp-from-name" class="mb-2 block text-sm font-medium text-gray-300">
+							From Name
+						</label>
+						<input
+							id="smtp-from-name"
+							type="text"
+							bind:value={smtpFromName}
+							placeholder="Artistack"
+							class="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+						/>
+					</div>
+				</div>
+
+				<div class="flex items-center justify-between rounded-lg border border-gray-700 bg-gray-800/50 px-4 py-3">
+					<div>
+						<p class="text-sm font-medium text-gray-300">Use TLS</p>
+						<p class="text-xs text-gray-500">Enable TLS encryption for SMTP connection</p>
+					</div>
+					<button
+						type="button"
+						role="switch"
+						aria-checked={smtpTls}
+						aria-label="Toggle TLS encryption"
+						onclick={() => (smtpTls = !smtpTls)}
+						class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none {smtpTls ? 'bg-violet-600' : 'bg-gray-700'}"
+					>
+						<span
+							class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out {smtpTls ? 'translate-x-5' : 'translate-x-0'}"
+						></span>
+					</button>
+				</div>
+
+				<div class="flex items-center gap-4">
+					<button
+						type="button"
+						onclick={handleTestSmtp}
+						disabled={!smtpHost || !smtpUser || !smtpPassword || smtpTestLoading}
+						class="rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
+					>
+						{smtpTestLoading ? 'Testing...' : 'Test Connection'}
+					</button>
+
+					{#if smtpTestResult}
+						{#if smtpTestResult.success}
+							<span class="flex items-center gap-1.5 text-sm text-emerald-400">
+								<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+								</svg>
+								Connection successful
+							</span>
+						{:else}
+							<span class="flex items-center gap-1.5 text-sm text-red-400">
+								<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+								</svg>
+								{smtpTestResult.error || 'Connection failed'}
+							</span>
+						{/if}
+					{/if}
 				</div>
 			</div>
 		</SectionCard>

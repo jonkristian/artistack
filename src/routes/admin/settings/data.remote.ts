@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import sharp from 'sharp';
 import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
+import { testSmtpConnection } from '$lib/server/email';
 
 // ============================================================================
 // Validation Schemas
@@ -19,6 +20,16 @@ const settingsSchema = v.object({
 
 const generateFaviconSchema = v.object({
 	sourceUrl: v.pipe(v.string(), v.nonEmpty('Source image is required'))
+});
+
+const smtpSettingsSchema = v.object({
+	smtpHost: v.optional(v.nullable(v.string())),
+	smtpPort: v.optional(v.nullable(v.number())),
+	smtpUser: v.optional(v.nullable(v.string())),
+	smtpPassword: v.optional(v.nullable(v.string())),
+	smtpFromAddress: v.optional(v.nullable(v.string())),
+	smtpFromName: v.optional(v.nullable(v.string())),
+	smtpTls: v.optional(v.boolean())
 });
 
 // ============================================================================
@@ -174,4 +185,32 @@ export const generateFavicon = command(generateFaviconSchema, async ({ sourceUrl
 		.returning();
 
 	return { success: true, profile: updated };
+});
+
+// ============================================================================
+// SMTP Settings Commands
+// ============================================================================
+
+export const updateSmtpSettings = command(smtpSettingsSchema, async (data) => {
+	const existing = await getOrCreateProfile();
+
+	const updates: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(data)) {
+		if (value !== undefined) {
+			updates[key] = value;
+		}
+	}
+
+	const [updated] = await db
+		.update(profile)
+		.set(updates)
+		.where(eq(profile.id, existing.id))
+		.returning();
+
+	return { success: true, profile: updated };
+});
+
+export const testSmtp = command(v.object({}), async () => {
+	const result = await testSmtpConnection();
+	return result;
 });

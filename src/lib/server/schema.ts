@@ -34,7 +34,15 @@ export const profile = sqliteTable('profile', {
 	googlePlacesApiKey: text('google_places_api_key'),
 	// Favicon & PWA
 	faviconUrl: text('favicon_url'), // Source image from media library
-	faviconGenerated: integer('favicon_generated', { mode: 'boolean' }).default(false)
+	faviconGenerated: integer('favicon_generated', { mode: 'boolean' }).default(false),
+	// SMTP Configuration
+	smtpHost: text('smtp_host'),
+	smtpPort: integer('smtp_port').default(587),
+	smtpUser: text('smtp_user'),
+	smtpPassword: text('smtp_password'),
+	smtpFromAddress: text('smtp_from_address'),
+	smtpFromName: text('smtp_from_name'),
+	smtpTls: integer('smtp_tls', { mode: 'boolean' }).default(true)
 });
 
 // Links with categories
