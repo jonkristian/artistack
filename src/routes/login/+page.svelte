@@ -82,14 +82,17 @@
 				type: 'forget-password'
 			});
 
-			if (error) {
-				recoveryError = error.message ?? 'Failed to send code';
+			// Check for SMTP configuration error (should be shown)
+			if (error?.message?.includes('not configured')) {
+				recoveryError = error.message;
 				return;
 			}
 
+			// Always proceed to OTP step (don't reveal if email exists)
 			recoveryStep = 'otp';
 		} catch (err) {
-			recoveryError = 'Failed to send verification code';
+			// Still proceed - don't reveal if email exists
+			recoveryStep = 'otp';
 		} finally {
 			recoveryLoading = false;
 		}
@@ -261,7 +264,7 @@
 				{:else if recoveryStep === 'otp'}
 					<h2 class="text-lg font-semibold text-white">Reset Password</h2>
 					<p class="text-sm text-gray-400">
-						Enter the 6-digit code sent to <span class="text-white">{recoveryEmail}</span> and your new password.
+						If an account exists for <span class="text-white">{recoveryEmail}</span>, we've sent a 6-digit code.
 					</p>
 
 					<form onsubmit={handleResetPassword} class="space-y-4">
