@@ -97,6 +97,18 @@ export const updateProfile = form(profileSchema, async ({ name, bio, email }) =>
 	return { success: true, profile: updated };
 });
 
+export const saveProfile = command(profileSchema, async ({ name, bio, email }) => {
+	const existing = await getOrCreateProfile();
+
+	const [updated] = await db
+		.update(profile)
+		.set({ name, bio, email })
+		.where(eq(profile.id, existing.id))
+		.returning();
+
+	return { success: true, profile: updated };
+});
+
 // ============================================================================
 // Link Forms & Commands
 // ============================================================================
@@ -326,6 +338,39 @@ export const deleteTourDate = command(idSchema, async (id) => {
 	}
 
 	return { success: true };
+});
+
+const createTourDateSchema = v.object({
+	date: v.pipe(v.string(), v.nonEmpty('Date is required')),
+	time: v.optional(v.nullable(v.string())),
+	title: v.optional(v.nullable(v.string())),
+	venue: venueSchema,
+	lineup: v.optional(v.nullable(v.string())),
+	ticketUrl: v.optional(v.nullable(v.string())),
+	eventUrl: v.optional(v.nullable(v.string())),
+	soldOut: v.optional(v.boolean())
+});
+
+export const createTourDate = command(createTourDateSchema, async (data) => {
+	const existing = await db.select().from(tourDates);
+	const position = getNextPosition(existing);
+
+	const [created] = await db
+		.insert(tourDates)
+		.values({
+			date: data.date,
+			time: data.time || null,
+			title: data.title || null,
+			venue: data.venue,
+			lineup: data.lineup || null,
+			ticketUrl: data.ticketUrl || null,
+			eventUrl: data.eventUrl || null,
+			soldOut: data.soldOut || false,
+			position
+		})
+		.returning();
+
+	return { success: true, tourDate: created };
 });
 
 const updateTourDateSchema = v.object({

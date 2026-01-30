@@ -154,3 +154,83 @@ export function getPlatformInfoFromUrl(url: string): {
 		color: getPlatformColor(info.platform)
 	};
 }
+
+// ============================================================================
+// ID Extraction Functions
+// ============================================================================
+
+/**
+ * Extract Spotify artist ID from a Spotify URL
+ * Supports: open.spotify.com/artist/ID, spotify:artist:ID
+ */
+export function extractSpotifyArtistId(url: string): string | null {
+	try {
+		// Handle spotify: URI format
+		if (url.startsWith('spotify:artist:')) {
+			return url.split(':')[2] || null;
+		}
+
+		const parsed = new URL(url);
+		if (!parsed.hostname.includes('spotify.com')) return null;
+
+		// Pattern: /artist/{id}
+		const match = parsed.pathname.match(/\/artist\/([a-zA-Z0-9]+)/);
+		return match?.[1] || null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Extract YouTube channel ID from a YouTube URL
+ * Supports: youtube.com/channel/ID, youtube.com/@handle, youtube.com/c/name
+ */
+export function extractYouTubeChannelId(url: string): { id: string; type: 'channel' | 'handle' | 'custom' } | null {
+	try {
+		const parsed = new URL(url);
+		if (!parsed.hostname.includes('youtube.com') && !parsed.hostname.includes('youtu.be')) {
+			return null;
+		}
+
+		// Pattern: /channel/UCxxxxxx
+		const channelMatch = parsed.pathname.match(/\/channel\/([a-zA-Z0-9_-]+)/);
+		if (channelMatch) {
+			return { id: channelMatch[1], type: 'channel' };
+		}
+
+		// Pattern: /@handle
+		const handleMatch = parsed.pathname.match(/\/@([a-zA-Z0-9_-]+)/);
+		if (handleMatch) {
+			return { id: handleMatch[1], type: 'handle' };
+		}
+
+		// Pattern: /c/customname or /user/username
+		const customMatch = parsed.pathname.match(/\/(c|user)\/([a-zA-Z0-9_-]+)/);
+		if (customMatch) {
+			return { id: customMatch[2], type: 'custom' };
+		}
+
+		return null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Extract SoundCloud username from a SoundCloud URL
+ */
+export function extractSoundCloudUsername(url: string): string | null {
+	try {
+		const parsed = new URL(url);
+		if (!parsed.hostname.includes('soundcloud.com')) return null;
+
+		// Pattern: soundcloud.com/username
+		const match = parsed.pathname.match(/^\/([a-zA-Z0-9_-]+)/);
+		if (match && !['discover', 'stream', 'search', 'upload', 'you', 'messages'].includes(match[1])) {
+			return match[1];
+		}
+		return null;
+	} catch {
+		return null;
+	}
+}

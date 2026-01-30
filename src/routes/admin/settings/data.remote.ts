@@ -14,8 +14,7 @@ import { testSmtpConnection } from '$lib/server/email';
 
 const settingsSchema = v.object({
 	siteTitle: v.optional(v.nullable(v.string())),
-	locale: v.optional(v.string()),
-	googlePlacesApiKey: v.optional(v.nullable(v.string()))
+	locale: v.optional(v.string())
 });
 
 const generateFaviconSchema = v.object({

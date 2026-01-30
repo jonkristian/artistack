@@ -4,15 +4,15 @@
 	import { LinkEditDialog, TourDateEditDialog } from '$lib/components/dialogs';
 	import Default from '$lib/themes/Default.svelte';
 	import { invalidateAll } from '$app/navigation';
+	import { toast } from '$lib/stores/toast.svelte';
 	import type { PageData } from './$types';
 	import type { Link, TourDate } from '$lib/server/schema';
 	import {
-		updateProfile,
+		saveProfile,
 		updateProfileImage,
 		addLink,
 		deleteLink,
 		reorderLinks,
-		addTourDate,
 		deleteTourDate
 	} from './data.remote';
 
@@ -30,9 +30,9 @@
 	}
 
 	// Tour date edit dialog state
-	let editingTourDate = $state<TourDate | null>(null);
+	let editingTourDate = $state<TourDate | 'new' | null>(null);
 
-	function openTourDateDialog(tourDate: TourDate) {
+	function openTourDateDialog(tourDate: TourDate | 'new') {
 		editingTourDate = tourDate;
 	}
 
@@ -47,35 +47,54 @@
 		accent: data.profile?.colorAccent ?? '#8b5cf6'
 	});
 
-	// Profile form instance with initial values
-	const profileForm = updateProfile.for('profile');
+	// Profile state (for live preview and auto-save)
+	let profileName = $state(data.profile?.name ?? '');
+	let profileBio = $state(data.profile?.bio ?? '');
+	let profileEmail = $state(data.profile?.email ?? '');
 
-	// Initialize profile form with existing data
-	$effect(() => {
-		if (data.profile) {
-			profileForm.fields.set({
-				name: data.profile.name ?? '',
-				bio: data.profile.bio ?? '',
-				email: data.profile.email ?? ''
+	// Track original values to detect changes
+	let originalName = data.profile?.name ?? '';
+	let originalBio = data.profile?.bio ?? '';
+	let originalEmail = data.profile?.email ?? '';
+
+	// Auto-save profile field on blur
+	async function saveProfileField(field: 'name' | 'bio' | 'email') {
+		const currentValue = field === 'name' ? profileName : field === 'bio' ? profileBio : profileEmail;
+		const originalValue = field === 'name' ? originalName : field === 'bio' ? originalBio : originalEmail;
+
+		// Only save if value changed
+		if (currentValue === originalValue) return;
+
+		try {
+			await saveProfile({
+				name: profileName || 'Artist Name',
+				bio: profileBio || undefined,
+				email: profileEmail || undefined
 			});
-		}
-	});
 
-	// Live preview profile (merges form state with saved data)
+			// Update original values
+			originalName = profileName;
+			originalBio = profileBio;
+			originalEmail = profileEmail;
+
+			toast.success('Profile saved');
+			await invalidateAll();
+		} catch (e) {
+			toast.error('Failed to save profile');
+		}
+	}
+
+	// Live preview profile
 	const liveProfile = $derived({
 		...data.profile,
-		name: profileForm.fields.name.value() || 'Artist Name',
-		bio: profileForm.fields.bio.value() || '',
-		email: profileForm.fields.email.value() || ''
+		name: profileName || 'Artist Name',
+		bio: profileBio || '',
+		email: profileEmail || ''
 	});
 
 	// Link forms with unique instances
 	const socialLinkForm = addLink.for('social');
 	const streamingLinkForm = addLink.for('streaming');
-
-	// Tour date form
-	let showTourForm = $state(false);
-	const tourForm = addTourDate.for('tour');
 
 	// Sortable link lists (mutable state for DnD)
 	let socialLinks = $state<Link[]>([]);
@@ -92,49 +111,58 @@
 	const liveLinks = $derived([...socialLinks, ...streamingLinks, ...otherLinks]);
 
 	async function handleDeleteLink(id: number) {
-		await deleteLink(id);
-		await invalidateAll();
+		try {
+			await deleteLink(id);
+			await invalidateAll();
+			toast.success('Link deleted');
+		} catch (e) {
+			toast.error('Failed to delete link');
+		}
 	}
 
 	async function handleReorderLinks(items: Link[]) {
-		await reorderLinks(items.map((item, i) => ({ id: item.id, position: i })));
+		try {
+			await reorderLinks(items.map((item, i) => ({ id: item.id, position: i })));
+		} catch (e) {
+			toast.error('Failed to reorder links');
+		}
 	}
 
 	async function handleDeleteTourDate(id: number) {
-		await deleteTourDate(id);
-		await invalidateAll();
+		try {
+			await deleteTourDate(id);
+			await invalidateAll();
+			toast.success('Tour date deleted');
+		} catch (e) {
+			toast.error('Failed to delete tour date');
+		}
 	}
 </script>
 
 <div class="flex h-screen">
 	<!-- Left Column: Edit Controls -->
 	<div class="w-1/2 overflow-y-auto bg-gray-950 p-6">
-		<header class="mb-6">
-			<h1 class="text-2xl font-semibold text-white">Dashboard</h1>
-			<p class="text-sm text-gray-500">Manage your artist profile, links, and content</p>
-		</header>
-
 		<div class="space-y-6">
 			<!-- Profile Card -->
 			<SectionCard title="Profile">
-				<form {...profileForm} class="space-y-3">
+				<div class="space-y-3">
 					<div>
 						<label for="profile-name" class="mb-1 block text-sm text-gray-400">Artist Name</label>
 						<input
 							id="profile-name"
-							{...profileForm.fields.name.as('text')}
+							type="text"
+							bind:value={profileName}
+							onblur={() => saveProfileField('name')}
 							placeholder="Your artist or band name"
 							class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
 						/>
-						{#each profileForm.fields.name.issues() as issue}
-							<p class="mt-1 text-xs text-red-400">{issue.message}</p>
-						{/each}
 					</div>
 					<div>
 						<label for="profile-bio" class="mb-1 block text-sm text-gray-400">Bio</label>
 						<textarea
 							id="profile-bio"
-							{...profileForm.fields.bio.as('text')}
+							bind:value={profileBio}
+							onblur={() => saveProfileField('bio')}
 							placeholder="A short bio or tagline"
 							rows={3}
 							class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
@@ -144,28 +172,28 @@
 						<label for="profile-email" class="mb-1 block text-sm text-gray-400">Email</label>
 						<input
 							id="profile-email"
-							{...profileForm.fields.email.as('text')}
+							type="email"
+							bind:value={profileEmail}
+							onblur={() => saveProfileField('email')}
 							placeholder="contact@example.com"
 							class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
 						/>
 					</div>
-					<button
-						type="submit"
-						disabled={!!profileForm.pending}
-						class="rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20 disabled:opacity-50"
-					>
-						{profileForm.pending ? 'Saving...' : 'Save Profile'}
-					</button>
-				</form>
+				</div>
 
 				<!-- Social Links -->
 				<div class="mt-5 border-t border-gray-800 pt-5">
 					<span class="mb-2 block text-xs font-medium text-gray-500">Social Media</span>
 					<form
 						{...socialLinkForm.enhance(async ({ submit }) => {
-							await submit();
-							socialLinkForm.fields.set({ url: '' });
-							await invalidateAll();
+							try {
+								await submit();
+								socialLinkForm.fields.set({ url: '' });
+								await invalidateAll();
+								toast.success('Link added');
+							} catch (e) {
+								toast.error('Failed to add link');
+							}
 						})}
 						class="mb-3 flex gap-2"
 					>
@@ -235,8 +263,13 @@
 						shapes={['circle', 'rounded', 'square']}
 						defaultShape={(data.profile?.logoShape as 'circle' | 'rounded' | 'square') ?? 'circle'}
 						onselect={async (url, shape) => {
-							await updateProfileImage({ type: 'logo', url, shape });
-							await invalidateAll();
+							try {
+								await updateProfileImage({ type: 'logo', url, shape });
+								await invalidateAll();
+								toast.success('Logo updated');
+							} catch (e) {
+								toast.error('Failed to update logo');
+							}
 						}}
 					/>
 					<MediaPicker
@@ -247,8 +280,13 @@
 						shapes={['circle', 'rounded', 'square', 'wide', 'wide-rounded']}
 						defaultShape={(data.profile?.photoShape as 'circle' | 'rounded' | 'square' | 'wide' | 'wide-rounded') ?? 'wide-rounded'}
 						onselect={async (url, shape) => {
-							await updateProfileImage({ type: 'photo', url, shape });
-							await invalidateAll();
+							try {
+								await updateProfileImage({ type: 'photo', url, shape });
+								await invalidateAll();
+								toast.success('Photo updated');
+							} catch (e) {
+								toast.error('Failed to update photo');
+							}
 						}}
 					/>
 				</div>
@@ -258,9 +296,14 @@
 			<SectionCard title="Streaming">
 				<form
 					{...streamingLinkForm.enhance(async ({ submit }) => {
-						await submit();
-						streamingLinkForm.fields.set({ url: '' });
-						await invalidateAll();
+						try {
+							await submit();
+							streamingLinkForm.fields.set({ url: '' });
+							await invalidateAll();
+							toast.success('Link added');
+						} catch (e) {
+							toast.error('Failed to add link');
+						}
 					})}
 					class="mb-3 flex gap-2"
 				>
@@ -334,55 +377,12 @@
 			<SectionCard title="Tour Dates">
 				<div class="mb-3 flex justify-end">
 					<button
-						onclick={() => (showTourForm = !showTourForm)}
+						onclick={() => openTourDateDialog('new')}
 						class="text-sm text-gray-400 hover:text-white"
 					>
-						{showTourForm ? 'Cancel' : '+ Add'}
+						+ Add
 					</button>
 				</div>
-
-				{#if showTourForm}
-					<form
-						{...tourForm.enhance(async ({ submit }) => {
-							await submit();
-							showTourForm = false;
-							tourForm.fields.set({ date: '', venueName: '', venueCity: '', ticketUrl: '' });
-						})}
-						class="mb-4 space-y-3 rounded-lg border border-gray-700 bg-gray-800/50 p-4"
-					>
-						<div class="grid grid-cols-2 gap-3">
-							<input
-								{...tourForm.fields.date.as('date')}
-								class="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-gray-600 focus:outline-none"
-							/>
-							<input
-								{...tourForm.fields.venueCity.as('text')}
-								placeholder="City"
-								class="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
-							/>
-						</div>
-						<input
-							{...tourForm.fields.venueName.as('text')}
-							placeholder="Venue"
-							class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
-						/>
-						<input
-							{...tourForm.fields.ticketUrl.as('text')}
-							placeholder="Ticket URL (optional)"
-							class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
-						/>
-						{#each tourForm.fields.allIssues() as issue}
-							<p class="text-xs text-red-400">{issue.message}</p>
-						{/each}
-						<button
-							type="submit"
-							disabled={!!tourForm.pending}
-							class="w-full rounded-lg bg-white/10 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20 disabled:opacity-50"
-						>
-							{tourForm.pending ? 'Adding...' : 'Add Date'}
-						</button>
-					</form>
-				{/if}
 
 				<div class="space-y-2">
 					{#each data.tourDates as t (t.id)}
@@ -455,6 +455,6 @@
 <!-- Tour Date Edit Dialog -->
 <TourDateEditDialog
 	tourDate={editingTourDate}
-	googlePlacesApiKey={data.profile?.googlePlacesApiKey}
+	googleApiKey={data.googleConfig?.placesEnabled ? data.googleConfig.apiKey : null}
 	onclose={closeTourDateDialog}
 />

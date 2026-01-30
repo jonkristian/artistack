@@ -8,7 +8,7 @@ export async function load({ request }) {
 
 	const [artistProfile] = await db.select().from(profile).limit(1);
 	const artistLinks = await db.select().from(links).where(eq(links.visible, true)).orderBy(asc(links.position));
-	const artistTourDates = await db.select().from(tourDates).orderBy(asc(tourDates.position));
+	const artistTourDates = await db.select().from(tourDates).orderBy(asc(tourDates.date));
 
 	return {
 		profile: artistProfile ?? null,

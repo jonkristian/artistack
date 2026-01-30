@@ -23,7 +23,6 @@
 	// Settings state
 	let siteTitle = $state('');
 	let locale = $state('nb-NO');
-	let googlePlacesApiKey = $state('');
 
 	// Favicon state
 	let selectedFaviconUrl = $state<string | null>(null);
@@ -53,7 +52,6 @@
 			syncedProfileId = data.profile.id;
 			siteTitle = data.profile.siteTitle ?? '';
 			locale = data.profile.locale ?? 'nb-NO';
-			googlePlacesApiKey = data.profile.googlePlacesApiKey ?? '';
 			selectedFaviconUrl = data.profile.faviconUrl ?? null;
 			faviconGenerated = data.profile.faviconGenerated ?? false;
 			// SMTP
@@ -75,8 +73,7 @@
 		// Track values to trigger on change
 		const values = {
 			siteTitle: siteTitle || null,
-			locale,
-			googlePlacesApiKey: googlePlacesApiKey || null
+			locale
 		};
 
 		if (!initialized) {
@@ -192,27 +189,6 @@
 					</select>
 					<p class="mt-2 text-sm text-gray-500">
 						Example: <span class="text-gray-400">{currentLocale.example}</span>
-					</p>
-				</div>
-			</div>
-		</SectionCard>
-
-		<SectionCard title="Integrations">
-			<div class="space-y-4">
-				<div>
-					<label for="google-places-api-key" class="mb-2 block text-sm font-medium text-gray-300">
-						Google Places API Key
-					</label>
-					<input
-						id="google-places-api-key"
-						type="password"
-						bind:value={googlePlacesApiKey}
-						placeholder="AIza..."
-						class="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 font-mono text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
-					/>
-					<p class="mt-2 text-sm text-gray-500">
-						Enables venue autocomplete when adding tour dates.
-						Get a key from <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" class="text-violet-400 hover:text-violet-300">Google Cloud Console</a>.
 					</p>
 				</div>
 			</div>

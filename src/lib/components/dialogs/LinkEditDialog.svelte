@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Link, BandcampEmbedData, SpotifyEmbedData, YouTubeEmbedData, EmbedData } from '$lib/server/schema';
 	import { invalidateAll } from '$app/navigation';
+	import { toast } from '$lib/stores/toast.svelte';
 	import { updateLink, deleteLink } from '../../../routes/admin/data.remote';
 
 	interface Props {
@@ -109,7 +110,10 @@
 			});
 
 			await invalidateAll();
+			toast.success('Link updated');
 			handleClose();
+		} catch (e) {
+			toast.error('Failed to update link');
 		} finally {
 			saving = false;
 		}
@@ -118,9 +122,14 @@
 	async function handleDelete() {
 		if (!link || !confirm('Delete this link?')) return;
 
-		await deleteLink(link.id);
-		await invalidateAll();
-		handleClose();
+		try {
+			await deleteLink(link.id);
+			await invalidateAll();
+			toast.success('Link deleted');
+			handleClose();
+		} catch (e) {
+			toast.error('Failed to delete link');
+		}
 	}
 
 	const isBandcamp = $derived(link?.embedData?.platform === 'bandcamp');

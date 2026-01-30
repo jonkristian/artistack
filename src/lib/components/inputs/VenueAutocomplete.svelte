@@ -5,10 +5,11 @@
 	interface Props {
 		apiKey?: string | null;
 		venue: Venue;
+		cityBias?: string;
 		onchange: (venue: Venue) => void;
 	}
 
-	let { apiKey, venue, onchange }: Props = $props();
+	let { apiKey, venue, cityBias, onchange }: Props = $props();
 
 	let suggestions = $state<google.maps.places.AutocompletePrediction[]>([]);
 	let showSuggestions = $state(false);
@@ -43,9 +44,12 @@
 			return;
 		}
 
+		// Include city in search query for better results
+		const searchQuery = cityBias ? `${value} ${cityBias}` : value;
+
 		autocompleteService.getPlacePredictions(
 			{
-				input: value,
+				input: searchQuery,
 				types: ['establishment']
 			},
 			(predictions, status) => {

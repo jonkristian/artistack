@@ -3,6 +3,7 @@ import { db } from '$lib/server/db';
 import { profile, links, tourDates, media } from '$lib/server/schema';
 import { user } from '$lib/server/auth-schema';
 import { auth } from '$lib/server/auth';
+import { getGoogleConfig } from '$lib/server/social-stats';
 import { asc, desc, eq } from 'drizzle-orm';
 import type { LayoutServerLoad } from './$types';
 
@@ -16,10 +17,13 @@ export const load: LayoutServerLoad = async ({ request }) => {
 	// Get user with role from database
 	const [userData] = await db.select().from(user).where(eq(user.id, session.user.id)).limit(1);
 
-	const [profileData] = await db.select().from(profile).limit(1);
-	const allLinks = await db.select().from(links).orderBy(asc(links.position));
-	const allTourDates = await db.select().from(tourDates).orderBy(asc(tourDates.date));
-	const allMedia = await db.select().from(media).orderBy(desc(media.createdAt));
+	const [profileData, allLinks, allTourDates, allMedia, googleConfig] = await Promise.all([
+		db.select().from(profile).limit(1).then((r) => r[0]),
+		db.select().from(links).orderBy(asc(links.position)),
+		db.select().from(tourDates).orderBy(asc(tourDates.date)),
+		db.select().from(media).orderBy(desc(media.createdAt)),
+		getGoogleConfig()
+	]);
 
 	return {
 		user: {
@@ -29,6 +33,7 @@ export const load: LayoutServerLoad = async ({ request }) => {
 		profile: profileData ?? null,
 		links: allLinks,
 		tourDates: allTourDates,
-		media: allMedia
+		media: allMedia,
+		googleConfig
 	};
 };

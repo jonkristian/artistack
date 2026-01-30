@@ -13,6 +13,22 @@
 		tourDates: TourDate[];
 	} = $props();
 
+	// Click tracking - fire and forget, doesn't block navigation
+	function trackClick(linkId: number) {
+		// Use sendBeacon for reliability (works even if page is closing)
+		if (navigator.sendBeacon) {
+			navigator.sendBeacon('/api/track', JSON.stringify({ linkId }));
+		} else {
+			// Fallback to fetch
+			fetch('/api/track', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ linkId }),
+				keepalive: true
+			}).catch(() => {});
+		}
+	}
+
 	// Share functionality
 	let showCopiedToast = $state(false);
 
@@ -96,6 +112,12 @@
 	const socialLinks = $derived(links.filter((l) => l.category === 'social'));
 	const streamingLinks = $derived(links.filter((l) => l.category === 'streaming'));
 	const otherLinks = $derived(links.filter((l) => l.category !== 'social' && l.category !== 'streaming'));
+
+	// Separate tour dates into upcoming and past
+	const today = new Date().toISOString().split('T')[0];
+	const upcomingShows = $derived(tourDates.filter((t) => t.date >= today));
+	const pastShows = $derived(tourDates.filter((t) => t.date < today).reverse()); // Most recent past first
+	let showPastShows = $state(false);
 
 	// Display options - using getters to ensure reactivity
 	const showName = $derived(profile.showName !== false);
@@ -245,6 +267,7 @@
 					href={link.url}
 					target="_blank"
 					rel="noopener noreferrer"
+					onclick={() => trackClick(link.id)}
 					class="flex h-9 w-9 items-center justify-center transition-all hover:scale-110"
 					style="color: var(--color-text-muted)"
 					title={link.label || link.platform}
@@ -309,6 +332,7 @@
 					href={link.url}
 					target="_blank"
 					rel="noopener noreferrer"
+					onclick={() => trackClick(link.id)}
 					class="group relative flex items-center gap-3 overflow-hidden rounded-xl bg-white/5 p-2 transition-all hover:bg-white/10 active:scale-[0.98]"
 				>
 					{#if link.thumbnailUrl}
@@ -368,6 +392,7 @@
 				href={link.url}
 				target="_blank"
 				rel="noopener noreferrer"
+				onclick={() => trackClick(link.id)}
 				class="group relative flex items-center gap-3 overflow-hidden rounded-xl bg-white/5 p-2 transition-all hover:bg-white/10 active:scale-[0.98]"
 			>
 				<div
@@ -388,11 +413,13 @@
 {/if}
 
 <!-- Tour Dates -->
-{#if showTourDates && tourDates.length > 0}
+{#if showTourDates && (upcomingShows.length > 0 || pastShows.length > 0)}
 	<section class="mb-5">
-		<h2 class="mb-3 text-[10px] font-semibold uppercase tracking-widest" style="color: var(--color-accent)">Upcoming Shows</h2>
+		{#if upcomingShows.length > 0}
+			<h2 class="mb-3 text-[10px] font-semibold uppercase tracking-widest" style="color: var(--color-accent)">Upcoming Shows</h2>
+		{/if}
 		<div class="space-y-2">
-			{#each tourDates as tour (tour.id)}
+			{#each upcomingShows as tour (tour.id)}
 				{@const eventInfo = tour.eventUrl ? getPlatformInfoFromUrl(tour.eventUrl) : null}
 				{@const mapsUrl = tour.venue.placeId
 					? `https://www.google.com/maps/place/?q=place_id:${tour.venue.placeId}`
@@ -570,6 +597,91 @@
 				</div>
 			{/each}
 		</div>
+
+		<!-- Past Shows (collapsible) -->
+		{#if pastShows.length > 0}
+			<button
+				onclick={() => (showPastShows = !showPastShows)}
+				class="mt-6 mb-3 flex cursor-pointer items-center gap-2 text-[10px] font-semibold uppercase tracking-widest transition-opacity hover:opacity-80"
+				style="color: var(--color-text-muted)"
+			>
+				<span>Past Shows</span>
+				<svg
+					class="h-3 w-3 transition-transform {showPastShows ? 'rotate-180' : ''}"
+					fill="none"
+					stroke="currentColor"
+					viewBox="0 0 24 24"
+				>
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+				</svg>
+			</button>
+
+			{#if showPastShows}
+				<div class="mt-3 space-y-2">
+					{#each pastShows as tour (tour.id)}
+						{@const eventInfo = tour.eventUrl ? getPlatformInfoFromUrl(tour.eventUrl) : null}
+						{@const mapsUrl = tour.venue.placeId
+							? `https://www.google.com/maps/place/?q=place_id:${tour.venue.placeId}`
+							: tour.venue.lat && tour.venue.lng
+								? `https://www.google.com/maps?q=${tour.venue.lat},${tour.venue.lng}`
+								: tour.venue.address
+									? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(tour.venue.address)}`
+									: null}
+						<div class="group flex gap-5 rounded-2xl bg-white/5 p-4 opacity-60">
+							<!-- Date column -->
+							<div class="w-fit flex-shrink-0 self-center text-center">
+								<p class="text-2xl font-bold leading-none" style="color: var(--color-text-muted)">
+									{new Date(tour.date).getDate()}
+								</p>
+								<p class="mt-1 text-xs font-semibold uppercase tracking-wider" style="color: var(--color-text-muted)">
+									{new Date(tour.date).toLocaleDateString(locale, { month: 'short' })}
+								</p>
+							</div>
+
+							<!-- Content column -->
+							<div class="min-w-0 flex-1">
+								{#if tour.title}
+									<p class="truncate font-semibold" style="color: var(--color-text)">{tour.title}</p>
+								{/if}
+								<p class="truncate text-sm" style="color: var(--color-text-muted)">
+									{#if mapsUrl}
+										<a href={mapsUrl} target="_blank" rel="noopener noreferrer" class="hover:underline">
+											{tour.venue.name} · {tour.venue.city}
+										</a>
+									{:else}
+										{tour.venue.name} · {tour.venue.city}
+									{/if}
+								</p>
+							</div>
+
+							<!-- Event link for past shows -->
+							{#if tour.eventUrl}
+								<div class="flex flex-shrink-0 items-center">
+									<a
+										href={tour.eventUrl}
+										target="_blank"
+										rel="noopener noreferrer"
+										class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-white/10 transition-all hover:bg-white/20"
+										style="color: var(--color-text-muted)"
+										title="View on {eventInfo?.platform || 'event page'}"
+									>
+										{#if eventInfo?.icon}
+											<svg viewBox="0 0 24 24" class="h-4 w-4" style="fill: currentColor">
+												<path d={eventInfo.icon} />
+											</svg>
+										{:else}
+											<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+											</svg>
+										{/if}
+									</a>
+								</div>
+							{/if}
+						</div>
+					{/each}
+				</div>
+			{/if}
+		{/if}
 	</section>
 {/if}
 

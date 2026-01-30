@@ -42,7 +42,14 @@ export const profile = sqliteTable('profile', {
 	smtpPassword: text('smtp_password'),
 	smtpFromAddress: text('smtp_from_address'),
 	smtpFromName: text('smtp_from_name'),
-	smtpTls: integer('smtp_tls', { mode: 'boolean' }).default(true)
+	smtpTls: integer('smtp_tls', { mode: 'boolean' }).default(true),
+	// Discord Integration
+	discordWebhookUrl: text('discord_webhook_url'),
+	discordEnabled: integer('discord_enabled', { mode: 'boolean' }).default(false),
+	discordSchedule: text('discord_schedule').default('weekly'), // 'daily', 'weekly', 'monthly'
+	discordScheduleDay: integer('discord_schedule_day').default(1), // 0-6 for weekly (Monday=1), 1-31 for monthly
+	discordScheduleTime: text('discord_schedule_time').default('09:00'), // HH:MM
+	discordLastSent: integer('discord_last_sent', { mode: 'timestamp' })
 });
 
 // Links with categories
@@ -95,6 +102,25 @@ export const pressAssets = sqliteTable('press_assets', {
 	position: integer('position').default(0)
 });
 
+// Page view tracking (GDPR compliant - no personal data)
+export const pageViews = sqliteTable('page_views', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	path: text('path').notNull(), // e.g., '/', '/links'
+	referrer: text('referrer'), // e.g., 'google.com', 'instagram.com', 'direct'
+	country: text('country'), // 2-letter country code from IP
+	userAgent: text('user_agent'), // Browser/device info
+	createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
+});
+
+// Link click tracking
+export const linkClicks = sqliteTable('link_clicks', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	linkId: integer('link_id').notNull(), // FK to links table
+	referrer: text('referrer'),
+	country: text('country'),
+	createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
+});
+
 // Integrations config
 export const integrations = sqliteTable('integrations', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
@@ -128,6 +154,10 @@ export type PressAsset = typeof pressAssets.$inferSelect;
 export type NewPressAsset = typeof pressAssets.$inferInsert;
 export type Integration = typeof integrations.$inferSelect;
 export type NewIntegration = typeof integrations.$inferInsert;
+export type PageView = typeof pageViews.$inferSelect;
+export type NewPageView = typeof pageViews.$inferInsert;
+export type LinkClick = typeof linkClicks.$inferSelect;
+export type NewLinkClick = typeof linkClicks.$inferInsert;
 
 // Bandcamp embed options
 export interface BandcampEmbedData {

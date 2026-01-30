@@ -2,15 +2,28 @@
 
 A self-hosted link-in-bio page for musicians and bands.
 
+![Artistack Admin Dashboard](screenshots/hero.png)
+
 ## Features
 
-- Profile with logo, photo, and bio
-- Social media links
-- Streaming links with embedded players (Spotify, YouTube, Bandcamp)
-- Tour dates with venue autocomplete and calendar export
-- Customizable colors and layout
-- Media library with image cropping and automatic optimization
-- Favicon generator with PWA support
+- **Profile** - Logo, photo, bio with live preview
+- **Social Links** - Auto-detected platform icons
+- **Streaming** - Embedded players for Spotify, YouTube, Bandcamp
+- **Tour Dates** - Venue autocomplete, calendar export, ticket links
+- **Stats** - Page views, link clicks, referrers, geography
+- **Integrations** - Discord notifications, Spotify/YouTube stats
+- **Appearance** - Customizable colors and layout
+- **Media Library** - Image cropping and automatic optimization
+
+<details>
+<summary>More screenshots</summary>
+<br>
+
+| Stats | Integrations |
+|-------|--------------|
+| ![Stats](screenshots/stats.png) | ![Integrations](screenshots/integrations.png) |
+
+</details>
 
 ## Tech Stack
 
