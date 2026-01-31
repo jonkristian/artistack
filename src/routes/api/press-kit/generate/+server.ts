@@ -58,6 +58,15 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	const outputPath = join(outputDir, 'press-kit.zip');
 
+	// Fetch social links for bio.txt (must be done before entering Promise callback)
+	const socialLinks = includeBio
+		? await db
+				.select()
+				.from(links)
+				.where(and(eq(links.category, 'social'), eq(links.visible, true)))
+				.orderBy(asc(links.position))
+		: [];
+
 	// Create ZIP archive
 	return new Promise((resolve) => {
 		const output = createWriteStream(outputPath);
@@ -102,12 +111,6 @@ export const POST: RequestHandler = async ({ request }) => {
 			}
 
 			// Social links
-			const socialLinks = await db
-				.select()
-				.from(links)
-				.where(and(eq(links.category, 'social'), eq(links.visible, true)))
-				.orderBy(asc(links.position));
-
 			if (socialLinks.length > 0) {
 				bioLines.push('Social Media');
 				bioLines.push('-'.repeat(12));
