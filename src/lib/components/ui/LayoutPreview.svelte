@@ -6,12 +6,14 @@
 		layout: Layout,
 		profile,
 		links = [],
-		tourDates = []
+		tourDates = [],
+		pressKitAvailable = false
 	}: {
-		layout: Component<{ profile: Profile; links: Link[]; tourDates: TourDate[] }>;
+		layout: Component<{ profile: Profile; links: Link[]; tourDates: TourDate[]; pressKitAvailable?: boolean }>;
 		profile: Partial<Profile> & { name: string };
 		links?: Link[];
 		tourDates?: TourDate[];
+		pressKitAvailable?: boolean;
 	} = $props();
 
 	// Build a complete profile object with defaults for preview
@@ -37,6 +39,7 @@
 		showStreaming: profile.showStreaming ?? true,
 		showSocial: profile.showSocial ?? true,
 		showTourDates: profile.showTourDates ?? true,
+		showPressKit: profile.showPressKit ?? false,
 		layout: profile.layout ?? 'default'
 	} as Profile);
 </script>
@@ -51,11 +54,12 @@
 		--color-text-muted: {previewProfile.colorTextMuted};
 	"
 >
-	<Layout profile={previewProfile} {links} {tourDates} />
+	<Layout profile={previewProfile} {links} {tourDates} {pressKitAvailable} />
 </div>
 
 <style>
 	.preview-container {
 		min-height: 100%;
+		background-color: var(--color-bg);
 	}
 </style>

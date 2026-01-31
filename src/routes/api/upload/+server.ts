@@ -20,6 +20,14 @@ const MAGIC_BYTES: Record<string, { bytes: number[]; offset?: number }[]> = {
 	'image/webp': [{ bytes: [0x52, 0x49, 0x46, 0x46], offset: 0 }, { bytes: [0x57, 0x45, 0x42, 0x50], offset: 8 }]
 };
 
+/**
+ * Check if content looks like SVG (starts with XML declaration or <svg tag)
+ */
+function isSvgContent(buffer: Buffer): boolean {
+	const start = buffer.subarray(0, 256).toString('utf8').trim().toLowerCase();
+	return start.startsWith('<?xml') || start.startsWith('<svg') || start.includes('<svg');
+}
+
 // Allowed type parameter values (sanitized)
 const ALLOWED_TYPES = ['logo', 'photo', 'background', 'image', 'media'];
 
@@ -79,9 +87,10 @@ export const POST: RequestHandler = async ({ request }) => {
 	const buffer = Buffer.from(await file.arrayBuffer());
 
 	// Detect actual MIME type from file content (not trusting the reported type)
-	const detectedMimeType = detectMimeType(buffer);
+	const isSvg = isSvgContent(buffer);
+	const detectedMimeType = isSvg ? 'image/svg+xml' : detectMimeType(buffer);
 	if (!detectedMimeType) {
-		throw error(400, 'Invalid file content. Allowed: JPEG, PNG, WebP, GIF');
+		throw error(400, 'Invalid file content. Allowed: JPEG, PNG, WebP, GIF, SVG');
 	}
 
 	// Verify the claimed MIME type matches the detected type (optional strictness)
@@ -101,15 +110,39 @@ export const POST: RequestHandler = async ({ request }) => {
 	const timestamp = Date.now();
 	const baseFilename = `${sanitizedType}-${timestamp}`;
 
-	// Process image with sharp
-	let sharpInstance = sharp(buffer)
-		.rotate() // Auto-rotate based on EXIF orientation
-		.withMetadata({ orientation: undefined }); // Strip EXIF but keep color profile
+	// Get original file extension
+	const originalExtMap: Record<string, string> = {
+		'image/jpeg': 'jpg',
+		'image/png': 'png',
+		'image/gif': 'gif',
+		'image/webp': 'webp',
+		'image/svg+xml': 'svg'
+	};
+	const originalExt = originalExtMap[detectedMimeType] || 'bin';
+	const originalFilename = `${baseFilename}-original.${originalExt}`;
+
+	// Handle SVG files separately (no Sharp processing)
+	if (detectedMimeType === 'image/svg+xml') {
+		await writeFile(join(UPLOAD_DIR, originalFilename), buffer);
+
+		return json({
+			url: `/uploads/${originalFilename}`,
+			originalUrl: `/uploads/${originalFilename}`,
+			size: buffer.length,
+			originalSize: buffer.length,
+			mimeType: 'image/svg+xml'
+		});
+	}
 
 	// Get original dimensions
 	const metadata = await sharp(buffer).metadata();
 	const originalWidth = metadata.width || 0;
 	const originalHeight = metadata.height || 0;
+
+	// Process image with sharp for optimized web version
+	let sharpInstance = sharp(buffer)
+		.rotate() // Auto-rotate based on EXIF orientation
+		.withMetadata({ orientation: undefined }); // Strip EXIF but keep color profile
 
 	// Resize if too large (maintain aspect ratio)
 	if (originalWidth > MAX_DIMENSION || originalHeight > MAX_DIMENSION) {
@@ -157,30 +190,34 @@ export const POST: RequestHandler = async ({ request }) => {
 			.toBuffer();
 	}
 
-	// Get final dimensions
+	// Get final dimensions (of optimized version)
 	const finalMetadata = await sharp(outputBuffer).metadata();
 	const width = finalMetadata.width || originalWidth;
 	const height = finalMetadata.height || originalHeight;
 
-	// Write files
+	// Write files: original, optimized, and thumbnail
 	const filename = `${baseFilename}.${outputExt}`;
 	const thumbnailFilename = `${baseFilename}-thumb.webp`;
 
 	await Promise.all([
-		writeFile(join(UPLOAD_DIR, filename), outputBuffer),
-		writeFile(join(UPLOAD_DIR, thumbnailFilename), thumbnailBuffer)
+		writeFile(join(UPLOAD_DIR, originalFilename), buffer), // Original
+		writeFile(join(UPLOAD_DIR, filename), outputBuffer), // Optimized
+		writeFile(join(UPLOAD_DIR, thumbnailFilename), thumbnailBuffer) // Thumbnail
 	]);
 
 	// Return URLs and metadata
 	const url = `/uploads/${filename}`;
+	const originalUrl = `/uploads/${originalFilename}`;
 	const thumbnailUrl = `/uploads/${thumbnailFilename}`;
 
 	return json({
 		url,
+		originalUrl,
 		thumbnailUrl,
 		width,
 		height,
 		size: outputBuffer.length,
+		originalSize: buffer.length,
 		mimeType: outputMimeType
 	});
 };

@@ -2,10 +2,26 @@
 	import { SectionCard } from '$lib/components/cards';
 	import type { PageData } from './$types';
 	import { onMount, tick } from 'svelte';
+	import { invalidateAll } from '$app/navigation';
+	import { refreshSocialStats } from './data.remote';
 	import uPlot from 'uplot';
 	import 'uplot/dist/uPlot.min.css';
 
 	let { data }: { data: PageData } = $props();
+
+	// Refresh state
+	let refreshing = $state(false);
+
+	async function handleRefresh() {
+		refreshing = true;
+		try {
+			await refreshSocialStats({});
+			await invalidateAll();
+		} catch {
+			// Silently fail
+		}
+		refreshing = false;
+	}
 
 	// uPlot chart
 	let chartContainer: HTMLDivElement;
@@ -387,6 +403,23 @@
 		<!-- Social Media Stats -->
 		{#if data.socialStats.spotify || data.socialStats.youtube}
 			<SectionCard title="Social Media Stats">
+				{#snippet actions()}
+					<button
+						onclick={handleRefresh}
+						disabled={refreshing}
+						class="flex items-center gap-1.5 rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700 disabled:opacity-50"
+					>
+						<svg
+							class="h-3.5 w-3.5 {refreshing ? 'animate-spin' : ''}"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+						</svg>
+						{refreshing ? 'Refreshing...' : 'Refresh'}
+					</button>
+				{/snippet}
 				<div class="grid grid-cols-2 gap-4">
 					<!-- Spotify Stats -->
 					{#if data.socialStats.spotify}
@@ -450,9 +483,10 @@
 									<div class="mt-3 border-t border-gray-800 pt-3">
 										<span class="text-xs text-gray-500">Recent Videos</span>
 										<ul class="mt-1 space-y-1">
-											{#each data.socialStats.youtube.recentVideos.slice(0, 2) as video}
-												<li class="truncate text-sm text-gray-300" title="{video.viewCount.toLocaleString()} views">
-													{video.title}
+											{#each data.socialStats.youtube.recentVideos.slice(0, 3) as video}
+												<li class="flex items-center justify-between gap-2 text-sm">
+													<span class="truncate text-gray-300">{video.title}</span>
+													<span class="shrink-0 text-xs text-gray-500">{formatNumber(video.viewCount)}</span>
 												</li>
 											{/each}
 										</ul>

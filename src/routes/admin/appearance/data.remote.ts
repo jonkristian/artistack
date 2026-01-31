@@ -29,6 +29,7 @@ const appearanceSchema = v.object({
 	showStreaming: v.optional(v.boolean()),
 	showSocial: v.optional(v.boolean()),
 	showTourDates: v.optional(v.boolean()),
+	showPressKit: v.optional(v.boolean()),
 	// Layout - restricted to valid options
 	layout: v.optional(v.picklist(['default', 'minimal', 'card']))
 });

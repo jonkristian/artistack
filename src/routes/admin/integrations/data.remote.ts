@@ -10,7 +10,7 @@ import {
 	fetchSpotifyArtistStats,
 	fetchYouTubeChannelStats,
 	updateIntegrationCache,
-	refreshAllSocialStats,
+	getCachedSocialStats,
 	detectSpotifyArtistFromLinks,
 	detectYouTubeChannelFromLinks,
 	updateGoogleConfig,
@@ -131,11 +131,6 @@ export const saveGoogleConfig = command(googleConfigSchema, async (data) => {
 	};
 });
 
-export const refreshSocialStats = command(v.object({}), async () => {
-	const stats = await refreshAllSocialStats();
-	return { success: true, stats };
-});
-
 export const updateDiscordSettings = command(discordSettingsSchema, async (data) => {
 	const existing = await getOrCreateProfile();
 
@@ -156,10 +151,11 @@ export const updateDiscordSettings = command(discordSettingsSchema, async (data)
 
 export const testDiscordWebhook = command(testWebhookSchema, async (data) => {
 	try {
-		const [overview, pageViews, linkClicks] = await Promise.all([
+		const [overview, pageViews, linkClicks, socialStats] = await Promise.all([
 			getOverviewStats(),
 			getPageViewStats(7),
-			getLinkClickStats(7)
+			getLinkClickStats(7),
+			getCachedSocialStats()
 		]);
 
 		const result = await sendDiscordReport(data.webhookUrl, {
@@ -167,6 +163,7 @@ export const testDiscordWebhook = command(testWebhookSchema, async (data) => {
 			overview,
 			pageViews,
 			linkClicks,
+			socialStats,
 			isTest: true
 		});
 

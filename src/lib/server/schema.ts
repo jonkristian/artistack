@@ -26,6 +26,7 @@ export const profile = sqliteTable('profile', {
 	showStreaming: integer('show_streaming', { mode: 'boolean' }).default(true),
 	showSocial: integer('show_social', { mode: 'boolean' }).default(true),
 	showTourDates: integer('show_tour_dates', { mode: 'boolean' }).default(true),
+	showPressKit: integer('show_press_kit', { mode: 'boolean' }).default(false),
 	// Layout theme
 	layout: text('layout').default('default'),
 	// Locale for date/time formatting
@@ -83,22 +84,22 @@ export const tourDates = sqliteTable('tour_dates', {
 export const media = sqliteTable('media', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
 	filename: text('filename').notNull(),
-	url: text('url').notNull(),
+	url: text('url').notNull(), // Optimized version for web display
+	originalUrl: text('original_url'), // Original file (for press kit downloads)
 	thumbnailUrl: text('thumbnail_url'), // Smaller version for grids/previews
 	mimeType: text('mime_type').notNull(),
 	width: integer('width'),
 	height: integer('height'),
-	size: integer('size'), // bytes
+	size: integer('size'), // bytes (of optimized version)
+	originalSize: integer('original_size'), // bytes (of original)
 	alt: text('alt'),
 	createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
 });
 
-// Press kit files
-export const pressAssets = sqliteTable('press_assets', {
+// Press kit - links to media library items
+export const pressKit = sqliteTable('press_kit', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
-	type: text('type').notNull(), // 'bio', 'photo', 'logo', 'rider'
-	label: text('label').notNull(),
-	fileUrl: text('file_url').notNull(),
+	mediaId: integer('media_id').notNull(), // FK to media table
 	position: integer('position').default(0)
 });
 
@@ -150,8 +151,8 @@ export type TourDate = typeof tourDates.$inferSelect;
 export type NewTourDate = typeof tourDates.$inferInsert;
 export type Media = typeof media.$inferSelect;
 export type NewMedia = typeof media.$inferInsert;
-export type PressAsset = typeof pressAssets.$inferSelect;
-export type NewPressAsset = typeof pressAssets.$inferInsert;
+export type PressKitItem = typeof pressKit.$inferSelect;
+export type NewPressKitItem = typeof pressKit.$inferInsert;
 export type Integration = typeof integrations.$inferSelect;
 export type NewIntegration = typeof integrations.$inferInsert;
 export type PageView = typeof pageViews.$inferSelect;

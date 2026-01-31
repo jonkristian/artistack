@@ -11,3 +11,4 @@
 - City-based venue search (enter city first for better results)
 - Auto-save profile fields on blur
 - Toast notifications for all actions
+- Added Press Kit functionality

@@ -6,11 +6,13 @@
 	let {
 		profile,
 		links,
-		tourDates
+		tourDates,
+		pressKitAvailable = false
 	}: {
 		profile: Profile;
 		links: Link[];
 		tourDates: TourDate[];
+		pressKitAvailable?: boolean;
 	} = $props();
 
 	// Click tracking - fire and forget, doesn't block navigation
@@ -698,6 +700,23 @@
 		Share
 	</button>
 </section>
+
+{#if pressKitAvailable}
+	<!-- Press Kit link - subtle, for press/promoters -->
+	<section class="mt-12 flex justify-center">
+		<a
+			href="/uploads/press-kit.zip"
+			download
+			class="flex items-center gap-1.5 text-xs transition-colors hover:opacity-80"
+			style="color: var(--color-text-muted); opacity: 0.5"
+		>
+			<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+			</svg>
+			Press Kit
+		</a>
+	</section>
+{/if}
 	</div>
 	</div>
 

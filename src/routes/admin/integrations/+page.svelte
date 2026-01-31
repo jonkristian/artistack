@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import { updateSpotifyConfig, saveGoogleConfig, refreshSocialStats, updateDiscordSettings, testDiscordWebhook } from './data.remote';
+	import { updateSpotifyConfig, saveGoogleConfig, updateDiscordSettings, testDiscordWebhook } from './data.remote';
 	import { invalidateAll } from '$app/navigation';
 
 	let { data }: { data: PageData } = $props();
@@ -26,7 +26,6 @@
 	let spotifyResult = $state<{ success: boolean; message: string } | null>(null);
 	let savingGoogle = $state(false);
 	let googleResult = $state<{ success: boolean; message: string } | null>(null);
-	let refreshingSocial = $state(false);
 	let savingDiscord = $state(false);
 	let testingWebhook = $state(false);
 	let discordResult = $state<{ success: boolean; message: string } | null>(null);
@@ -111,17 +110,6 @@
 		}
 		savingGoogle = false;
 		setTimeout(() => (googleResult = null), 5000);
-	}
-
-	async function refreshStats() {
-		refreshingSocial = true;
-		try {
-			await refreshSocialStats({});
-			await invalidateAll();
-		} catch {
-			// Silently fail
-		}
-		refreshingSocial = false;
 	}
 
 	async function saveDiscordSettings() {
@@ -382,43 +370,6 @@
 			</div>
 		</section>
 
-		<!-- Refresh Stats Button -->
-		{#if data.socialStats.spotify || data.socialStats.youtube}
-			<div class="flex justify-end">
-				<button
-					onclick={refreshStats}
-					disabled={refreshingSocial}
-					class="flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm text-white hover:bg-gray-700 disabled:opacity-50"
-				>
-					<svg
-						class="h-4 w-4 {refreshingSocial ? 'animate-spin' : ''}"
-						fill="none"
-						stroke="currentColor"
-						viewBox="0 0 24 24"
-					>
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-					</svg>
-					{refreshingSocial ? 'Refreshing...' : 'Refresh All Stats'}
-				</button>
-			</div>
-		{/if}
-
-		<!-- Info about link metadata -->
-		<section class="rounded-xl border border-gray-800 bg-gray-900 p-5">
-			<div class="mb-4 flex items-center gap-3">
-				<svg class="h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-				</svg>
-				<div>
-					<h2 class="font-semibold text-white">Automatic Metadata</h2>
-					<p class="text-xs text-gray-500">Thumbnails and titles are fetched automatically</p>
-				</div>
-			</div>
-			<p class="text-sm text-gray-400">
-				When you add streaming links, metadata (thumbnails, titles) is automatically fetched for Spotify, YouTube, and more. Just paste the URL when adding a streaming link.
-			</p>
-		</section>
-
 		<!-- Discord Integration -->
 		<section class="rounded-xl border border-gray-800 bg-gray-900 p-5">
 			<div class="mb-4 flex items-center justify-between">
@@ -560,32 +511,5 @@
 			</div>
 		</section>
 
-		<!-- Facebook Events (placeholder) -->
-		<section class="rounded-xl border border-gray-800 bg-gray-900 p-5 opacity-50">
-			<div class="flex items-center gap-3">
-				<svg viewBox="0 0 24 24" class="h-8 w-8" style="fill: #1877F2">
-					<path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-				</svg>
-				<div class="flex-1">
-					<h2 class="font-semibold text-white">Facebook Events</h2>
-					<p class="text-xs text-gray-500">Sync tour dates from your Facebook Page</p>
-				</div>
-				<span class="rounded-full bg-gray-800 px-2.5 py-1 text-xs text-gray-400">Coming Soon</span>
-			</div>
-		</section>
-
-		<!-- Bandsintown (placeholder) -->
-		<section class="rounded-xl border border-gray-800 bg-gray-900 p-5 opacity-50">
-			<div class="flex items-center gap-3">
-				<div class="flex h-8 w-8 items-center justify-center rounded-full bg-[#00CEC8]">
-					<span class="text-sm font-bold text-black">B</span>
-				</div>
-				<div class="flex-1">
-					<h2 class="font-semibold text-white">Bandsintown</h2>
-					<p class="text-xs text-gray-500">Import events from Bandsintown</p>
-				</div>
-				<span class="rounded-full bg-gray-800 px-2.5 py-1 text-xs text-gray-400">Coming Soon</span>
-			</div>
-		</section>
 	</div>
 </div>

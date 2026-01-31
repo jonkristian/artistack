@@ -7,48 +7,31 @@
 
 	let { data }: { data: PageData } = $props();
 
+	// Initialize state directly from profile data
+	const p = data.profile;
+
 	// Colors
-	let colorBg = $state('#0f0f0f');
-	let colorCard = $state('#1a1a1a');
-	let colorAccent = $state('#8b5cf6');
-	let colorText = $state('#ffffff');
-	let colorTextMuted = $state('#9ca3af');
+	let colorBg = $state(p?.colorBg ?? '#0f0f0f');
+	let colorCard = $state(p?.colorCard ?? '#1a1a1a');
+	let colorAccent = $state(p?.colorAccent ?? '#8b5cf6');
+	let colorText = $state(p?.colorText ?? '#ffffff');
+	let colorTextMuted = $state(p?.colorTextMuted ?? '#9ca3af');
 
 	// Track which color picker is open (accordion behavior)
 	let openPicker = $state<string | null>(null);
 
 	// Display options
-	let showName = $state(true);
-	let showLogo = $state(true);
-	let showPhoto = $state(true);
-	let showBio = $state(true);
-	let showStreaming = $state(true);
-	let showSocial = $state(true);
-	let showTourDates = $state(true);
+	let showName = $state(p?.showName ?? true);
+	let showLogo = $state(p?.showLogo ?? true);
+	let showPhoto = $state(p?.showPhoto ?? true);
+	let showBio = $state(p?.showBio ?? true);
+	let showStreaming = $state(p?.showStreaming ?? true);
+	let showSocial = $state(p?.showSocial ?? true);
+	let showTourDates = $state(p?.showTourDates ?? true);
+	let showPressKit = $state(p?.showPressKit ?? false);
 
 	// Layout
-	let layout = $state<'default' | 'minimal' | 'card'>('default');
-
-	// Sync from data.profile on load (only when profile id changes)
-	let syncedProfileId: number | null = null;
-	$effect(() => {
-		if (data.profile && data.profile.id !== syncedProfileId) {
-			syncedProfileId = data.profile.id;
-			colorBg = data.profile.colorBg ?? '#0f0f0f';
-			colorCard = data.profile.colorCard ?? '#1a1a1a';
-			colorAccent = data.profile.colorAccent ?? '#8b5cf6';
-			colorText = data.profile.colorText ?? '#ffffff';
-			colorTextMuted = data.profile.colorTextMuted ?? '#9ca3af';
-			showName = data.profile.showName ?? true;
-			showLogo = data.profile.showLogo ?? true;
-			showPhoto = data.profile.showPhoto ?? true;
-			showBio = data.profile.showBio ?? true;
-			showStreaming = data.profile.showStreaming ?? true;
-			showSocial = data.profile.showSocial ?? true;
-			showTourDates = data.profile.showTourDates ?? true;
-			layout = (data.profile.layout as 'default' | 'minimal' | 'card') ?? 'default';
-		}
-	});
+	let layout = $state<'default' | 'minimal' | 'card'>((p?.layout as 'default' | 'minimal' | 'card') ?? 'default');
 
 	// Available layouts
 	const availableLayouts = [
@@ -58,8 +41,8 @@
 
 	// Live preview profile (merges form state with saved data)
 	const liveProfile = $derived({
-		...data.profile,
-		name: data.profile?.name ?? 'Artist Name',
+		...p,
+		name: p?.name ?? 'Artist Name',
 		colorBg,
 		colorCard,
 		colorAccent,
@@ -72,6 +55,7 @@
 		showStreaming,
 		showSocial,
 		showTourDates,
+		showPressKit,
 		layout
 	});
 
@@ -81,7 +65,7 @@
 
 	$effect(() => {
 		// Track all values to trigger on any change
-		const values = { colorBg, colorCard, colorAccent, colorText, colorTextMuted, showName, showLogo, showPhoto, showBio, showStreaming, showSocial, showTourDates, layout };
+		const values = { colorBg, colorCard, colorAccent, colorText, colorTextMuted, showName, showLogo, showPhoto, showBio, showStreaming, showSocial, showTourDates, showPressKit, layout };
 
 		if (!initialized) {
 			initialized = true;
@@ -133,6 +117,7 @@
 					<ToggleOption label="Streaming Links" description="Spotify, Apple Music, YouTube, etc." bind:checked={showStreaming} />
 					<ToggleOption label="Social Media" description="Instagram, TikTok, Twitter, etc." bind:checked={showSocial} />
 					<ToggleOption label="Tour Dates" description="Upcoming shows and events" bind:checked={showTourDates} />
+					<ToggleOption label="Press Kit" description="Download link for press/promoters" bind:checked={showPressKit} />
 				</div>
 			</div>
 		</SectionCard>
@@ -166,12 +151,13 @@
 	</div>
 
 	<!-- Right Column: Live Preview -->
-	<div class="w-1/2 overflow-y-auto border-l border-gray-800">
+	<div class="w-1/2 overflow-y-auto border-l border-gray-800" style="background-color: {colorBg}">
 		<LayoutPreview
 			layout={Default}
 			profile={liveProfile}
 			links={data.links}
 			tourDates={data.tourDates}
+			pressKitAvailable={showPressKit}
 		/>
 	</div>
 </div>

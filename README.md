@@ -14,6 +14,7 @@ A self-hosted link-in-bio page for musicians and bands.
 - **Integrations** - Discord notifications, Spotify/YouTube stats
 - **Appearance** - Customizable colors and layout
 - **Media Library** - Image cropping and automatic optimization
+- **Press Kit** - DnD your media and create your own press kit
 
 <details>
 <summary>More screenshots</summary>
@@ -22,7 +23,7 @@ A self-hosted link-in-bio page for musicians and bands.
 | Stats | Integrations |
 |-------|--------------|
 | ![Stats](screenshots/stats.png) | ![Integrations](screenshots/integrations.png) |
-
+| ![Media](screenshots/media.png) | ![Appearance](screenshots/appearance.png) |
 </details>
 
 ## Tech Stack

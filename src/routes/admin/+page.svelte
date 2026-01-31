@@ -439,12 +439,13 @@
 	</div>
 
 	<!-- Right Column: Live Preview -->
-	<div class="w-1/2 overflow-y-auto border-l border-gray-800">
+	<div class="w-1/2 overflow-y-auto border-l border-gray-800" style="background-color: {liveProfile.colorBg ?? '#0f0f0f'}">
 		<LayoutPreview
 			layout={Default}
 			profile={liveProfile}
 			links={liveLinks}
 			tourDates={data.tourDates}
+			pressKitAvailable={liveProfile.showPressKit ?? false}
 		/>
 	</div>
 </div>

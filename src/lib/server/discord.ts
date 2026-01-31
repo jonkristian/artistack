@@ -1,4 +1,5 @@
 import type { OverviewStats, PageViewStats, LinkClickStats } from './analytics';
+import type { SocialStats } from './social-stats';
 import { db } from './db';
 import { profile } from './schema';
 import { eq } from 'drizzle-orm';
@@ -8,6 +9,7 @@ export interface DiscordReportData {
 	overview: OverviewStats;
 	pageViews: PageViewStats;
 	linkClicks: LinkClickStats;
+	socialStats?: SocialStats;
 	isTest?: boolean;
 }
 
@@ -52,7 +54,7 @@ function formatChange(current: number, previous: number): string {
 }
 
 export function buildStatsEmbed(data: DiscordReportData): DiscordEmbed {
-	const { overview, pageViews, linkClicks, isTest } = data;
+	const { overview, pageViews, linkClicks, socialStats, isTest } = data;
 
 	const fields: DiscordEmbed['fields'] = [];
 
@@ -126,6 +128,36 @@ export function buildStatsEmbed(data: DiscordReportData): DiscordEmbed {
 		});
 	}
 
+	// Spotify stats
+	if (socialStats?.spotify) {
+		const spotify = socialStats.spotify;
+		let value = `**${formatNumber(spotify.followers)}** followers\nPopularity: ${spotify.popularity}/100`;
+		if (spotify.topTracks && spotify.topTracks.length > 0) {
+			const tracks = spotify.topTracks.slice(0, 3).map((t) => `• ${t.name}`).join('\n');
+			value += `\n\n**Top Tracks:**\n${tracks}`;
+		}
+		fields.push({
+			name: '🎵 Spotify',
+			value,
+			inline: false
+		});
+	}
+
+	// YouTube stats
+	if (socialStats?.youtube) {
+		const youtube = socialStats.youtube;
+		let value = `**${formatNumber(youtube.subscriberCount)}** subscribers\n${formatNumber(youtube.viewCount)} total views\n${youtube.videoCount} videos`;
+		if (youtube.recentVideos && youtube.recentVideos.length > 0) {
+			const videos = youtube.recentVideos.slice(0, 3).map((v) => `• ${v.title} (${formatNumber(v.viewCount)})`).join('\n');
+			value += `\n\n**Recent Videos:**\n${videos}`;
+		}
+		fields.push({
+			name: '📺 YouTube',
+			value,
+			inline: false
+		});
+	}
+
 	return {
 		title: isTest ? '🧪 Test Stats Report' : `📈 ${data.title}`,
 		description: isTest
@@ -189,15 +221,17 @@ export async function sendScheduledReport(profileData: {
 		return { success: false, error: 'Discord not configured or disabled' };
 	}
 
-	// Import analytics dynamically to avoid circular imports
+	// Import analytics and social stats dynamically to avoid circular imports
 	const { getOverviewStats, getPageViewStats, getLinkClickStats } = await import('./analytics');
+	const { getCachedSocialStats } = await import('./social-stats');
 
 	const days = profileData.discordSchedule === 'daily' ? 1 : profileData.discordSchedule === 'weekly' ? 7 : 30;
 
-	const [overview, pageViews, linkClicks] = await Promise.all([
+	const [overview, pageViews, linkClicks, socialStats] = await Promise.all([
 		getOverviewStats(),
 		getPageViewStats(days),
-		getLinkClickStats(days)
+		getLinkClickStats(days),
+		getCachedSocialStats()
 	]);
 
 	const title =
@@ -211,7 +245,8 @@ export async function sendScheduledReport(profileData: {
 		title,
 		overview,
 		pageViews,
-		linkClicks
+		linkClicks,
+		socialStats
 	});
 }
 
