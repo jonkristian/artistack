@@ -90,12 +90,20 @@ function shouldSkipPath(path: string): boolean {
 	return SKIP_PATHS.some((prefix) => path.startsWith(prefix));
 }
 
-function parseReferrer(referrer: string | null): string {
+function parseReferrer(referrer: string | null, currentHost: string): string {
 	if (!referrer) return 'direct';
 	try {
 		const url = new URL(referrer);
 		// Remove www. prefix for consistency
-		return url.hostname.replace(/^www\./, '');
+		const referrerHost = url.hostname.replace(/^www\./, '');
+		const siteHost = currentHost.replace(/^www\./, '');
+
+		// Filter out self-referrals (internal navigation)
+		if (referrerHost === siteHost) {
+			return 'direct';
+		}
+
+		return referrerHost;
 	} catch {
 		return 'direct';
 	}
@@ -173,15 +181,15 @@ export const handle: Handle = async ({ event, resolve }) => {
 	}
 
 	// Don't await the tracking - fire and forget for better performance
-	trackPageView(request, path, userAgent).catch(() => {
+	trackPageView(request, path, userAgent, url.hostname).catch(() => {
 		// Silently ignore tracking errors
 	});
 
 	return response;
 };
 
-async function trackPageView(request: Request, path: string, userAgent: string): Promise<void> {
-	const referrer = parseReferrer(request.headers.get('referer'));
+async function trackPageView(request: Request, path: string, userAgent: string, hostname: string): Promise<void> {
+	const referrer = parseReferrer(request.headers.get('referer'), hostname);
 	const ip = getClientIP(request);
 
 	// Lookup country (with timeout, will be null if it fails)
