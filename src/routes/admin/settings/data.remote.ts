@@ -1,7 +1,7 @@
 import * as v from 'valibot';
 import { command } from '$app/server';
 import { db } from '$lib/server/db';
-import { profile } from '$lib/server/schema';
+import { settings } from '$lib/server/schema';
 import { eq } from 'drizzle-orm';
 import sharp from 'sharp';
 import { readFile, writeFile } from 'fs/promises';
@@ -35,13 +35,13 @@ const smtpSettingsSchema = v.object({
 // Helper Functions
 // ============================================================================
 
-async function getOrCreateProfile() {
-	const [existing] = await db.select().from(profile).limit(1);
+async function getOrCreateSettings() {
+	const [existing] = await db.select().from(settings).limit(1);
 	if (existing) return existing;
 
 	const [created] = await db
-		.insert(profile)
-		.values({ name: 'Artist Name' })
+		.insert(settings)
+		.values({})
 		.returning();
 	return created;
 }
@@ -108,7 +108,7 @@ function createIco(images: { size: number; buffer: Buffer }[]): Buffer {
 // ============================================================================
 
 export const updateSettings = command(settingsSchema, async (data) => {
-	const existing = await getOrCreateProfile();
+	const existing = await getOrCreateSettings();
 
 	// Filter out undefined values
 	const updates: Record<string, unknown> = {};
@@ -119,12 +119,12 @@ export const updateSettings = command(settingsSchema, async (data) => {
 	}
 
 	const [updated] = await db
-		.update(profile)
+		.update(settings)
 		.set(updates)
-		.where(eq(profile.id, existing.id))
+		.where(eq(settings.id, existing.id))
 		.returning();
 
-	return { success: true, profile: updated };
+	return { success: true, settings: updated };
 });
 
 // ============================================================================
@@ -132,7 +132,7 @@ export const updateSettings = command(settingsSchema, async (data) => {
 // ============================================================================
 
 export const generateFavicon = command(generateFaviconSchema, async ({ sourceUrl }) => {
-	const existing = await getOrCreateProfile();
+	const existing = await getOrCreateSettings();
 
 	// Convert URL path to file path (e.g., /uploads/image.jpg -> data/uploads/image.jpg)
 	const sourcePath = join('data', sourceUrl.replace(/^\//, ''));
@@ -173,17 +173,17 @@ export const generateFavicon = command(generateFaviconSchema, async ({ sourceUrl
 	const icoBuffer = createIco(icoImages);
 	await writeFile(join('data', 'favicon.ico'), icoBuffer);
 
-	// Update profile
+	// Update settings
 	const [updated] = await db
-		.update(profile)
+		.update(settings)
 		.set({
 			faviconUrl: sourceUrl,
 			faviconGenerated: true
 		})
-		.where(eq(profile.id, existing.id))
+		.where(eq(settings.id, existing.id))
 		.returning();
 
-	return { success: true, profile: updated };
+	return { success: true, settings: updated };
 });
 
 // ============================================================================
@@ -191,7 +191,7 @@ export const generateFavicon = command(generateFaviconSchema, async ({ sourceUrl
 // ============================================================================
 
 export const updateSmtpSettings = command(smtpSettingsSchema, async (data) => {
-	const existing = await getOrCreateProfile();
+	const existing = await getOrCreateSettings();
 
 	const updates: Record<string, unknown> = {};
 	for (const [key, value] of Object.entries(data)) {
@@ -201,12 +201,12 @@ export const updateSmtpSettings = command(smtpSettingsSchema, async (data) => {
 	}
 
 	const [updated] = await db
-		.update(profile)
+		.update(settings)
 		.set(updates)
-		.where(eq(profile.id, existing.id))
+		.where(eq(settings.id, existing.id))
 		.returning();
 
-	return { success: true, profile: updated };
+	return { success: true, settings: updated };
 });
 
 export const testSmtp = command(v.object({}), async () => {

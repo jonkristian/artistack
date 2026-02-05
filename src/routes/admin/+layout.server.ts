@@ -1,6 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
-import { profile, links, tourDates, media } from '$lib/server/schema';
+import { profile, settings, links, tourDates, media, blocks } from '$lib/server/schema';
 import { user } from '$lib/server/auth-schema';
 import { auth } from '$lib/server/auth';
 import { getGoogleConfig } from '$lib/server/social-stats';
@@ -17,11 +17,13 @@ export const load: LayoutServerLoad = async ({ request }) => {
 	// Get user with role from database
 	const [userData] = await db.select().from(user).where(eq(user.id, session.user.id)).limit(1);
 
-	const [profileData, allLinks, allTourDates, allMedia, googleConfig] = await Promise.all([
+	const [profileData, settingsData, allLinks, allTourDates, allMedia, allBlocks, googleConfig] = await Promise.all([
 		db.select().from(profile).limit(1).then((r) => r[0]),
+		db.select().from(settings).limit(1).then((r) => r[0]),
 		db.select().from(links).orderBy(asc(links.position)),
 		db.select().from(tourDates).orderBy(asc(tourDates.date)),
 		db.select().from(media).orderBy(desc(media.createdAt)),
+		db.select().from(blocks).orderBy(asc(blocks.position)),
 		getGoogleConfig()
 	]);
 
@@ -31,9 +33,11 @@ export const load: LayoutServerLoad = async ({ request }) => {
 			role: userData?.role ?? 'editor'
 		},
 		profile: profileData ?? null,
+		settings: settingsData ?? null,
 		links: allLinks,
 		tourDates: allTourDates,
 		media: allMedia,
+		blocks: allBlocks,
 		googleConfig
 	};
 };

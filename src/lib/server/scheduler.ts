@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import { db } from './db';
-import { profile, integrations } from './schema';
+import { settings, integrations } from './schema';
 import { sendScheduledDiscordReport } from './discord';
 import { refreshAllSocialStats } from './social-stats';
 import { desc } from 'drizzle-orm';
@@ -28,13 +28,13 @@ export function initScheduler(): void {
 
 async function runScheduledTasks(): Promise<void> {
 	try {
-		// Get profile settings
-		const [profileData] = await db.select().from(profile).limit(1);
-		if (!profileData) return;
+		// Get settings
+		const [settingsData] = await db.select().from(settings).limit(1);
+		if (!settingsData) return;
 
 		// Task 1: Discord scheduled report
-		if (profileData.discordEnabled && profileData.discordWebhookUrl) {
-			const shouldSend = checkDiscordSchedule(profileData);
+		if (settingsData.discordEnabled && settingsData.discordWebhookUrl) {
+			const shouldSend = checkDiscordSchedule(settingsData);
 			if (shouldSend) {
 				console.log('[Scheduler] Sending Discord report...');
 				const result = await sendScheduledDiscordReport();

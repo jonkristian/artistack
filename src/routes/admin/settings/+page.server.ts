@@ -1,6 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
-import { profile } from '$lib/server/schema';
+import { settings } from '$lib/server/schema';
 import { user } from '$lib/server/auth-schema';
 import { auth } from '$lib/server/auth';
 import { eq } from 'drizzle-orm';
@@ -18,9 +18,9 @@ export const load: PageServerLoad = async ({ request }) => {
 		throw redirect(302, '/admin');
 	}
 
-	const currentProfile = await db.select().from(profile).get();
+	const currentSettings = await db.select().from(settings).get();
 
 	return {
-		profile: currentProfile
+		settings: currentSettings
 	};
 };

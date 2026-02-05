@@ -1,6 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
-import { integrations, profile } from '$lib/server/schema';
+import { integrations, settings } from '$lib/server/schema';
 import { user } from '$lib/server/auth-schema';
 import { auth } from '$lib/server/auth';
 import { eq } from 'drizzle-orm';
@@ -20,13 +20,13 @@ export const load: PageServerLoad = async ({ request }) => {
 		throw redirect(302, '/admin');
 	}
 
-	const [allIntegrations, spotifyConfig, googleConfig, socialStats, detectedIds, profileData] = await Promise.all([
+	const [allIntegrations, spotifyConfig, googleConfig, socialStats, detectedIds, settingsData] = await Promise.all([
 		db.select().from(integrations),
 		getIntegrationConfig('spotify') as Promise<SpotifyConfig | null>,
 		getGoogleConfig(),
 		getCachedSocialStats(),
 		getDetectedPlatformIds(),
-		db.select().from(profile).limit(1)
+		db.select().from(settings).limit(1)
 	]);
 
 	return {
@@ -35,6 +35,6 @@ export const load: PageServerLoad = async ({ request }) => {
 		googleConfig: googleConfig ?? null,
 		socialStats,
 		detectedIds,
-		profile: profileData[0] ?? null
+		settings: settingsData[0] ?? null
 	};
 };

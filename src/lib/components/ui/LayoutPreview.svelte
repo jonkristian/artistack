@@ -1,19 +1,23 @@
 <script lang="ts">
 	import type { Component } from 'svelte';
-	import type { Profile, Link, TourDate } from '$lib/server/schema';
+	import type { Profile, Settings, Link, TourDate, Block, Media } from '$lib/server/schema';
 
 	let {
 		layout: Layout,
 		profile,
+		settings = null,
 		links = [],
 		tourDates = [],
-		pressKitAvailable = false
+		blocks = [],
+		media = []
 	}: {
-		layout: Component<{ profile: Profile; links: Link[]; tourDates: TourDate[]; pressKitAvailable?: boolean }>;
+		layout: Component<{ profile: Profile; settings?: Settings | null; links: Link[]; tourDates: TourDate[]; blocks?: Block[]; media?: Media[] }>;
 		profile: Partial<Profile> & { name: string };
+		settings?: Partial<Settings> | null;
 		links?: Link[];
 		tourDates?: TourDate[];
-		pressKitAvailable?: boolean;
+		blocks?: Block[];
+		media?: Media[];
 	} = $props();
 
 	// Build a complete profile object with defaults for preview
@@ -26,35 +30,31 @@
 		logoShape: profile.logoShape ?? 'circle',
 		photoUrl: profile.photoUrl ?? null,
 		photoShape: profile.photoShape ?? 'wide-rounded',
-		backgroundUrl: profile.backgroundUrl ?? null,
-		colorBg: profile.colorBg ?? '#0f0f0f',
-		colorCard: profile.colorCard ?? '#1a1a1a',
-		colorAccent: profile.colorAccent ?? '#8b5cf6',
-		colorText: profile.colorText ?? '#ffffff',
-		colorTextMuted: profile.colorTextMuted ?? '#9ca3af',
-		showName: profile.showName ?? true,
-		showLogo: profile.showLogo ?? true,
-		showPhoto: profile.showPhoto ?? true,
-		showBio: profile.showBio ?? true,
-		showStreaming: profile.showStreaming ?? true,
-		showSocial: profile.showSocial ?? true,
-		showTourDates: profile.showTourDates ?? true,
-		showPressKit: profile.showPressKit ?? false,
-		layout: profile.layout ?? 'default'
+		backgroundUrl: profile.backgroundUrl ?? null
 	} as Profile);
+
+	const previewSettings = $derived({
+		id: 1,
+		colorBg: settings?.colorBg ?? '#0f0f0f',
+		colorCard: settings?.colorCard ?? '#1a1a1a',
+		colorAccent: settings?.colorAccent ?? '#8b5cf6',
+		colorText: settings?.colorText ?? '#ffffff',
+		colorTextMuted: settings?.colorTextMuted ?? '#9ca3af',
+		layout: settings?.layout ?? 'default'
+	} as Settings);
 </script>
 
 <div
 	class="preview-container"
 	style="
-		--color-bg: {previewProfile.colorBg};
-		--color-card: {previewProfile.colorCard};
-		--color-accent: {previewProfile.colorAccent};
-		--color-text: {previewProfile.colorText};
-		--color-text-muted: {previewProfile.colorTextMuted};
+		--color-bg: {previewSettings.colorBg};
+		--color-card: {previewSettings.colorCard};
+		--color-accent: {previewSettings.colorAccent};
+		--color-text: {previewSettings.colorText};
+		--color-text-muted: {previewSettings.colorTextMuted};
 	"
 >
-	<Layout profile={previewProfile} {links} {tourDates} {pressKitAvailable} />
+	<Layout profile={previewProfile} settings={previewSettings} {links} {tourDates} {blocks} {media} />
 </div>
 
 <style>

@@ -45,23 +45,23 @@
 	const visibleMedia = $derived(data.media?.slice(0, mediaDisplayCount) ?? []);
 	const hasMoreMedia = $derived((data.media?.length ?? 0) > mediaDisplayCount);
 
-	// Sync from data.profile on load
-	let syncedProfileId: number | null = null;
+	// Sync from data.settings on load
+	let syncedSettingsId: number | null = null;
 	$effect(() => {
-		if (data.profile && data.profile.id !== syncedProfileId) {
-			syncedProfileId = data.profile.id;
-			siteTitle = data.profile.siteTitle ?? '';
-			locale = data.profile.locale ?? 'nb-NO';
-			selectedFaviconUrl = data.profile.faviconUrl ?? null;
-			faviconGenerated = data.profile.faviconGenerated ?? false;
+		if (data.settings && data.settings.id !== syncedSettingsId) {
+			syncedSettingsId = data.settings.id;
+			siteTitle = data.settings.siteTitle ?? '';
+			locale = data.settings.locale ?? 'nb-NO';
+			selectedFaviconUrl = data.settings.faviconUrl ?? null;
+			faviconGenerated = data.settings.faviconGenerated ?? false;
 			// SMTP
-			smtpHost = data.profile.smtpHost ?? '';
-			smtpPort = data.profile.smtpPort ?? 587;
-			smtpUser = data.profile.smtpUser ?? '';
-			smtpPassword = data.profile.smtpPassword ?? '';
-			smtpFromAddress = data.profile.smtpFromAddress ?? '';
-			smtpFromName = data.profile.smtpFromName ?? '';
-			smtpTls = data.profile.smtpTls ?? true;
+			smtpHost = data.settings.smtpHost ?? '';
+			smtpPort = data.settings.smtpPort ?? 587;
+			smtpUser = data.settings.smtpUser ?? '';
+			smtpPassword = data.settings.smtpPassword ?? '';
+			smtpFromAddress = data.settings.smtpFromAddress ?? '';
+			smtpFromName = data.settings.smtpFromName ?? '';
+			smtpTls = data.settings.smtpTls ?? true;
 		}
 	});
 

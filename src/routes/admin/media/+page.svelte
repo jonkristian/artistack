@@ -17,10 +17,17 @@
 	let includeBioTxt = $state(true);
 
 	// Track which media items are in press kit
-	const pressKitMediaIds = $derived(new Set(data.pressKit.map((p) => p.mediaId)));
+	const pressKitMediaIds = $derived(new Set(data.pressKitMediaIds));
 	const visibleMedia = $derived(data.media.slice(0, displayCount));
 	const hasMore = $derived(data.media.length > displayCount);
 	const remainingCount = $derived(data.media.length - displayCount);
+
+	// Press kit media items for display
+	const pressKitItems = $derived(
+		data.pressKitMediaIds
+			.map((id) => data.media.find((m) => m.id === id))
+			.filter((m): m is NonNullable<typeof m> => m != null)
+	);
 
 	async function handleFileSelect(e: Event) {
 		const input = e.target as HTMLInputElement;
@@ -131,14 +138,15 @@
 			return;
 		}
 
-		await addToPressKit({ mediaId });
+		await addToPressKit({ mediaId, blockId: data.pressKitBlockId });
 		await invalidateAll();
 		toast.success('Added to Press Kit');
 		draggedMediaId = null;
 	}
 
-	async function handleRemoveFromPressKit(pressKitId: number) {
-		await removeFromPressKit(pressKitId);
+	async function handleRemoveFromPressKit(mediaId: number) {
+		if (!data.pressKitBlockId) return;
+		await removeFromPressKit({ mediaId, blockId: data.pressKitBlockId });
 		await invalidateAll();
 		toast.success('Removed from Press Kit');
 	}
@@ -241,7 +249,7 @@
 				{/if}
 				<button
 					onclick={handleGeneratePressKit}
-					disabled={generating || data.pressKit.length === 0}
+					disabled={generating || pressKitItems.length === 0}
 					class="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-50"
 				>
 					{#if generating}
@@ -268,7 +276,7 @@
 				? 'border-violet-500 bg-violet-500/10'
 				: 'border-gray-700'}"
 		>
-			{#if data.pressKit.length === 0}
+			{#if pressKitItems.length === 0}
 				<div class="flex h-[120px] flex-col items-center justify-center text-gray-500">
 					<svg class="mb-2 h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
@@ -277,12 +285,12 @@
 				</div>
 			{:else}
 				<div class="flex flex-wrap gap-3 p-3">
-					{#each data.pressKit as item (item.id)}
+					{#each pressKitItems as item (item.id)}
 						<div class="group relative">
 							<div class="h-20 w-20 overflow-hidden rounded-lg bg-gray-800">
 								<img
-									src={item.media.thumbnailUrl || item.media.url}
-									alt={item.media.filename}
+									src={item.thumbnailUrl || item.url}
+									alt={item.filename}
 									class="h-full w-full object-cover"
 								/>
 							</div>
@@ -327,7 +335,7 @@
 			</button>
 		</div>
 	{:else}
-		<p class="mb-4 text-sm text-gray-500">{data.media.length} files {#if data.pressKit.length > 0}· {data.pressKit.length} in press kit{/if}</p>
+		<p class="mb-4 text-sm text-gray-500">{data.media.length} files {#if pressKitItems.length > 0}· {pressKitItems.length} in press kit{/if}</p>
 		<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
 			{#each visibleMedia as item (item.id)}
 				<div

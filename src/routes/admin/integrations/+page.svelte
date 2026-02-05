@@ -53,15 +53,15 @@
 	});
 
 	// Sync Discord settings on data change
-	let syncedProfileId: number | null = null;
+	let syncedSettingsId: number | null = null;
 	$effect(() => {
-		if (data.profile && data.profile.id !== syncedProfileId) {
-			syncedProfileId = data.profile.id;
-			discordWebhookUrl = data.profile.discordWebhookUrl ?? '';
-			discordEnabled = data.profile.discordEnabled ?? false;
-			discordSchedule = (data.profile.discordSchedule as 'daily' | 'weekly' | 'monthly') ?? 'weekly';
-			discordScheduleDay = data.profile.discordScheduleDay ?? 1;
-			discordScheduleTime = data.profile.discordScheduleTime ?? '09:00';
+		if (data.settings && data.settings.id !== syncedSettingsId) {
+			syncedSettingsId = data.settings.id;
+			discordWebhookUrl = data.settings.discordWebhookUrl ?? '';
+			discordEnabled = data.settings.discordEnabled ?? false;
+			discordSchedule = (data.settings.discordSchedule as 'daily' | 'weekly' | 'monthly') ?? 'weekly';
+			discordScheduleDay = data.settings.discordScheduleDay ?? 1;
+			discordScheduleTime = data.settings.discordScheduleTime ?? '09:00';
 		}
 	});
 
@@ -499,9 +499,9 @@
 					{/if}
 				</div>
 
-				{#if data.profile?.discordLastSent}
+				{#if data.settings?.discordLastSent}
 					<p class="text-xs text-gray-500">
-						Last report: {new Date(data.profile.discordLastSent).toLocaleString()}
+						Last report: {new Date(data.settings.discordLastSent).toLocaleString()}
 					</p>
 				{/if}
 

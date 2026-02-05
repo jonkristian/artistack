@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ColorWheel, ToggleOption, LayoutPreview } from '$lib/components/ui';
+	import { ColorWheel, LayoutPreview } from '$lib/components/ui';
 	import { SectionCard } from '$lib/components/cards';
 	import Default from '$lib/themes/Default.svelte';
 	import type { PageData } from './$types';
@@ -7,31 +7,21 @@
 
 	let { data }: { data: PageData } = $props();
 
-	// Initialize state directly from profile data
-	const p = data.profile;
+	// Initialize state directly from settings data
+	const s = data.settings;
 
 	// Colors
-	let colorBg = $state(p?.colorBg ?? '#0f0f0f');
-	let colorCard = $state(p?.colorCard ?? '#1a1a1a');
-	let colorAccent = $state(p?.colorAccent ?? '#8b5cf6');
-	let colorText = $state(p?.colorText ?? '#ffffff');
-	let colorTextMuted = $state(p?.colorTextMuted ?? '#9ca3af');
+	let colorBg = $state(s?.colorBg ?? '#0f0f0f');
+	let colorCard = $state(s?.colorCard ?? '#1a1a1a');
+	let colorAccent = $state(s?.colorAccent ?? '#8b5cf6');
+	let colorText = $state(s?.colorText ?? '#ffffff');
+	let colorTextMuted = $state(s?.colorTextMuted ?? '#9ca3af');
 
 	// Track which color picker is open (accordion behavior)
 	let openPicker = $state<string | null>(null);
 
-	// Display options
-	let showName = $state(p?.showName ?? true);
-	let showLogo = $state(p?.showLogo ?? true);
-	let showPhoto = $state(p?.showPhoto ?? true);
-	let showBio = $state(p?.showBio ?? true);
-	let showStreaming = $state(p?.showStreaming ?? true);
-	let showSocial = $state(p?.showSocial ?? true);
-	let showTourDates = $state(p?.showTourDates ?? true);
-	let showPressKit = $state(p?.showPressKit ?? false);
-
 	// Layout
-	let layout = $state<'default' | 'minimal' | 'card'>((p?.layout as 'default' | 'minimal' | 'card') ?? 'default');
+	let layout = $state<'default' | 'minimal' | 'card'>((s?.layout as 'default' | 'minimal' | 'card') ?? 'default');
 
 	// Available layouts
 	const availableLayouts = [
@@ -39,23 +29,22 @@
 		// Add more layouts here as they're created
 	];
 
-	// Live preview profile (merges form state with saved data)
+	const p = data.profile;
+
+	// Live preview profile
 	const liveProfile = $derived({
 		...p,
-		name: p?.name ?? 'Artist Name',
+		name: p?.name ?? 'Artist Name'
+	});
+
+	// Live preview settings (merges form state with saved data)
+	const liveSettings = $derived({
+		...s,
 		colorBg,
 		colorCard,
 		colorAccent,
 		colorText,
 		colorTextMuted,
-		showName,
-		showLogo,
-		showPhoto,
-		showBio,
-		showStreaming,
-		showSocial,
-		showTourDates,
-		showPressKit,
 		layout
 	});
 
@@ -64,8 +53,7 @@
 	let initialized = false;
 
 	$effect(() => {
-		// Track all values to trigger on any change
-		const values = { colorBg, colorCard, colorAccent, colorText, colorTextMuted, showName, showLogo, showPhoto, showBio, showStreaming, showSocial, showTourDates, showPressKit, layout };
+		const values = { colorBg, colorCard, colorAccent, colorText, colorTextMuted, layout };
 
 		if (!initialized) {
 			initialized = true;
@@ -84,7 +72,7 @@
 	<div class="w-1/2 overflow-y-auto bg-gray-950 p-6">
 		<header class="mb-6">
 			<h1 class="text-2xl font-semibold text-white">Appearance</h1>
-			<p class="text-sm text-gray-500">Customize colors and display options for your page</p>
+			<p class="text-sm text-gray-500">Customize colors and layout for your page</p>
 		</header>
 
 		<div class="space-y-6">
@@ -96,29 +84,6 @@
 				<ColorWheel value={colorAccent} onchange={(c) => (colorAccent = c)} label="Accent" open={openPicker === 'accent'} ontoggle={(o) => (openPicker = o ? 'accent' : null)} />
 				<ColorWheel value={colorText} onchange={(c) => (colorText = c)} label="Text" open={openPicker === 'text'} ontoggle={(o) => (openPicker = o ? 'text' : null)} />
 				<ColorWheel value={colorTextMuted} onchange={(c) => (colorTextMuted = c)} label="Muted" open={openPicker === 'muted'} ontoggle={(o) => (openPicker = o ? 'muted' : null)} />
-			</div>
-		</SectionCard>
-
-		<!-- Display Options -->
-		<SectionCard title="Display">
-			<div class="space-y-4">
-				<!-- Header Section -->
-				<div class="space-y-3">
-					<h3 class="text-xs font-medium text-gray-500">Header</h3>
-					<ToggleOption label="Show Photo" description="Display your band/artist photo" bind:checked={showPhoto} />
-					<ToggleOption label="Show Logo" description="Display your logo image" bind:checked={showLogo} />
-					<ToggleOption label="Show Artist Name" description="Display your name/band name" bind:checked={showName} />
-					<ToggleOption label="Show Bio" description="Display your bio/tagline" bind:checked={showBio} />
-				</div>
-
-				<!-- Sections -->
-				<div class="space-y-3 border-t border-gray-800 pt-4">
-					<h3 class="text-xs font-medium text-gray-500">Sections</h3>
-					<ToggleOption label="Streaming Links" description="Spotify, Apple Music, YouTube, etc." bind:checked={showStreaming} />
-					<ToggleOption label="Social Media" description="Instagram, TikTok, Twitter, etc." bind:checked={showSocial} />
-					<ToggleOption label="Tour Dates" description="Upcoming shows and events" bind:checked={showTourDates} />
-					<ToggleOption label="Press Kit" description="Download link for press/promoters" bind:checked={showPressKit} />
-				</div>
 			</div>
 		</SectionCard>
 
@@ -155,9 +120,11 @@
 		<LayoutPreview
 			layout={Default}
 			profile={liveProfile}
+			settings={liveSettings}
 			links={data.links}
 			tourDates={data.tourDates}
-			pressKitAvailable={showPressKit}
+			blocks={data.blocks}
+			media={data.media}
 		/>
 	</div>
 </div>

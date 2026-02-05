@@ -5,12 +5,14 @@
 	let { data }: { data: PageData } = $props();
 
 	const profile = $derived(data.profile);
+	const settings = $derived(data.settings);
 	const links = $derived(data.links);
 	const tourDates = $derived(data.tourDates);
-	const pressKitAvailable = $derived(data.pressKitAvailable ?? false);
+	const blocks = $derived(data.blocks ?? []);
+	const media = $derived(data.media ?? []);
 
 	// SEO
-	const pageTitle = $derived(profile?.siteTitle || profile?.name || 'Artist');
+	const pageTitle = $derived(settings?.siteTitle || profile?.name || 'Artist');
 	const pageDescription = $derived(profile?.bio ?? `Check out ${profile?.name ?? 'this artist'} - links, music, and more.`);
 
 	// Layout components registry - add new layouts here
@@ -19,7 +21,7 @@
 		// Add more layouts: minimal: Minimal, bold: Bold, etc.
 	} as const;
 
-	const Layout = $derived(layouts[(profile?.layout as keyof typeof layouts) ?? 'default'] ?? Default);
+	const Layout = $derived(layouts[(settings?.layout as keyof typeof layouts) ?? 'default'] ?? Default);
 </script>
 
 <svelte:head>
@@ -41,21 +43,21 @@
 	{:else if profile?.logoUrl}
 		<meta name="twitter:image" content={profile.logoUrl} />
 	{/if}
-	{@html `<style>html, body { background-color: ${profile?.colorBg ?? '#0f0f0f'}; }</style>`}
+	{@html `<style>html, body { background-color: ${settings?.colorBg ?? '#0f0f0f'}; }</style>`}
 </svelte:head>
 
 <div class="pointer-events-none fixed inset-0 z-50 opacity-[0.04]" style="background-image: url('data:image/svg+xml,%3Csvg viewBox=%220 0 512 512%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noise%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%222%22 numOctaves=%224%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noise)%22/%3E%3C/svg%3E');"></div>
 <div
 	style="
-		--color-bg: {profile?.colorBg ?? '#0f0f0f'};
-		--color-card: {profile?.colorCard ?? '#1a1a1a'};
-		--color-accent: {profile?.colorAccent ?? '#8b5cf6'};
-		--color-text: {profile?.colorText ?? '#ffffff'};
-		--color-text-muted: {profile?.colorTextMuted ?? '#9ca3af'};
+		--color-bg: {settings?.colorBg ?? '#0f0f0f'};
+		--color-card: {settings?.colorCard ?? '#1a1a1a'};
+		--color-accent: {settings?.colorAccent ?? '#8b5cf6'};
+		--color-text: {settings?.colorText ?? '#ffffff'};
+		--color-text-muted: {settings?.colorTextMuted ?? '#9ca3af'};
 	"
 >
 	{#if profile}
-		<Layout {profile} {links} {tourDates} {pressKitAvailable} />
+		<Layout {profile} {settings} {links} {tourDates} {blocks} {media} />
 	{:else}
 		<!-- Empty State -->
 		<main class="flex min-h-screen items-center justify-center px-4" style="background-color: var(--color-bg)">

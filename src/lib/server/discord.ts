@@ -1,7 +1,7 @@
 import type { OverviewStats, PageViewStats, LinkClickStats } from './analytics';
 import type { SocialStats } from './social-stats';
 import { db } from './db';
-import { profile } from './schema';
+import { settings } from './schema';
 import { eq } from 'drizzle-orm';
 
 export interface DiscordReportData {
@@ -255,20 +255,20 @@ export async function sendScheduledReport(profileData: {
  * Gets profile from DB, sends report, updates lastSent timestamp
  */
 export async function sendScheduledDiscordReport(): Promise<{ success: boolean; error?: string }> {
-	const [profileData] = await db.select().from(profile).limit(1);
+	const [settingsData] = await db.select().from(settings).limit(1);
 
-	if (!profileData?.discordWebhookUrl || !profileData.discordEnabled) {
+	if (!settingsData?.discordWebhookUrl || !settingsData.discordEnabled) {
 		return { success: false, error: 'Discord not configured or disabled' };
 	}
 
-	const result = await sendScheduledReport(profileData);
+	const result = await sendScheduledReport(settingsData);
 
 	if (result.success) {
 		// Update lastSent timestamp
 		await db
-			.update(profile)
+			.update(settings)
 			.set({ discordLastSent: new Date() })
-			.where(eq(profile.id, profileData.id));
+			.where(eq(settings.id, settingsData.id));
 	}
 
 	return result;

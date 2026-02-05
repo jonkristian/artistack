@@ -1,7 +1,7 @@
 import * as v from 'valibot';
 import { command } from '$app/server';
 import { db } from '$lib/server/db';
-import { profile } from '$lib/server/schema';
+import { settings } from '$lib/server/schema';
 import { eq } from 'drizzle-orm';
 
 // ============================================================================
@@ -21,15 +21,6 @@ const appearanceSchema = v.object({
 	colorAccent: v.optional(v.nullable(hexColor)),
 	colorText: v.optional(v.nullable(hexColor)),
 	colorTextMuted: v.optional(v.nullable(hexColor)),
-	// Display options
-	showName: v.optional(v.boolean()),
-	showLogo: v.optional(v.boolean()),
-	showPhoto: v.optional(v.boolean()),
-	showBio: v.optional(v.boolean()),
-	showStreaming: v.optional(v.boolean()),
-	showSocial: v.optional(v.boolean()),
-	showTourDates: v.optional(v.boolean()),
-	showPressKit: v.optional(v.boolean()),
 	// Layout - restricted to valid options
 	layout: v.optional(v.picklist(['default', 'minimal', 'card']))
 });
@@ -38,13 +29,13 @@ const appearanceSchema = v.object({
 // Helper Functions
 // ============================================================================
 
-async function getOrCreateProfile() {
-	const [existing] = await db.select().from(profile).limit(1);
+async function getOrCreateSettings() {
+	const [existing] = await db.select().from(settings).limit(1);
 	if (existing) return existing;
 
 	const [created] = await db
-		.insert(profile)
-		.values({ name: 'Artist Name' })
+		.insert(settings)
+		.values({})
 		.returning();
 	return created;
 }
@@ -54,7 +45,7 @@ async function getOrCreateProfile() {
 // ============================================================================
 
 export const updateAppearance = command(appearanceSchema, async (data) => {
-	const existing = await getOrCreateProfile();
+	const existing = await getOrCreateSettings();
 
 	// Filter out undefined values
 	const updates: Record<string, unknown> = {};
@@ -65,10 +56,10 @@ export const updateAppearance = command(appearanceSchema, async (data) => {
 	}
 
 	const [updated] = await db
-		.update(profile)
+		.update(settings)
 		.set(updates)
-		.where(eq(profile.id, existing.id))
+		.where(eq(settings.id, existing.id))
 		.returning();
 
-	return { success: true, profile: updated };
+	return { success: true, settings: updated };
 });

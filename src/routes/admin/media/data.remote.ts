@@ -1,7 +1,8 @@
 import * as v from 'valibot';
 import { command } from '$app/server';
 import { db } from '$lib/server/db';
-import { media, pressKit } from '$lib/server/schema';
+import { media, blocks } from '$lib/server/schema';
+import type { ImagesBlockConfig } from '$lib/server/schema';
 import { eq, max } from 'drizzle-orm';
 import { unlink } from 'fs/promises';
 import { join } from 'path';
@@ -77,8 +78,18 @@ export const deleteMedia = command(deleteMediaSchema, async (id) => {
 		// Delete from database
 		await db.delete(media).where(eq(media.id, id));
 
-		// Also remove from press kit if present
-		await db.delete(pressKit).where(eq(pressKit.mediaId, id));
+		// Also remove from any images block configs that reference this media
+		const imageBlocks = await db.select().from(blocks).where(eq(blocks.type, 'images'));
+		for (const block of imageBlocks) {
+			const config = block.config as ImagesBlockConfig | null;
+			if (config?.mediaIds?.includes(id)) {
+				const updatedIds = config.mediaIds.filter((mid) => mid !== id);
+				await db
+					.update(blocks)
+					.set({ config: { ...config, mediaIds: updatedIds } })
+					.where(eq(blocks.id, block.id));
+			}
+		}
 
 		// Try to delete the optimized file
 		try {
@@ -113,58 +124,87 @@ export const deleteMedia = command(deleteMediaSchema, async (id) => {
 });
 
 // ============================================================================
-// Press Kit Commands
+// Press Kit Commands (using images block with displayAs: 'download')
 // ============================================================================
 
 const addToPressKitSchema = v.object({
-	mediaId: v.number()
+	mediaId: v.number(),
+	blockId: v.optional(v.nullable(v.number()))
 });
 
-const removeFromPressKitSchema = v.number(); // pressKit id
+const removeFromPressKitSchema = v.object({
+	mediaId: v.number(),
+	blockId: v.number()
+});
 
-const reorderPressKitSchema = v.array(v.object({
-	id: v.number(),
-	position: v.number()
-}));
+async function getOrCreatePressKitBlock(blockId?: number | null): Promise<number> {
+	// If a blockId is provided, use it
+	if (blockId) return blockId;
 
-export const addToPressKit = command(addToPressKitSchema, async ({ mediaId }) => {
-	// Check if already in press kit
-	const existing = await db
-		.select()
-		.from(pressKit)
-		.where(eq(pressKit.mediaId, mediaId))
-		.limit(1);
+	// Find existing download-type images block
+	const imageBlocks = await db.select().from(blocks).where(eq(blocks.type, 'images'));
+	const existing = imageBlocks.find((b) => {
+		const config = b.config as ImagesBlockConfig | null;
+		return config?.displayAs === 'download';
+	});
 
-	if (existing.length > 0) {
-		return { success: false, message: 'Already in press kit' };
-	}
+	if (existing) return existing.id;
 
-	// Get max position
+	// Create a new images block with download display
 	const [maxPos] = await db
-		.select({ maxPosition: max(pressKit.position) })
-		.from(pressKit);
+		.select({ maxPosition: max(blocks.position) })
+		.from(blocks);
 
 	const position = (maxPos?.maxPosition ?? -1) + 1;
 
 	const [created] = await db
-		.insert(pressKit)
-		.values({ mediaId, position })
+		.insert(blocks)
+		.values({
+			type: 'images',
+			label: 'Press Kit',
+			config: { displayAs: 'download', mediaIds: [] } satisfies ImagesBlockConfig,
+			position
+		})
 		.returning();
 
-	return { success: true, item: created };
-});
+	return created.id;
+}
 
-export const removeFromPressKit = command(removeFromPressKitSchema, async (id) => {
-	await db.delete(pressKit).where(eq(pressKit.id, id));
-	return { success: true };
-});
+export const addToPressKit = command(addToPressKitSchema, async ({ mediaId, blockId }) => {
+	const pressKitBlockId = await getOrCreatePressKitBlock(blockId);
 
-export const reorderPressKit = command(reorderPressKitSchema, async (items) => {
-	for (const item of items) {
-		await db
-			.update(pressKit)
-			.set({ position: item.position })
-			.where(eq(pressKit.id, item.id));
+	// Get current block config
+	const [block] = await db.select().from(blocks).where(eq(blocks.id, pressKitBlockId)).limit(1);
+	if (!block) return { success: false, message: 'Block not found' };
+
+	const config = (block.config as ImagesBlockConfig) ?? { displayAs: 'download', mediaIds: [] };
+	const mediaIds = config.mediaIds ?? [];
+
+	// Check if already in press kit
+	if (mediaIds.includes(mediaId)) {
+		return { success: false, message: 'Already in press kit' };
 	}
+
+	// Add media to block config
+	await db
+		.update(blocks)
+		.set({ config: { ...config, mediaIds: [...mediaIds, mediaId] } })
+		.where(eq(blocks.id, pressKitBlockId));
+
+	return { success: true, blockId: pressKitBlockId };
+});
+
+export const removeFromPressKit = command(removeFromPressKitSchema, async ({ mediaId, blockId }) => {
+	const [block] = await db.select().from(blocks).where(eq(blocks.id, blockId)).limit(1);
+	if (!block) return { success: false };
+
+	const config = (block.config as ImagesBlockConfig) ?? { displayAs: 'download', mediaIds: [] };
+	const mediaIds = (config.mediaIds ?? []).filter((id) => id !== mediaId);
+
+	await db
+		.update(blocks)
+		.set({ config: { ...config, mediaIds } })
+		.where(eq(blocks.id, blockId));
+
 	return { success: true };
 });

@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 import { db } from './db';
-import { profile } from './schema';
+import { settings } from './schema';
 import { env } from '$env/dynamic/private';
 
 interface SmtpConfig {
@@ -16,17 +16,17 @@ interface SmtpConfig {
 
 async function getSmtpConfig(): Promise<SmtpConfig | null> {
 	// Try database settings first
-	const [settings] = await db.select().from(profile).limit(1);
+	const [siteSettings] = await db.select().from(settings).limit(1);
 
-	if (settings?.smtpHost && settings?.smtpUser && settings?.smtpPassword) {
+	if (siteSettings?.smtpHost && siteSettings?.smtpUser && siteSettings?.smtpPassword) {
 		return {
-			host: settings.smtpHost,
-			port: settings.smtpPort ?? 587,
-			user: settings.smtpUser,
-			password: settings.smtpPassword,
-			fromAddress: settings.smtpFromAddress ?? settings.smtpUser,
-			fromName: settings.smtpFromName ?? 'Artistack',
-			tls: settings.smtpTls ?? true
+			host: siteSettings.smtpHost,
+			port: siteSettings.smtpPort ?? 587,
+			user: siteSettings.smtpUser,
+			password: siteSettings.smtpPassword,
+			fromAddress: siteSettings.smtpFromAddress ?? siteSettings.smtpUser,
+			fromName: siteSettings.smtpFromName ?? 'Artistack',
+			tls: siteSettings.smtpTls ?? true
 		};
 	}
 

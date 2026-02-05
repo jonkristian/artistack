@@ -1,16 +1,17 @@
 import { json } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
-import { profile } from '$lib/server/schema';
+import { profile, settings } from '$lib/server/schema';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async () => {
-	// Get profile data for dynamic manifest
+	// Get profile and settings data for dynamic manifest
 	const [profileData] = await db.select().from(profile).limit(1);
+	const [settingsData] = await db.select().from(settings).limit(1);
 
-	const name = profileData?.siteTitle || profileData?.name || 'Artistack';
+	const name = settingsData?.siteTitle || profileData?.name || 'Artistack';
 	const shortName = name.length > 12 ? name.substring(0, 12) : name;
-	const bgColor = profileData?.colorBg || '#0f0f0f';
-	const themeColor = profileData?.colorAccent || '#8b5cf6';
+	const bgColor = settingsData?.colorBg || '#0f0f0f';
+	const themeColor = settingsData?.colorAccent || '#8b5cf6';
 
 	const manifest = {
 		name,

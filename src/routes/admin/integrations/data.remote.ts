@@ -1,7 +1,7 @@
 import * as v from 'valibot';
 import { command } from '$app/server';
 import { db } from '$lib/server/db';
-import { profile } from '$lib/server/schema';
+import { settings } from '$lib/server/schema';
 import { eq } from 'drizzle-orm';
 import { sendDiscordReport } from '$lib/server/discord';
 import { getOverviewStats, getPageViewStats, getLinkClickStats } from '$lib/server/analytics';
@@ -53,13 +53,13 @@ const testWebhookSchema = v.object({
 // Helper Functions
 // ============================================================================
 
-async function getOrCreateProfile() {
-	const [existing] = await db.select().from(profile).limit(1);
+async function getOrCreateSettings() {
+	const [existing] = await db.select().from(settings).limit(1);
 	if (existing) return existing;
 
 	const [created] = await db
-		.insert(profile)
-		.values({ name: 'Artist Name' })
+		.insert(settings)
+		.values({})
 		.returning();
 	return created;
 }
@@ -132,10 +132,10 @@ export const saveGoogleConfig = command(googleConfigSchema, async (data) => {
 });
 
 export const updateDiscordSettings = command(discordSettingsSchema, async (data) => {
-	const existing = await getOrCreateProfile();
+	const existing = await getOrCreateSettings();
 
 	const [updated] = await db
-		.update(profile)
+		.update(settings)
 		.set({
 			discordWebhookUrl: data.discordWebhookUrl,
 			discordEnabled: data.discordEnabled,
@@ -143,10 +143,10 @@ export const updateDiscordSettings = command(discordSettingsSchema, async (data)
 			discordScheduleDay: data.discordScheduleDay,
 			discordScheduleTime: data.discordScheduleTime
 		})
-		.where(eq(profile.id, existing.id))
+		.where(eq(settings.id, existing.id))
 		.returning();
 
-	return { success: true, profile: updated };
+	return { success: true, settings: updated };
 });
 
 export const testDiscordWebhook = command(testWebhookSchema, async (data) => {

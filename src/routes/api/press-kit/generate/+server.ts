@@ -1,8 +1,9 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
-import { pressKit, media, profile, links } from '$lib/server/schema';
-import { eq, asc, and } from 'drizzle-orm';
+import { blocks, media, profile, links } from '$lib/server/schema';
+import type { ImagesBlockConfig } from '$lib/server/schema';
+import { eq, asc, inArray, and } from 'drizzle-orm';
 import { auth } from '$lib/server/auth';
 import { user } from '$lib/server/auth-schema';
 import archiver from 'archiver';
@@ -31,18 +32,30 @@ export const POST: RequestHandler = async ({ request }) => {
 		// No body or invalid JSON, use defaults
 	}
 
-	// Get press kit items (prefer original files for full quality)
+	// Find images blocks with displayAs: 'download' to get press kit media
+	const imageBlocks = await db
+		.select()
+		.from(blocks)
+		.where(eq(blocks.type, 'images'));
+
+	// Collect all mediaIds from download-type image blocks
+	const mediaIds: number[] = [];
+	for (const block of imageBlocks) {
+		const config = block.config as ImagesBlockConfig | null;
+		if (config?.displayAs === 'download' && config.mediaIds?.length) {
+			mediaIds.push(...config.mediaIds);
+		}
+	}
+
+	if (mediaIds.length === 0) {
+		return json({ error: 'Press kit is empty' }, { status: 400 });
+	}
+
+	// Fetch media items (prefer original files for full quality)
 	const items = await db
-		.select({
-			mediaId: pressKit.mediaId,
-			filename: media.filename,
-			url: media.url,
-			originalUrl: media.originalUrl,
-			mimeType: media.mimeType
-		})
-		.from(pressKit)
-		.innerJoin(media, eq(pressKit.mediaId, media.id))
-		.orderBy(asc(pressKit.position));
+		.select()
+		.from(media)
+		.where(inArray(media.id, mediaIds));
 
 	if (items.length === 0) {
 		return json({ error: 'Press kit is empty' }, { status: 400 });
@@ -126,8 +139,12 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		// Add each media file (use original when available for full quality)
+		// Maintain the order from mediaIds
 		let index = 1;
-		for (const item of items) {
+		for (const id of mediaIds) {
+			const item = items.find((m) => m.id === id);
+			if (!item) continue;
+
 			try {
 				// Prefer original file, fall back to optimized version
 				const fileUrl = item.originalUrl || item.url;

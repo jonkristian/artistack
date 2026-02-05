@@ -1,9 +1,10 @@
 import { redirect } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
-import { media, pressKit, profile } from '$lib/server/schema';
+import { media, blocks, profile } from '$lib/server/schema';
+import type { ImagesBlockConfig } from '$lib/server/schema';
 import { user } from '$lib/server/auth-schema';
 import { auth } from '$lib/server/auth';
-import { desc, eq, asc } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -22,26 +23,21 @@ export const load: PageServerLoad = async ({ request }) => {
 
 	const allMedia = await db.select().from(media).orderBy(desc(media.createdAt));
 
-	// Get press kit items with their media info
-	const pressKitItems = await db
-		.select({
-			id: pressKit.id,
-			mediaId: pressKit.mediaId,
-			position: pressKit.position,
-			media: {
-				id: media.id,
-				filename: media.filename,
-				url: media.url,
-				thumbnailUrl: media.thumbnailUrl,
-				mimeType: media.mimeType,
-				width: media.width,
-				height: media.height,
-				size: media.size
-			}
-		})
-		.from(pressKit)
-		.innerJoin(media, eq(pressKit.mediaId, media.id))
-		.orderBy(asc(pressKit.position));
+	// Find the download-type images block (press kit)
+	const imageBlocks = await db
+		.select()
+		.from(blocks)
+		.where(eq(blocks.type, 'images'));
+
+	// Find the press kit block (displayAs: 'download')
+	const pressKitBlock = imageBlocks.find((b) => {
+		const config = b.config as ImagesBlockConfig | null;
+		return config?.displayAs === 'download';
+	});
+
+	const pressKitMediaIds: number[] = pressKitBlock
+		? ((pressKitBlock.config as ImagesBlockConfig)?.mediaIds ?? [])
+		: [];
 
 	// Check if press kit zip exists
 	const pressKitZipPath = join(process.cwd(), 'data', 'uploads', 'press-kit.zip');
@@ -52,7 +48,8 @@ export const load: PageServerLoad = async ({ request }) => {
 
 	return {
 		media: allMedia,
-		pressKit: pressKitItems,
+		pressKitBlockId: pressKitBlock?.id ?? null,
+		pressKitMediaIds,
 		pressKitZipExists,
 		bio: profileData?.bio || null,
 		artistName: profileData?.name || 'Artist'

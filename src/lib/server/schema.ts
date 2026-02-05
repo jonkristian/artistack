@@ -1,41 +1,36 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core';
 
 // Artist profile (single row for single-artist setup)
 export const profile = sqliteTable('profile', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
 	name: text('name').notNull(),
-	siteTitle: text('site_title'), // Overrides name for browser title, falls back to name if empty
 	bio: text('bio'),
 	email: text('email'),
 	logoUrl: text('logo_url'),
 	logoShape: text('logo_shape').default('circle'), // circle, rounded, square
 	photoUrl: text('photo_url'),
 	photoShape: text('photo_shape').default('wide-rounded'), // circle, rounded, square, wide, wide-rounded
-	backgroundUrl: text('background_url'),
+	backgroundUrl: text('background_url')
+});
+
+// Site/app settings (single row singleton)
+export const settings = sqliteTable('settings', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	// Site
+	siteTitle: text('site_title'), // Overrides name for browser title, falls back to name if empty
+	layout: text('layout').default('default'),
+	locale: text('locale').default('nb-NO'),
 	// Theme colors
 	colorBg: text('color_bg').default('#0f0f0f'),
 	colorCard: text('color_card').default('#1a1a1a'),
 	colorAccent: text('color_accent').default('#8b5cf6'),
 	colorText: text('color_text').default('#ffffff'),
 	colorTextMuted: text('color_text_muted').default('#9ca3af'),
-	// Display options
-	showName: integer('show_name', { mode: 'boolean' }).default(true),
-	showLogo: integer('show_logo', { mode: 'boolean' }).default(true),
-	showPhoto: integer('show_photo', { mode: 'boolean' }).default(true),
-	showBio: integer('show_bio', { mode: 'boolean' }).default(true),
-	showStreaming: integer('show_streaming', { mode: 'boolean' }).default(true),
-	showSocial: integer('show_social', { mode: 'boolean' }).default(true),
-	showTourDates: integer('show_tour_dates', { mode: 'boolean' }).default(true),
-	showPressKit: integer('show_press_kit', { mode: 'boolean' }).default(false),
-	// Layout theme
-	layout: text('layout').default('default'),
-	// Locale for date/time formatting
-	locale: text('locale').default('nb-NO'),
-	// API Keys
-	googlePlacesApiKey: text('google_places_api_key'),
 	// Favicon & PWA
 	faviconUrl: text('favicon_url'), // Source image from media library
 	faviconGenerated: integer('favicon_generated', { mode: 'boolean' }).default(false),
+	// API Keys
+	googlePlacesApiKey: text('google_places_api_key'),
 	// SMTP Configuration
 	smtpHost: text('smtp_host'),
 	smtpPort: integer('smtp_port').default(587),
@@ -53,9 +48,21 @@ export const profile = sqliteTable('profile', {
 	discordLastSent: integer('discord_last_sent', { mode: 'timestamp' })
 });
 
+// Blocks - modular, reorderable page sections
+export const blocks = sqliteTable('blocks', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	type: text('type').notNull(), // 'profile', 'links', 'tour_dates', 'images'
+	label: text('label'), // user-facing label: 'Social Media', 'Tour 2026'
+	config: text('config', { mode: 'json' }).$type<BlockConfig>(),
+	position: integer('position').default(0),
+	visible: integer('visible', { mode: 'boolean' }).default(true),
+	createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
+});
+
 // Links with categories
 export const links = sqliteTable('links', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
+	blockId: integer('block_id').notNull(), // FK to blocks table
 	category: text('category').notNull(), // 'streaming', 'social', 'merch', 'other'
 	platform: text('platform').notNull(), // 'spotify', 'instagram', etc.
 	url: text('url').notNull(),
@@ -64,11 +71,14 @@ export const links = sqliteTable('links', {
 	embedData: text('embed_data', { mode: 'json' }).$type<EmbedData>(), // Embed info for supported platforms
 	position: integer('position').default(0),
 	visible: integer('visible', { mode: 'boolean' }).default(true)
-});
+}, (table) => [
+	index('links_block_id_idx').on(table.blockId)
+]);
 
 // Tour dates
 export const tourDates = sqliteTable('tour_dates', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
+	blockId: integer('block_id').notNull(), // FK to blocks table
 	date: text('date').notNull(),
 	time: text('time'), // Show time (e.g., "20:00")
 	title: text('title'), // Event/show title
@@ -78,7 +88,10 @@ export const tourDates = sqliteTable('tour_dates', {
 	eventUrl: text('event_url'), // Link to event page (Facebook, Bandsintown, etc.)
 	soldOut: integer('sold_out', { mode: 'boolean' }).default(false),
 	position: integer('position').default(0)
-});
+}, (table) => [
+	index('tour_dates_block_id_idx').on(table.blockId),
+	index('tour_dates_date_idx').on(table.date)
+]);
 
 // Media library
 export const media = sqliteTable('media', {
@@ -96,13 +109,6 @@ export const media = sqliteTable('media', {
 	createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
 });
 
-// Press kit - links to media library items
-export const pressKit = sqliteTable('press_kit', {
-	id: integer('id').primaryKey({ autoIncrement: true }),
-	mediaId: integer('media_id').notNull(), // FK to media table
-	position: integer('position').default(0)
-});
-
 // Page view tracking (GDPR compliant - no personal data)
 export const pageViews = sqliteTable('page_views', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
@@ -111,7 +117,10 @@ export const pageViews = sqliteTable('page_views', {
 	country: text('country'), // 2-letter country code from IP
 	userAgent: text('user_agent'), // Browser/device info
 	createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
-});
+}, (table) => [
+	index('page_views_created_at_idx').on(table.createdAt),
+	index('page_views_path_idx').on(table.path)
+]);
 
 // Link click tracking
 export const linkClicks = sqliteTable('link_clicks', {
@@ -120,7 +129,10 @@ export const linkClicks = sqliteTable('link_clicks', {
 	referrer: text('referrer'),
 	country: text('country'),
 	createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
-});
+}, (table) => [
+	index('link_clicks_link_id_idx').on(table.linkId),
+	index('link_clicks_created_at_idx').on(table.createdAt)
+]);
 
 // Integrations config
 export const integrations = sqliteTable('integrations', {
@@ -142,17 +154,49 @@ export interface Venue {
 	lng?: number;
 }
 
+// Block config types
+export interface ProfileBlockConfig {
+	showName?: boolean;    // default true
+	showLogo?: boolean;    // default true
+	showPhoto?: boolean;   // default true
+	showBio?: boolean;     // default true
+	showEmail?: boolean;   // default false
+}
+
+export interface LinksBlockConfig {
+	heading?: string;
+}
+
+export interface TourDatesBlockConfig {
+	showPastShows?: boolean;  // default true
+	heading?: string;
+}
+
+export interface ImagesBlockConfig {
+	mediaIds?: number[];
+	displayAs?: 'grid' | 'carousel' | 'download';  // default 'grid'
+	heading?: string;
+}
+
+export type BlockConfig =
+	| ProfileBlockConfig
+	| LinksBlockConfig
+	| TourDatesBlockConfig
+	| ImagesBlockConfig;
+
 // Types
 export type Profile = typeof profile.$inferSelect;
 export type NewProfile = typeof profile.$inferInsert;
+export type Settings = typeof settings.$inferSelect;
+export type NewSettings = typeof settings.$inferInsert;
+export type Block = typeof blocks.$inferSelect;
+export type NewBlock = typeof blocks.$inferInsert;
 export type Link = typeof links.$inferSelect;
 export type NewLink = typeof links.$inferInsert;
 export type TourDate = typeof tourDates.$inferSelect;
 export type NewTourDate = typeof tourDates.$inferInsert;
 export type Media = typeof media.$inferSelect;
 export type NewMedia = typeof media.$inferInsert;
-export type PressKitItem = typeof pressKit.$inferSelect;
-export type NewPressKitItem = typeof pressKit.$inferInsert;
 export type Integration = typeof integrations.$inferSelect;
 export type NewIntegration = typeof integrations.$inferInsert;
 export type PageView = typeof pageViews.$inferSelect;
