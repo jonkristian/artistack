@@ -1,5 +1,6 @@
 export { default as ListItem } from './ListItem.svelte';
 export { default as SortableList } from './SortableList.svelte';
+export { default as SortableBlockList } from './SortableBlockList.svelte';
 export { default as ToggleOption } from './ToggleOption.svelte';
 export { default as FormInput } from './FormInput.svelte';
 export { default as EditableText } from './EditableText.svelte';

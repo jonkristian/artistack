@@ -1,7 +1,7 @@
 import * as v from 'valibot';
 import { form, command } from '$app/server';
 import { db } from '$lib/server/db';
-import { profile, links, tourDates } from '$lib/server/schema';
+import { profile, links, tourDates, blocks } from '$lib/server/schema';
 import { eq, asc } from 'drizzle-orm';
 import {
 	fetchYouTubeMetadata,
@@ -14,7 +14,7 @@ import {
 	isBandcampUrl,
 	detectPlatformFromUrl
 } from '$lib/server/oembed';
-import type { SpotifyEmbedData, YouTubeEmbedData, BandcampEmbedData, EmbedData } from '$lib/server/schema';
+import type { SpotifyEmbedData, YouTubeEmbedData, BandcampEmbedData, EmbedData, BlockConfig } from '$lib/server/schema';
 
 // ============================================================================
 // Validation Schemas
@@ -28,6 +28,7 @@ const profileSchema = v.object({
 
 const linkSchema = v.object({
 	url: v.pipe(v.string(), v.url('Please enter a valid URL')),
+	blockId: v.optional(v.number()),
 	category: v.optional(v.picklist(['social', 'streaming', 'merch', 'other'])),
 	label: v.optional(v.string())
 });
@@ -50,7 +51,8 @@ const tourDateFormSchema = v.object({
 	venueCity: v.pipe(v.string(), v.nonEmpty('City is required')),
 	lineup: v.optional(v.string()),
 	ticketUrl: v.optional(v.string()),
-	eventUrl: v.optional(v.string())
+	eventUrl: v.optional(v.string()),
+	blockId: v.optional(v.number())
 });
 
 const reorderSchema = v.array(
@@ -61,6 +63,32 @@ const reorderSchema = v.array(
 );
 
 const idSchema = v.number();
+
+// ============================================================================
+// Block Schemas
+// ============================================================================
+
+const addBlockSchema = v.object({
+	type: v.picklist(['profile', 'links', 'tour_dates', 'images']),
+	label: v.optional(v.string()),
+	config: v.optional(v.any())
+});
+
+const updateBlockSchema = v.object({
+	id: v.number(),
+	label: v.optional(v.string()),
+	config: v.optional(v.any()),
+	visible: v.optional(v.boolean())
+});
+
+const deleteBlockSchema = v.number();
+
+const reorderBlocksSchema = v.array(
+	v.object({
+		id: v.number(),
+		position: v.number()
+	})
+);
 
 // ============================================================================
 // Helper Functions
@@ -80,6 +108,74 @@ async function getOrCreateProfile() {
 		.returning();
 	return created;
 }
+
+// ============================================================================
+// Block Commands
+// ============================================================================
+
+export const addBlock = command(addBlockSchema, async ({ type, label, config }) => {
+	const existing = await db.select().from(blocks);
+	const position = getNextPosition(existing);
+
+	const [created] = await db
+		.insert(blocks)
+		.values({
+			type,
+			label: label || null,
+			config: config || null,
+			position,
+			visible: true
+		})
+		.returning();
+
+	return { success: true, block: created };
+});
+
+export const updateBlock = command(updateBlockSchema, async ({ id, label, config, visible }) => {
+	const updateData: Record<string, unknown> = {};
+
+	if (label !== undefined) updateData.label = label;
+	if (config !== undefined) updateData.config = config;
+	if (visible !== undefined) updateData.visible = visible;
+
+	if (Object.keys(updateData).length === 0) {
+		throw new Error('No fields to update');
+	}
+
+	const [updated] = await db
+		.update(blocks)
+		.set(updateData)
+		.where(eq(blocks.id, id))
+		.returning();
+
+	if (!updated) {
+		throw new Error('Block not found');
+	}
+
+	return { success: true, block: updated };
+});
+
+export const deleteBlock = command(deleteBlockSchema, async (id) => {
+	// Delete associated links and tour dates
+	await db.delete(links).where(eq(links.blockId, id));
+	await db.delete(tourDates).where(eq(tourDates.blockId, id));
+
+	const [deleted] = await db.delete(blocks).where(eq(blocks.id, id)).returning();
+
+	if (!deleted) {
+		throw new Error('Block not found');
+	}
+
+	return { success: true };
+});
+
+export const reorderBlocks = command(reorderBlocksSchema, async (items) => {
+	for (const item of items) {
+		await db.update(blocks).set({ position: item.position }).where(eq(blocks.id, item.id));
+	}
+
+	return { success: true };
+});
 
 // ============================================================================
 // Profile Forms
@@ -113,7 +209,25 @@ export const saveProfile = command(profileSchema, async ({ name, bio, email }) =
 // Link Forms & Commands
 // ============================================================================
 
-export const addLink = form(linkSchema, async ({ url, category, label }) => {
+export const addLink = form(linkSchema, async ({ url, blockId, category, label }) => {
+	// If no blockId provided, find or create a links block
+	if (!blockId) {
+		const [existingBlock] = await db.select().from(blocks).where(eq(blocks.type, 'links')).limit(1);
+		if (existingBlock) {
+			blockId = existingBlock.id;
+		} else {
+			const allBlocks = await db.select().from(blocks);
+			const position = getNextPosition(allBlocks);
+			const [newBlock] = await db.insert(blocks).values({
+				type: 'links',
+				label: 'Links',
+				position,
+				visible: true
+			}).returning();
+			blockId = newBlock.id;
+		}
+	}
+
 	// Auto-detect platform and category from URL if not provided
 	let detectedPlatform: string | undefined;
 	let detectedCategory = category;
@@ -121,11 +235,9 @@ export const addLink = form(linkSchema, async ({ url, category, label }) => {
 	const detected = detectPlatformFromUrl(url);
 	if (detected) {
 		detectedPlatform = detected.platform;
-		// Map 'event' category to 'other' for links (event is only used for tour date URLs)
 		const mappedCategory = detected.category === 'event' ? 'other' : detected.category;
 		detectedCategory = detectedCategory || mappedCategory;
 	} else {
-		// Fallback to 'other' category and extract domain as platform
 		detectedCategory = detectedCategory || 'other';
 		try {
 			const urlObj = new URL(url);
@@ -146,7 +258,6 @@ export const addLink = form(linkSchema, async ({ url, category, label }) => {
 			thumbnailUrl = metadata.thumbnailUrl;
 			if (!fetchedLabel) fetchedLabel = metadata.title;
 		}
-		// Create YouTube embed data
 		const videoId = extractYouTubeVideoId(url);
 		if (videoId) {
 			embedData = {
@@ -161,7 +272,6 @@ export const addLink = form(linkSchema, async ({ url, category, label }) => {
 			thumbnailUrl = metadata.thumbnailUrl;
 			if (!fetchedLabel) fetchedLabel = metadata.title;
 		}
-		// Create Spotify embed data
 		const spotifyInfo = extractSpotifyEmbedInfo(url);
 		if (spotifyInfo) {
 			embedData = {
@@ -185,9 +295,9 @@ export const addLink = form(linkSchema, async ({ url, category, label }) => {
 					type: metadata.embedType,
 					enabled: true,
 					size: 'large',
-					bgColor: null, // Use theme color
-					linkColor: null, // Use theme color
-					tracklist: true, // Show tracklist for visible play controls
+					bgColor: null,
+					linkColor: null,
+					tracklist: true,
 					artwork: 'small'
 				} satisfies BandcampEmbedData;
 			}
@@ -201,6 +311,7 @@ export const addLink = form(linkSchema, async ({ url, category, label }) => {
 	const [created] = await db
 		.insert(links)
 		.values({
+			blockId,
 			category: detectedCategory || 'other',
 			platform: detectedPlatform || 'link',
 			url,
@@ -223,6 +334,113 @@ export const deleteLink = command(idSchema, async (id) => {
 	}
 
 	return { success: true };
+});
+
+// Command version of addLink for programmatic use
+const createLinkSchema = v.object({
+	url: v.pipe(v.string(), v.url('Please enter a valid URL')),
+	blockId: v.number(),
+	category: v.optional(v.picklist(['social', 'streaming', 'merch', 'other'])),
+	label: v.optional(v.string())
+});
+
+export const createLink = command(createLinkSchema, async ({ url, blockId, category, label }) => {
+	// Auto-detect platform and category from URL if not provided
+	let detectedPlatform: string | undefined;
+	let detectedCategory = category;
+
+	const detected = detectPlatformFromUrl(url);
+	if (detected) {
+		detectedPlatform = detected.platform;
+		const mappedCategory = detected.category === 'event' ? 'other' : detected.category;
+		detectedCategory = detectedCategory || mappedCategory;
+	} else {
+		detectedCategory = detectedCategory || 'other';
+		try {
+			const urlObj = new URL(url);
+			detectedPlatform = urlObj.hostname.replace('www.', '').split('.')[0];
+		} catch {
+			detectedPlatform = 'link';
+		}
+	}
+
+	// Auto-fetch metadata for supported URLs
+	let thumbnailUrl: string | null = null;
+	let fetchedLabel = label || null;
+	let embedData: EmbedData | null = null;
+
+	if (isYouTubeUrl(url)) {
+		const metadata = await fetchYouTubeMetadata(url);
+		if (metadata) {
+			thumbnailUrl = metadata.thumbnailUrl;
+			if (!fetchedLabel) fetchedLabel = metadata.title;
+		}
+		const videoId = extractYouTubeVideoId(url);
+		if (videoId) {
+			embedData = {
+				platform: 'youtube',
+				id: videoId,
+				enabled: true
+			} satisfies YouTubeEmbedData;
+		}
+	} else if (isSpotifyUrl(url)) {
+		const metadata = await fetchSpotifyMetadata(url);
+		if (metadata) {
+			thumbnailUrl = metadata.thumbnailUrl;
+			if (!fetchedLabel) fetchedLabel = metadata.title;
+		}
+		const spotifyInfo = extractSpotifyEmbedInfo(url);
+		if (spotifyInfo) {
+			embedData = {
+				platform: 'spotify',
+				id: spotifyInfo.id,
+				type: spotifyInfo.type,
+				enabled: true,
+				theme: 'dark',
+				compact: false
+			} satisfies SpotifyEmbedData;
+		}
+	} else if (isBandcampUrl(url)) {
+		const metadata = await fetchBandcampMetadata(url);
+		if (metadata) {
+			thumbnailUrl = metadata.thumbnailUrl;
+			if (!fetchedLabel) fetchedLabel = metadata.title;
+			if (metadata.embedId && metadata.embedType) {
+				embedData = {
+					platform: 'bandcamp',
+					id: metadata.embedId,
+					type: metadata.embedType,
+					enabled: true,
+					size: 'large',
+					bgColor: null,
+					linkColor: null,
+					tracklist: true,
+					artwork: 'small'
+				} satisfies BandcampEmbedData;
+			}
+		}
+	}
+
+	// Get next position
+	const existing = await db.select().from(links);
+	const position = getNextPosition(existing);
+
+	const [created] = await db
+		.insert(links)
+		.values({
+			blockId,
+			category: detectedCategory || 'other',
+			platform: detectedPlatform || 'link',
+			url,
+			label: fetchedLabel,
+			thumbnailUrl,
+			embedData,
+			position,
+			visible: true
+		})
+		.returning();
+
+	return { success: true, link: created };
 });
 
 // Embed data schemas for different platforms
@@ -289,7 +507,6 @@ export const updateLink = command(updateLinkSchema, async ({ id, label, url, emb
 });
 
 export const reorderLinks = command(reorderSchema, async (items) => {
-	// Use a transaction-like approach - update all positions
 	for (const item of items) {
 		await db.update(links).set({ position: item.position }).where(eq(links.id, item.id));
 	}
@@ -301,12 +518,29 @@ export const reorderLinks = command(reorderSchema, async (items) => {
 // Tour Date Forms & Commands
 // ============================================================================
 
-export const addTourDate = form(tourDateFormSchema, async ({ date, time, title, venueName, venueCity, lineup, ticketUrl, eventUrl }) => {
+export const addTourDate = form(tourDateFormSchema, async ({ date, time, title, venueName, venueCity, lineup, ticketUrl, eventUrl, blockId }) => {
+	// If no blockId provided, find or create a tour_dates block
+	if (!blockId) {
+		const [existingBlock] = await db.select().from(blocks).where(eq(blocks.type, 'tour_dates')).limit(1);
+		if (existingBlock) {
+			blockId = existingBlock.id;
+		} else {
+			const allBlocks = await db.select().from(blocks);
+			const position = getNextPosition(allBlocks);
+			const [newBlock] = await db.insert(blocks).values({
+				type: 'tour_dates',
+				label: 'Tour Dates',
+				position,
+				visible: true
+			}).returning();
+			blockId = newBlock.id;
+		}
+	}
+
 	// Get next position
 	const existing = await db.select().from(tourDates);
 	const position = getNextPosition(existing);
 
-	// Combine venue fields into object
 	const venue = {
 		name: venueName,
 		city: venueCity
@@ -315,6 +549,7 @@ export const addTourDate = form(tourDateFormSchema, async ({ date, time, title, 
 	const [created] = await db
 		.insert(tourDates)
 		.values({
+			blockId,
 			date,
 			time: time || null,
 			title: title || null,
@@ -348,16 +583,38 @@ const createTourDateSchema = v.object({
 	lineup: v.optional(v.nullable(v.string())),
 	ticketUrl: v.optional(v.nullable(v.string())),
 	eventUrl: v.optional(v.nullable(v.string())),
-	soldOut: v.optional(v.boolean())
+	soldOut: v.optional(v.boolean()),
+	blockId: v.optional(v.number())
 });
 
 export const createTourDate = command(createTourDateSchema, async (data) => {
+	let blockId = data.blockId;
+
+	// If no blockId provided, find or create a tour_dates block
+	if (!blockId) {
+		const [existingBlock] = await db.select().from(blocks).where(eq(blocks.type, 'tour_dates')).limit(1);
+		if (existingBlock) {
+			blockId = existingBlock.id;
+		} else {
+			const allBlocks = await db.select().from(blocks);
+			const position = getNextPosition(allBlocks);
+			const [newBlock] = await db.insert(blocks).values({
+				type: 'tour_dates',
+				label: 'Tour Dates',
+				position,
+				visible: true
+			}).returning();
+			blockId = newBlock.id;
+		}
+	}
+
 	const existing = await db.select().from(tourDates);
 	const position = getNextPosition(existing);
 
 	const [created] = await db
 		.insert(tourDates)
 		.values({
+			blockId,
 			date: data.date,
 			time: data.time || null,
 			title: data.title || null,
@@ -443,7 +700,6 @@ export const updateProfileImage = command(imageUrlSchema, async ({ type, url, sh
 		[urlFieldMap[type]]: url
 	};
 
-	// Also update shape if provided (and field exists)
 	const shapeField = shapeFieldMap[type];
 	if (shape && shapeField) {
 		updateData[shapeField] = shape;

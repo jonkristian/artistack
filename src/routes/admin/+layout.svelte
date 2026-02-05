@@ -3,9 +3,17 @@
 	import { authClient } from '$lib/auth-client';
 	import { goto } from '$app/navigation';
 	import Toaster from '$lib/components/ui/Toaster.svelte';
+	import { save, undo } from '$lib/stores/pendingChanges.svelte';
+	import { getState } from '$lib/stores/pageDraft.svelte';
+	import { toast } from '$lib/stores/toast.svelte';
 	import type { LayoutData } from './$types';
 
 	let { children, data }: { children: any; data: LayoutData } = $props();
+
+	// Access draft state directly for proper reactivity
+	const draftState = getState();
+	const isDirty = $derived(draftState.isDirty);
+	const isSaving = $derived(draftState.saving);
 
 	const currentPath = $derived($page.url.pathname);
 	const artistName = $derived(data.profile?.name ?? 'Artist');
@@ -24,6 +32,19 @@
 	async function signOut() {
 		await authClient.signOut();
 		goto('/');
+	}
+
+	async function handleSave() {
+		try {
+			await save();
+			toast.success('Changes saved');
+		} catch (e) {
+			toast.error('Failed to save changes');
+		}
+	}
+
+	function handleUndo() {
+		undo();
 	}
 </script>
 
@@ -92,6 +113,39 @@
 
 		<!-- Toasts -->
 		<Toaster />
+
+		<!-- Save/Undo Buttons -->
+		{#if isDirty}
+			<div class="border-t border-gray-800 p-3">
+				<div class="flex gap-2">
+					<button
+						onclick={handleSave}
+						disabled={isSaving}
+						class="flex flex-1 items-center justify-center gap-2 rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700 disabled:opacity-50"
+					>
+						{#if isSaving}
+							<svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+								<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+							</svg>
+							Saving...
+						{:else}
+							Save Changes
+						{/if}
+					</button>
+					<button
+						onclick={handleUndo}
+						disabled={isSaving}
+						title="Undo changes"
+						class="flex items-center justify-center rounded-lg bg-gray-700 px-3 py-2 text-gray-300 transition-colors hover:bg-gray-600 disabled:opacity-50"
+					>
+						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+						</svg>
+					</button>
+				</div>
+			</div>
+		{/if}
 
 		<!-- Bottom Actions -->
 		<div class="border-t border-gray-800 p-3">

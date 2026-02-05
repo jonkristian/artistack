@@ -41,6 +41,7 @@
 			e.dataTransfer.dropEffect = 'move';
 		}
 
+		// Determine if dropping before or after based on mouse position
 		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
 		const midpoint = rect.top + rect.height / 2;
 		const position = e.clientY < midpoint ? 'before' : 'after';
@@ -49,8 +50,9 @@
 	}
 
 	function handleDragLeave(e: DragEvent) {
+		// Only clear if leaving the container entirely
 		const relatedTarget = e.relatedTarget as HTMLElement;
-		if (!relatedTarget?.closest('.sortable-list')) {
+		if (!relatedTarget?.closest('.sortable-block-list')) {
 			dropPosition = null;
 		}
 	}
@@ -68,6 +70,7 @@
 			targetIndex += 1;
 		}
 
+		// Adjust for the removal of the dragged item
 		if (draggedIndex < targetIndex) {
 			targetIndex -= 1;
 		}
@@ -106,7 +109,7 @@
 </script>
 
 <div
-	class="sortable-list space-y-1"
+	class="sortable-block-list space-y-2"
 	ondrop={handleDrop}
 	ondragover={(e) => e.preventDefault()}
 >
@@ -127,46 +130,57 @@
 </div>
 
 <style>
-	.sortable-list {
+	.sortable-block-list {
 		position: relative;
 	}
 
 	.sortable-item {
 		position: relative;
-		transition: transform 0.15s ease, opacity 0.15s ease;
+		transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1), opacity 0.2s ease;
 	}
 
 	.sortable-item.dragging {
-		opacity: 0.4;
+		opacity: 0.5;
+		transform: scale(0.98);
 	}
 
+	/* Drop indicators */
 	.sortable-item.drop-before::before,
 	.sortable-item.drop-after::after {
 		content: '';
 		position: absolute;
 		left: 0;
 		right: 0;
-		height: 2px;
+		height: 3px;
 		background: #8b5cf6;
-		border-radius: 1px;
+		border-radius: 2px;
+		box-shadow: 0 0 8px rgba(139, 92, 246, 0.5);
+		animation: pulse 1s ease-in-out infinite;
 	}
 
 	.sortable-item.drop-before::before {
-		top: -3px;
+		top: -5px;
 	}
 
 	.sortable-item.drop-after::after {
-		bottom: -3px;
+		bottom: -5px;
 	}
 
+	@keyframes pulse {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.6; }
+	}
+
+	/* Push items out of the way */
 	.sortable-item.drop-before {
-		transform: translateY(2px);
+		transform: translateY(4px);
 	}
 
 	.sortable-item.drop-after {
-		transform: translateY(-2px);
+		transform: translateY(-4px);
 	}
 
+	/* Handle styling */
 	:global([data-drag-handle]) {
 		cursor: grab;
 		touch-action: none;

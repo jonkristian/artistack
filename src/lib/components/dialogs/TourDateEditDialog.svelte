@@ -1,17 +1,18 @@
 <script lang="ts">
 	import type { TourDate, Venue } from '$lib/server/schema';
-	import { invalidateAll } from '$app/navigation';
 	import { toast } from '$lib/stores/toast.svelte';
-	import { createTourDate, updateTourDate, deleteTourDate } from '../../../routes/admin/data.remote';
+	import { getTempId } from '$lib/stores/pageDraft.svelte';
 	import VenueAutocomplete from '../inputs/VenueAutocomplete.svelte';
 
 	interface Props {
 		tourDate: TourDate | 'new' | null;
+		tourDates: TourDate[];
+		blockId?: number | null;
 		googleApiKey?: string | null;
 		onclose: () => void;
 	}
 
-	let { tourDate, googleApiKey, onclose }: Props = $props();
+	let { tourDate, tourDates, blockId, googleApiKey, onclose }: Props = $props();
 
 	// Derived state
 	const isNew = $derived(tourDate === 'new');
@@ -26,7 +27,6 @@
 	let ticketUrl = $state('');
 	let eventUrl = $state('');
 	let soldOut = $state(false);
-	let saving = $state(false);
 
 	// Dialog ref
 	let dialogEl: HTMLDialogElement;
@@ -34,7 +34,6 @@
 	// Initialize form when tourDate changes
 	$effect(() => {
 		if (tourDate === 'new') {
-			// Reset form for new entry
 			date = '';
 			time = '';
 			title = '';
@@ -45,7 +44,6 @@
 			soldOut = false;
 			dialogEl?.showModal();
 		} else if (tourDate) {
-			// Populate form for editing
 			date = tourDate.date;
 			time = tourDate.time || '';
 			title = tourDate.title || '';
@@ -58,12 +56,10 @@
 		}
 	});
 
-	// Called by buttons to close the dialog
 	function closeDialog() {
 		dialogEl?.close();
 	}
 
-	// Called by native dialog close event - notifies parent
 	function handleDialogClose() {
 		onclose();
 	}
@@ -72,59 +68,56 @@
 		venue = newVenue;
 	}
 
-	async function handleSave() {
+	function handleSave() {
 		if (!date || !venue.name) return;
 
-		saving = true;
-		try {
-			if (isNew) {
-				await createTourDate({
-					date,
-					time: time || null,
-					title: title || null,
-					venue,
-					lineup: lineup || null,
-					ticketUrl: ticketUrl || null,
-					eventUrl: eventUrl || null,
-					soldOut
-				});
-				toast.success('Tour date added');
-			} else if (tourDate && tourDate !== 'new') {
-				await updateTourDate({
-					id: tourDate.id,
-					date,
-					time: time || null,
-					title: title || null,
-					venue,
-					lineup: lineup || null,
-					ticketUrl: ticketUrl || null,
-					eventUrl: eventUrl || null,
-					soldOut
-				});
-				toast.success('Tour date updated');
-			}
-
-			await invalidateAll();
-			closeDialog();
-		} catch (e) {
-			toast.error('Failed to save tour date');
-		} finally {
-			saving = false;
+		if (isNew) {
+			// Add new tour date
+			const blockTourDates = tourDates.filter(t => t.blockId === blockId);
+			const newTourDate: TourDate = {
+				id: getTempId(),
+				blockId: blockId ?? 0,
+				date,
+				time: time || null,
+				title: title || null,
+				venue,
+				lineup: lineup || null,
+				ticketUrl: ticketUrl || null,
+				eventUrl: eventUrl || null,
+				soldOut,
+				position: blockTourDates.length
+			};
+			tourDates.push(newTourDate);
+			tourDates.length = tourDates.length; // trigger reactivity
+			toast.info('Tour date added');
+		} else if (tourDate && tourDate !== 'new') {
+			// Update existing tour date directly
+			tourDate.date = date;
+			tourDate.time = time || null;
+			tourDate.title = title || null;
+			tourDate.venue = venue;
+			tourDate.lineup = lineup || null;
+			tourDate.ticketUrl = ticketUrl || null;
+			tourDate.eventUrl = eventUrl || null;
+			tourDate.soldOut = soldOut;
+			tourDates.length = tourDates.length; // trigger reactivity
+			toast.info('Tour date updated');
 		}
+
+		closeDialog();
 	}
 
-	async function handleDelete() {
+	function handleDelete() {
 		if (isNew || !tourDate || tourDate === 'new') return;
 		if (!confirm('Delete this tour date?')) return;
 
-		try {
-			await deleteTourDate(tourDate.id);
-			await invalidateAll();
-			toast.success('Tour date deleted');
-			closeDialog();
-		} catch (e) {
-			toast.error('Failed to delete tour date');
+		const index = tourDates.findIndex(t => t.id === tourDate.id);
+		if (index !== -1) {
+			tourDates.splice(index, 1);
+			tourDates.length = tourDates.length;
 		}
+		toast.info('Tour date deleted');
+		closeDialog();
 	}
 </script>
 
@@ -291,10 +284,10 @@
 					</button>
 					<button
 						onclick={handleSave}
-						disabled={saving || !date || !venue.name}
+						disabled={!date || !venue.name}
 						class="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
 					>
-						{saving ? 'Saving...' : isNew ? 'Add Date' : 'Save'}
+						{isNew ? 'Add' : 'Apply'}
 					</button>
 				</div>
 			</div>
