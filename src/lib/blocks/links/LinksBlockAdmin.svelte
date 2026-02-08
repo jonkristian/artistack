@@ -180,6 +180,23 @@
       {/snippet}
     </SortableList>
   {:else}
-    <p class="py-2 text-center text-xs text-gray-600">No links yet</p>
+    <div
+      class="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-600 px-4 py-8 text-center"
+    >
+      <svg
+        class="mb-2 h-8 w-8 text-gray-500"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="1.5"
+          d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+        />
+      </svg>
+      <span class="text-sm text-gray-400">Paste a URL above to add a link</span>
+    </div>
   {/if}
 </div>

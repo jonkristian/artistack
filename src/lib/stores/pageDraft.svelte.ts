@@ -8,15 +8,8 @@
 
 // ===== State =====
 
-const defaultData = {
-  profile: { id: 0, name: '' },
-  blocks: [] as any[],
-  links: [] as any[],
-  tourDates: [] as any[]
-};
-
 let snapshot: Record<string, any> = {};
-let data = $state<Record<string, any>>({ ...defaultData });
+let data = $state<Record<string, any>>({});
 let saving = $state(false);
 let tempIdCounter = $state(-1);
 let initialized = $state(false);
@@ -226,14 +219,8 @@ export function undo() {
 export function reset() {
   snapshot = {};
   snapshotJson = '{}';
-  // Update data in place to preserve reactivity references
   for (const key of Object.keys(data)) {
-    if (!(key in defaultData)) {
-      delete data[key];
-    }
-  }
-  for (const [key, value] of Object.entries(defaultData)) {
-    data[key] = Array.isArray(value) ? [...value] : { ...value };
+    delete data[key];
   }
   saving = false;
   tempIdCounter = -1;

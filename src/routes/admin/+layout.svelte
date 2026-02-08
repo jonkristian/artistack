@@ -1,18 +1,45 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { authClient } from '$lib/auth-client';
-  import { goto } from '$app/navigation';
-  import { onMount } from 'svelte';
+  import { goto, invalidateAll } from '$app/navigation';
+  import { onMount, tick, untrack } from 'svelte';
   import Toaster from '$lib/components/ui/Toaster.svelte';
   import { publish } from '$lib/stores/pendingChanges.svelte';
-  import { isDirty as checkDirty, undo } from '$lib/stores/pageDraft.svelte';
+  import * as draft from '$lib/stores/pageDraft.svelte';
+  import { registerPublishHandler } from '$lib/stores/pendingChanges.svelte';
   import { toast } from '$lib/stores/toast.svelte';
+  import { publishAllChanges, buildDraftFromServerData } from './publishDraft';
+  import type { UnifiedDraftData } from './publishDraft';
   import type { LayoutData } from './$types';
 
   let { children, data }: { children: any; data: LayoutData } = $props();
 
+  // Initialize unified draft store once at layout creation
+  untrack(() => {
+    draft.initialize(buildDraftFromServerData(data));
+  });
+
+  const draftData = draft.getData<UnifiedDraftData>();
+
+  // Register unified publish handler (once, at layout level)
+  registerPublishHandler(async () => {
+    await publishAllChanges(draftData);
+    await invalidateAll();
+    await tick();
+    draft.initialize(buildDraftFromServerData(data));
+  });
+
   // Use direct function calls in $derived for proper signal tracking
-  const isDirty = $derived(checkDirty());
+  const isDirty = $derived(draft.isDirty());
+
+  // Per-section dirty indicators for nav dots
+  const dashboardDirty = $derived(
+    draft.hasChanges('profile') ||
+      draft.hasChanges('blocks') ||
+      draft.hasChanges('links') ||
+      draft.hasChanges('tourDates')
+  );
+  const appearanceDirty = $derived(draft.hasChanges('appearance'));
 
   // Local updating state for minimum spinner duration
   let isUpdating = $state(false);
@@ -30,6 +57,13 @@
     { href: '/admin/users', label: 'Users', icon: 'users' },
     { href: '/admin/settings', label: 'Settings', icon: 'settings' }
   ];
+
+  // Map nav hrefs to their dirty state
+  function isNavDirty(href: string): boolean {
+    if (href === '/admin') return dashboardDirty;
+    if (href === '/admin/appearance') return appearanceDirty;
+    return false;
+  }
 
   onMount(() => {
     // Warn user about unsaved changes on page leave
@@ -172,6 +206,9 @@
                 </svg>
               {/if}
               {item.label}
+              {#if isNavDirty(item.href)}
+                <span class="h-2 w-2 rounded-full bg-purple-500"></span>
+              {/if}
             </a>
           </li>
         {/each}
@@ -184,7 +221,7 @@
     <!-- Update & Undo Buttons -->
     <div class="flex gap-2 p-3">
       <button
-        onclick={undo}
+        onclick={draft.undo}
         disabled={!isDirty || isUpdating}
         class="flex items-center justify-center rounded-lg bg-gray-800 px-3 py-2 text-gray-400 transition-all duration-300 hover:text-white hover:brightness-90 disabled:cursor-not-allowed disabled:opacity-30"
         title="Undo changes"

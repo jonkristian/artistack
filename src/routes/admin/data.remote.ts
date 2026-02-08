@@ -299,7 +299,7 @@ export const addLink = form(linkSchema, async ({ url, blockId, category, label }
           size: 'large',
           bgColor: null,
           linkColor: null,
-          tracklist: true,
+          tracklist: false,
           artwork: 'small'
         } satisfies BandcampEmbedData;
       }
@@ -424,7 +424,7 @@ export const createLink = command(
             size: 'large',
             bgColor: null,
             linkColor: null,
-            tracklist: true,
+            tracklist: false,
             artwork: 'small'
           } satisfies BandcampEmbedData;
         }

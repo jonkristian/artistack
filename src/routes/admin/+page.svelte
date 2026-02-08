@@ -9,47 +9,16 @@
   import { tick, untrack } from 'svelte';
   import { toast } from '$lib/stores/toast.svelte';
   import * as draft from '$lib/stores/pageDraft.svelte';
-  import { registerPublishHandler, clearPublishHandler } from '$lib/stores/pendingChanges.svelte';
-  import { onDestroy } from 'svelte';
+  import { buildDraftFromServerData } from './publishDraft';
+  import type { UnifiedDraftData } from './publishDraft';
   import type { PageData } from './$types';
-  import type { Link, TourDate, Block, Profile } from '$lib/server/schema';
-  import {
-    addBlock as serverAddBlock,
-    updateBlock as serverUpdateBlock,
-    deleteBlock as serverDeleteBlock,
-    reorderBlocks as serverReorderBlocks,
-    createLink as serverCreateLink,
-    updateLink as serverUpdateLink,
-    deleteLink as serverDeleteLink,
-    reorderLinks as serverReorderLinks,
-    createTourDate as serverCreateTourDate,
-    updateTourDate as serverUpdateTourDate,
-    deleteTourDate as serverDeleteTourDate,
-    saveProfile as serverSaveProfile,
-    toggleBlockCollapsed
-  } from './data.remote';
+  import type { Link, TourDate, Block } from '$lib/server/schema';
+  import { toggleBlockCollapsed } from './data.remote';
 
   let { data }: { data: PageData } = $props();
 
-  // Initialize draft store once at component creation
-  // Using untrack to intentionally capture initial server data without creating a reactive dependency
-  untrack(() => {
-    const initialData = {
-      profile: data.profile ?? { id: 1, name: 'Artist Name' },
-      blocks: data.blocks ?? [],
-      links: data.links ?? [],
-      tourDates: data.tourDates ?? []
-    };
-    draft.initialize(initialData);
-  });
-
-  // Get reactive draft data - components modify this directly
-  const draftData = draft.getData<{
-    profile: Profile;
-    blocks: Block[];
-    links: Link[];
-    tourDates: TourDate[];
-  }>();
+  // Get reactive draft data - shared with layout and appearance
+  const draftData = draft.getData<UnifiedDraftData>();
 
   // Check if setup is needed
   let needsSetup = $state(untrack(() => !data.settings?.setupCompleted));
@@ -58,183 +27,15 @@
     await invalidateAll();
     await tick();
     // Re-initialize draft with new data (which now includes default blocks)
-    const freshData = {
-      profile: data.profile ?? { id: 1, name: 'Artist Name' },
-      blocks: data.blocks ?? [],
-      links: data.links ?? [],
-      tourDates: data.tourDates ?? []
-    };
-    draft.initialize(freshData);
+    draft.initialize(buildDraftFromServerData(data));
     needsSetup = false;
     toast.info('Setup complete! Start customizing your page.');
   }
 
-  // Register save handler - persists all changes
-  registerPublishHandler(async () => {
-    // Save profile changes
-    const profileChanges = draft.computeObjectDiff<Profile>('profile');
-    if (profileChanges) {
-      if (
-        profileChanges.name !== undefined ||
-        profileChanges.bio !== undefined ||
-        profileChanges.email !== undefined
-      ) {
-        await serverSaveProfile({
-          name: draftData.profile.name || 'Artist Name',
-          bio: draftData.profile.bio || undefined,
-          email: draftData.profile.email || undefined
-        });
-      }
-    }
-
-    // Process blocks
-    const blockDiff = draft.computeCollectionDiff<Block>('blocks');
-    for (const id of blockDiff.deleted) {
-      await serverDeleteBlock(id);
-    }
-    const blockIdMap = new Map<number, number>();
-    for (const block of blockDiff.added) {
-      const result = await serverAddBlock({
-        type: block.type as 'profile' | 'links' | 'tour_dates' | 'image' | 'gallery',
-        label: block.label ?? undefined,
-        config: block.config ?? undefined
-      });
-      blockIdMap.set(block.id, result.block.id);
-    }
-    for (const { id, changes } of blockDiff.updated) {
-      // Only call update if there are actual fields to update (not just position)
-      if (
-        changes.label !== undefined ||
-        changes.config !== undefined ||
-        changes.visible !== undefined
-      ) {
-        await serverUpdateBlock({
-          id,
-          label: changes.label ?? undefined,
-          config: changes.config,
-          visible: changes.visible ?? undefined
-        });
-      }
-    }
-    // Always reorder if we added new blocks or if order changed
-    if (blockDiff.reordered || blockDiff.added.length > 0) {
-      // Map temp IDs to real IDs for newly added blocks
-      const reorderData = draftData.blocks
-        .map((b, i) => ({
-          id: b.id < 0 ? (blockIdMap.get(b.id) ?? b.id) : b.id,
-          position: i
-        }))
-        .filter((b) => b.id > 0); // Filter out any unmapped temp IDs
-      await serverReorderBlocks(reorderData);
-    }
-
-    // Process links - handle adds, updates, deletes, and reorders
-    const linkDiff = draft.computeCollectionDiff<Link>('links');
-    const linkIdMap = new Map<number, number>();
-
-    // Delete removed links
-    for (const id of linkDiff.deleted) {
-      await serverDeleteLink(id);
-    }
-
-    // Add new links (e.g., social links from ProfileBlockAdmin)
-    for (const link of linkDiff.added) {
-      const blockId =
-        link.blockId < 0 ? (blockIdMap.get(link.blockId) ?? link.blockId) : link.blockId;
-      const result = await serverCreateLink({
-        url: link.url,
-        blockId,
-        category: link.category as 'social' | 'streaming' | 'merch' | 'other',
-        platform: link.platform,
-        label: link.label ?? undefined
-      });
-      linkIdMap.set(link.id, result.link.id);
-    }
-
-    // Update changed links
-    for (const { id, changes } of linkDiff.updated) {
-      if (
-        changes.label !== undefined ||
-        changes.url !== undefined ||
-        changes.embedData !== undefined
-      ) {
-        await serverUpdateLink({
-          id,
-          label: changes.label,
-          url: changes.url,
-          embedData: changes.embedData
-        });
-      }
-    }
-
-    // Reorder links per block
-    const linkBlockIds = new Set(draftData.links.filter((l) => l.id > 0).map((l) => l.blockId));
-    for (const blockId of linkBlockIds) {
-      const blockLinks = draftData.links.filter((l) => l.blockId === blockId && l.id > 0);
-      await serverReorderLinks(blockLinks.map((l, i) => ({ id: l.id, position: i })));
-    }
-
-    // Process tour dates
-    const tdDiff = draft.computeCollectionDiff<TourDate>('tourDates');
-    for (const id of tdDiff.deleted) {
-      await serverDeleteTourDate(id);
-    }
-    for (const td of tdDiff.added) {
-      const blockId = td.blockId < 0 ? (blockIdMap.get(td.blockId) ?? td.blockId) : td.blockId;
-      await serverCreateTourDate({
-        blockId,
-        date: td.date,
-        time: td.time ?? undefined,
-        title: td.title ?? undefined,
-        venue: td.venue,
-        lineup: td.lineup ?? undefined,
-        ticketUrl: td.ticketUrl ?? undefined,
-        eventUrl: td.eventUrl ?? undefined,
-        soldOut: td.soldOut ?? false
-      });
-    }
-    for (const { id, changes } of tdDiff.updated) {
-      // Only call update if there are actual fields to update (not just position)
-      const hasChanges =
-        changes.date !== undefined ||
-        changes.time !== undefined ||
-        changes.title !== undefined ||
-        changes.venue !== undefined ||
-        changes.lineup !== undefined ||
-        changes.ticketUrl !== undefined ||
-        changes.eventUrl !== undefined ||
-        changes.soldOut !== undefined;
-      if (hasChanges) {
-        await serverUpdateTourDate({
-          id,
-          date: changes.date,
-          time: changes.time,
-          title: changes.title,
-          venue: changes.venue,
-          lineup: changes.lineup,
-          ticketUrl: changes.ticketUrl,
-          eventUrl: changes.eventUrl,
-          soldOut: changes.soldOut ?? undefined
-        });
-      }
-    }
-
-    // Refresh data from server and re-initialize draft with real IDs
-    await invalidateAll();
-    await tick();
-
-    const freshData = {
-      profile: data.profile ?? { id: 1, name: 'Artist Name' },
-      blocks: data.blocks ?? [],
-      links: data.links ?? [],
-      tourDates: data.tourDates ?? []
-    };
-    draft.initialize(freshData);
-  });
-
-  onDestroy(() => {
-    clearPublishHandler();
-    draft.reset();
+  // Live preview settings (merges draft appearance onto server settings)
+  const liveSettings = $derived({
+    ...data.settings,
+    ...draftData.appearance
   });
 
   // Link edit dialog state
@@ -264,9 +65,9 @@
 
   // Theme colors for embed options
   const themeColors = $derived({
-    bg: data.settings?.colorBg ?? '#0c0a14',
-    card: data.settings?.colorCard ?? '#14101f',
-    accent: data.settings?.colorAccent ?? '#8b5cf6'
+    bg: draftData.appearance.colorBg,
+    card: draftData.appearance.colorCard,
+    accent: draftData.appearance.colorAccent
   });
 
   // ===== Block operations =====
@@ -397,12 +198,12 @@
   <!-- Right Column: Live Preview -->
   <div
     class="w-1/2 overflow-y-auto border-l border-gray-800"
-    style="background-color: {data.settings?.colorBg ?? '#0c0a14'}"
+    style="background-color: {draftData.appearance.colorBg}"
   >
     <LayoutPreview
       layout={Default}
       profile={draftData.profile}
-      settings={data.settings}
+      settings={liveSettings}
       links={draftData.links}
       tourDates={draftData.tourDates}
       blocks={draftData.blocks}

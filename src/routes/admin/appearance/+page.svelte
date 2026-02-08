@@ -2,48 +2,14 @@
   import { ColorWheel, LayoutPreview } from '$lib/components/ui';
   import { SectionCard } from '$lib/components/cards';
   import Default from '$lib/themes/Default.svelte';
-  import { untrack } from 'svelte';
-  import { onDestroy } from 'svelte';
-  import type { PageData } from './$types';
-  import { updateAppearance } from './data.remote';
   import * as draft from '$lib/stores/pageDraft.svelte';
-  import { registerPublishHandler, clearPublishHandler } from '$lib/stores/pendingChanges.svelte';
+  import type { UnifiedDraftData } from '../publishDraft';
+  import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
 
-  // Capture initial server values (intentionally one-time)
-  const p = untrack(() => data.profile);
-
-  // Initialize draft store with appearance data
-  untrack(() => {
-    const s = data.settings;
-    draft.initialize({
-      appearance: {
-        colorBg: s?.colorBg ?? '#0c0a14',
-        colorCard: s?.colorCard ?? '#14101f',
-        colorAccent: s?.colorAccent ?? '#8b5cf6',
-        colorText: s?.colorText ?? '#f4f4f5',
-        colorTextMuted: s?.colorTextMuted ?? '#a1a1aa',
-        layout: (s?.layout as 'default' | 'minimal' | 'card') ?? 'default',
-        showShareButton: s?.showShareButton !== false,
-        showPressKit: s?.showPressKit ?? false
-      }
-    });
-  });
-
-  // Get reactive draft data
-  const draftData = draft.getData<{
-    appearance: {
-      colorBg: string;
-      colorCard: string;
-      colorAccent: string;
-      colorText: string;
-      colorTextMuted: string;
-      layout: 'default' | 'minimal' | 'card';
-      showShareButton: boolean;
-      showPressKit: boolean;
-    };
-  }>();
+  // Get reactive draft data - shared with layout and dashboard
+  const draftData = draft.getData<UnifiedDraftData>();
 
   // Track which color picker is open (accordion behavior)
   let openPicker = $state<string | null>(null);
@@ -53,26 +19,10 @@
     { id: 'default', name: 'Default', description: 'Classic centered layout with photo and links' }
   ];
 
-  // Live preview profile
-  const liveProfile = $derived({
-    ...p,
-    name: p?.name ?? 'Artist Name'
-  });
-
-  // Live preview settings (merges form state with saved data)
+  // Live preview settings (merges draft appearance onto server settings)
   const liveSettings = $derived({
-    ...untrack(() => data.settings),
+    ...data.settings,
     ...draftData.appearance
-  });
-
-  // Register save handler
-  registerPublishHandler(async () => {
-    await updateAppearance(draftData.appearance);
-  });
-
-  onDestroy(() => {
-    clearPublishHandler();
-    draft.reset();
   });
 </script>
 
@@ -219,11 +169,11 @@
   >
     <LayoutPreview
       layout={Default}
-      profile={liveProfile}
+      profile={draftData.profile}
       settings={liveSettings}
-      links={data.links}
-      tourDates={data.tourDates}
-      blocks={data.blocks}
+      links={draftData.links}
+      tourDates={draftData.tourDates}
+      blocks={draftData.blocks}
       media={data.media}
     />
   </div>

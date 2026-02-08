@@ -1,12 +1,18 @@
 # 08-02-2026
 
+- Unified draft store across Dashboard and Appearance pages
+- Cross-page editing: changes persist when navigating between admin pages
+- Single Update button saves both content and appearance changes
+- Nav change indicators (purple dots) show which sections have pending edits
+
+# 08-02-2026
+
 - Save/Undo system with draft state and diff-based publishing
 - Native drag-and-drop for block and link reordering
 - Gallery and single image block types
 - Block collapse/expand with persistent state
 - Prettier + Tailwind CSS class sorting
 - Removed drizzle migrations (using push for development)
-
 
 # 30-01-2026
 
