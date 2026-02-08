@@ -9,6 +9,7 @@
 - Stack on mobile toggle for grid mode (collapses to single column on small screens)
 - Icon color wheel in Appearance settings (replaces hardcoded platform brand colors)
 - Added new Repo integration, block and card.
+- Favicon generator now fall back to site title initials.
 
 
 # 06-02-2026

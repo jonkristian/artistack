@@ -1,7 +1,7 @@
 import * as v from 'valibot';
 import { command } from '$app/server';
 import { db } from '$lib/server/db';
-import { settings } from '$lib/server/schema';
+import { profile, settings } from '$lib/server/schema';
 import { eq } from 'drizzle-orm';
 import sharp from 'sharp';
 import { readFile, writeFile } from 'fs/promises';
@@ -176,6 +176,76 @@ export const generateFavicon = command(generateFaviconSchema, async ({ sourceUrl
     .update(settings)
     .set({
       faviconUrl: sourceUrl,
+      faviconGenerated: true
+    })
+    .where(eq(settings.id, existing.id))
+    .returning();
+
+  return { success: true, settings: updated };
+});
+
+// ============================================================================
+// Favicon from Initials Command
+// ============================================================================
+
+export const generateFaviconFromInitials = command(v.object({}), async () => {
+  const existing = await getOrCreateSettings();
+  const [artistProfile] = await db.select().from(profile).limit(1);
+
+  // Determine display name and initials
+  const displayName = existing.siteTitle || artistProfile?.name || 'A';
+  const initials = displayName
+    .split(/\s+/)
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+
+  const bgColor = existing.colorBg || '#0c0a14';
+  const textColor = existing.colorText || '#f4f4f5';
+
+  // Generate SVG with initials on background color
+  function buildSvg(size: number): string {
+    const fontSize = initials.length === 1 ? size * 0.55 : size * 0.42;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+      <rect width="${size}" height="${size}" rx="${Math.round(size * 0.15)}" fill="${bgColor}"/>
+      <text x="50%" y="50%" dominant-baseline="central" text-anchor="middle"
+        font-family="system-ui, -apple-system, sans-serif" font-weight="700"
+        font-size="${fontSize}" fill="${textColor}">${initials}</text>
+    </svg>`;
+  }
+
+  const sizes = [
+    { name: 'favicon-16.png', size: 16 },
+    { name: 'favicon-32.png', size: 32 },
+    { name: 'favicon-48.png', size: 48 },
+    { name: 'apple-touch-icon.png', size: 180 },
+    { name: 'icon-192.png', size: 192 },
+    { name: 'icon-512.png', size: 512 }
+  ];
+
+  const generatedImages: { name: string; size: number; buffer: Buffer }[] = [];
+
+  for (const { name, size } of sizes) {
+    const svg = buildSvg(size);
+    const buffer = await sharp(Buffer.from(svg)).png().toBuffer();
+    generatedImages.push({ name, size, buffer });
+    await writeFile(join('data', name), buffer);
+  }
+
+  // Create ICO file from 16, 32, 48 sizes
+  const icoImages = generatedImages
+    .filter((img) => [16, 32, 48].includes(img.size))
+    .map((img) => ({ size: img.size, buffer: img.buffer }));
+
+  const icoBuffer = createIco(icoImages);
+  await writeFile(join('data', 'favicon.ico'), icoBuffer);
+
+  // Update settings
+  const [updated] = await db
+    .update(settings)
+    .set({
+      faviconUrl: null,
       faviconGenerated: true
     })
     .where(eq(settings.id, existing.id))

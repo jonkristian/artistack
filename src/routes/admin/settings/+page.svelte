@@ -2,7 +2,13 @@
   import { SectionCard } from '$lib/components/cards';
   import { MediaPicker } from '$lib/components/ui';
   import type { PageData } from './$types';
-  import { updateSettings, generateFavicon, updateSmtpSettings, testSmtp } from './data.remote';
+  import {
+    updateSettings,
+    generateFavicon,
+    generateFaviconFromInitials,
+    updateSmtpSettings,
+    testSmtp
+  } from './data.remote';
   import { invalidateAll } from '$app/navigation';
 
   let { data }: { data: PageData } = $props();
@@ -88,11 +94,13 @@
 
   // Handle favicon generation
   async function handleGenerateFavicon() {
-    if (!selectedFaviconUrl) return;
-
     isGenerating = true;
     try {
-      await generateFavicon({ sourceUrl: selectedFaviconUrl });
+      if (selectedFaviconUrl) {
+        await generateFavicon({ sourceUrl: selectedFaviconUrl });
+      } else {
+        await generateFaviconFromInitials({});
+      }
       faviconGenerated = true;
       await invalidateAll();
     } catch (error) {
@@ -350,20 +358,25 @@
           mobile home screens.
         </p>
 
-        <MediaPicker
-          value={selectedFaviconUrl}
-          label="Favicon Source"
-          media={data.media ?? []}
-          aspectRatio="1/1"
-          noCrop={true}
-          onselect={(url) => (selectedFaviconUrl = url)}
-        />
+        <div class="max-w-48">
+          <MediaPicker
+            value={selectedFaviconUrl}
+            label="Favicon Source"
+            media={data.media ?? []}
+            aspectRatio="1/1"
+            noCrop={true}
+            onselect={(url) => (selectedFaviconUrl = url)}
+          />
+        </div>
+        <p class="text-sm text-gray-500">
+          Leave empty to generate from site title initials.
+        </p>
 
         <div class="flex items-center gap-4">
           <button
             type="button"
             onclick={handleGenerateFavicon}
-            disabled={!selectedFaviconUrl || isGenerating}
+            disabled={isGenerating}
             class="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {#if isGenerating}
@@ -388,7 +401,7 @@
           {/if}
         </div>
 
-        {#if faviconGenerated && selectedFaviconUrl}
+        {#if faviconGenerated}
           <div class="flex items-center gap-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4">
             <div class="flex gap-2">
               <img src="/favicon-32.png" alt="Favicon 32x32" class="h-8 w-8 rounded" />
