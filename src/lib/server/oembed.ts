@@ -308,5 +308,65 @@ export function isBandcampUrl(url: string): boolean {
   return url.includes('bandcamp.com/');
 }
 
+/**
+ * Detects if a URL is a GitHub repository URL
+ */
+export function isGitHubRepoUrl(url: string): boolean {
+  return /github\.com\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9._-]+/i.test(url);
+}
+
+/**
+ * Extracts owner and repo from a GitHub URL
+ */
+export function extractGitHubRepoInfo(url: string): { owner: string; repo: string } | null {
+  const match = url.match(/github\.com\/([a-zA-Z0-9_-]+)\/([a-zA-Z0-9._-]+)/i);
+  if (!match) return null;
+  return { owner: match[1], repo: match[2].replace(/\.git$/, '') };
+}
+
+/**
+ * Fetches repository metadata from the GitHub public API
+ * No auth required — 60 requests/hour per IP
+ */
+export async function fetchGitHubMetadata(url: string): Promise<{
+  name: string;
+  description: string | null;
+  language: string | null;
+  stars: number;
+  forks: number;
+  topics: string[];
+  avatarUrl: string;
+} | null> {
+  const info = extractGitHubRepoInfo(url);
+  if (!info) return null;
+
+  try {
+    const response = await safeFetch(`https://api.github.com/repos/${info.owner}/${info.repo}`, {
+      headers: { Accept: 'application/vnd.github.v3+json' }
+    });
+
+    if (!response.ok) {
+      console.error('GitHub API failed:', response.status);
+      return null;
+    }
+
+    const text = await safeText(response);
+    const data = JSON.parse(text);
+
+    return {
+      name: data.name,
+      description: data.description ?? null,
+      language: data.language ?? null,
+      stars: data.stargazers_count ?? 0,
+      forks: data.forks_count ?? 0,
+      topics: Array.isArray(data.topics) ? data.topics : [],
+      avatarUrl: data.owner?.avatar_url ?? ''
+    };
+  } catch (error) {
+    console.error('Failed to fetch GitHub metadata:', error);
+    return null;
+  }
+}
+
 // Re-export detectPlatformFromUrl from shared utility
 export { detectPlatformFromUrl } from '$lib/utils/platforms';

@@ -4,6 +4,11 @@
 - Cross-page editing: changes persist when navigating between admin pages
 - Single Update button saves both content and appearance changes
 - Nav change indicators (purple dots) show which sections have pending edits
+- Links block layout option: rows (default) or grid with configurable columns (2-6)
+- Stack on mobile toggle for grid mode (collapses to single column on small screens)
+- Icon color wheel in Appearance settings (replaces hardcoded platform brand colors)
+- Added new Repo integration, block and card.
+
 
 # 08-02-2026
 

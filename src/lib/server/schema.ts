@@ -24,6 +24,7 @@ export const settings = sqliteTable('settings', {
   colorAccent: text('color_accent').default('#8b5cf6'),
   colorText: text('color_text').default('#f4f4f5'),
   colorTextMuted: text('color_text_muted').default('#a1a1aa'),
+  colorIcon: text('color_icon').default('#a1a1aa'),
   // UI options
   showShareButton: integer('show_share_button', { mode: 'boolean' }).default(true),
   showPressKit: integer('show_press_kit', { mode: 'boolean' }).default(false),
@@ -220,6 +221,9 @@ export interface ImageBlockConfig {
 
 export interface LinksBlockConfig {
   heading?: string;
+  displayAs?: 'rows' | 'grid';
+  gridColumns?: number; // 2-6, default 3
+  stackOnMobile?: boolean; // default true
 }
 
 export interface TourDatesBlockConfig {
@@ -303,8 +307,23 @@ export interface YouTubeEmbedData {
   enabled?: boolean;
 }
 
+// Code forge embed options (GitHub, GitLab, Codeberg)
+export interface RepoEmbedData {
+  platform: 'github' | 'gitlab' | 'codeberg';
+  id: string; // "owner/repo"
+  enabled?: boolean;
+  showAvatar?: boolean; // default true
+  descriptionDisplay?: 'truncate' | 'full'; // default 'truncate'
+  description?: string | null;
+  language?: string | null;
+  stars?: number;
+  forks?: number;
+  topics?: string[];
+  avatarUrl?: string;
+}
+
 // Union type for all embed data
-export type EmbedData = BandcampEmbedData | SpotifyEmbedData | YouTubeEmbedData;
+export type EmbedData = BandcampEmbedData | SpotifyEmbedData | YouTubeEmbedData | RepoEmbedData;
 
 // Facebook Events types
 export interface FacebookConfig {

@@ -21,6 +21,7 @@ const appearanceSchema = v.object({
   colorAccent: v.optional(v.nullable(hexColor)),
   colorText: v.optional(v.nullable(hexColor)),
   colorTextMuted: v.optional(v.nullable(hexColor)),
+  colorIcon: v.optional(v.nullable(hexColor)),
   // Layout - restricted to valid options
   layout: v.optional(v.picklist(['default', 'minimal', 'card'])),
   // UI options

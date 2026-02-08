@@ -51,6 +51,7 @@
 		--color-accent: {settings?.colorAccent ?? '#8b5cf6'};
 		--color-text: {settings?.colorText ?? '#f4f4f5'};
 		--color-text-muted: {settings?.colorTextMuted ?? '#a1a1aa'};
+		--color-icon: {settings?.colorIcon ?? '#a1a1aa'};
 	"
 >
   {#if profile}

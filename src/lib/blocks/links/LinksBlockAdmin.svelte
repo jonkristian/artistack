@@ -139,7 +139,11 @@
                   >{link.label || link.platform.replace('_', ' ')}</span
                 >
                 {#if link.embedData && link.embedData.enabled !== false}
-                  <span class="text-xs text-violet-400">Player</span>
+                  <span class="text-xs text-violet-400">
+                    {['github', 'gitlab', 'codeberg'].includes(link.embedData.platform)
+                      ? 'Card'
+                      : 'Player'}
+                  </span>
                 {/if}
               </div>
               <span class="text-xs text-gray-500 capitalize">{link.platform.replace('_', ' ')}</span
@@ -183,12 +187,7 @@
     <div
       class="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-600 px-4 py-8 text-center"
     >
-      <svg
-        class="mb-2 h-8 w-8 text-gray-500"
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-      >
+      <svg class="mb-2 h-8 w-8 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
           stroke-linecap="round"
           stroke-linejoin="round"

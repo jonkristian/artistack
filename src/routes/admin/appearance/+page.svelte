@@ -73,6 +73,13 @@
             open={openPicker === 'muted'}
             ontoggle={(o) => (openPicker = o ? 'muted' : null)}
           />
+          <ColorWheel
+            value={draftData.appearance.colorIcon}
+            onchange={(c) => (draftData.appearance.colorIcon = c)}
+            label="Icons"
+            open={openPicker === 'icon'}
+            ontoggle={(o) => (openPicker = o ? 'icon' : null)}
+          />
         </div>
       </SectionCard>
 

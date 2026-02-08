@@ -1,5 +1,11 @@
 <script lang="ts">
-  import type { Link, BandcampEmbedData, SpotifyEmbedData, EmbedData } from '$lib/server/schema';
+  import type {
+    Link,
+    BandcampEmbedData,
+    SpotifyEmbedData,
+    RepoEmbedData,
+    EmbedData
+  } from '$lib/server/schema';
   import { toast } from '$lib/stores/toast.svelte';
 
   interface Props {
@@ -31,6 +37,11 @@
   let spotifyTheme = $state<'dark' | 'light'>('dark');
   let spotifyCompact = $state(false);
 
+  // Repo-specific state
+  let repoDescription = $state('');
+  let repoShowAvatar = $state(true);
+  let repoDescriptionDisplay = $state<'truncate' | 'full'>('truncate');
+
   // Dialog ref
   let dialogEl: HTMLDialogElement;
 
@@ -54,6 +65,11 @@
           const data = link.embedData as SpotifyEmbedData;
           spotifyTheme = data.theme || 'dark';
           spotifyCompact = data.compact || false;
+        } else if (['github', 'gitlab', 'codeberg'].includes(link.embedData.platform)) {
+          const data = link.embedData as RepoEmbedData;
+          repoDescription = data.description || '';
+          repoShowAvatar = data.showAvatar !== false;
+          repoDescriptionDisplay = data.descriptionDisplay || 'truncate';
         }
       }
 
@@ -97,6 +113,14 @@
           id: link.embedData.id,
           enabled: embedEnabled
         } satisfies EmbedData;
+      } else if (['github', 'gitlab', 'codeberg'].includes(link.embedData.platform)) {
+        link.embedData = {
+          ...(link.embedData as RepoEmbedData),
+          enabled: embedEnabled,
+          showAvatar: repoShowAvatar,
+          descriptionDisplay: repoDescriptionDisplay,
+          description: repoDescription || (link.embedData as RepoEmbedData).description
+        };
       }
     }
 
@@ -123,6 +147,9 @@
   const isBandcamp = $derived(link?.embedData?.platform === 'bandcamp');
   const isSpotify = $derived(link?.embedData?.platform === 'spotify');
   const isYouTube = $derived(link?.embedData?.platform === 'youtube');
+  const isRepo = $derived(
+    ['github', 'gitlab', 'codeberg'].includes(link?.embedData?.platform ?? '')
+  );
   const hasEmbed = $derived(!!link?.embedData);
 </script>
 
@@ -398,6 +425,90 @@
                 ></span>
               </button>
             </label>
+          </div>
+        {/if}
+
+        <!-- Repo Embed Options -->
+        {#if isRepo && hasEmbed}
+          <div class="border-t border-gray-700 pt-4">
+            <h3 class="mb-3 text-sm font-medium text-gray-300">Project Card</h3>
+
+            <label class="mb-4 flex cursor-pointer items-center justify-between">
+              <span class="text-sm text-gray-400">Show as project card</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={embedEnabled}
+                aria-label="Show as project card"
+                onclick={() => (embedEnabled = !embedEnabled)}
+                class="relative h-6 w-11 rounded-full transition-colors {embedEnabled
+                  ? 'bg-violet-600'
+                  : 'bg-gray-700'}"
+              >
+                <span
+                  class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform {embedEnabled
+                    ? 'translate-x-5'
+                    : ''}"
+                ></span>
+              </button>
+            </label>
+
+            {#if embedEnabled}
+              <label class="mb-4 flex cursor-pointer items-center justify-between">
+                <span class="text-sm text-gray-400">Show avatar</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={repoShowAvatar}
+                  aria-label="Show avatar"
+                  onclick={() => (repoShowAvatar = !repoShowAvatar)}
+                  class="relative h-6 w-11 rounded-full transition-colors {repoShowAvatar
+                    ? 'bg-violet-600'
+                    : 'bg-gray-700'}"
+                >
+                  <span
+                    class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform {repoShowAvatar
+                      ? 'translate-x-5'
+                      : ''}"
+                  ></span>
+                </button>
+              </label>
+
+              <div class="mb-4">
+                <span class="mb-2 block text-sm text-gray-400">Description</span>
+                <div class="flex gap-2">
+                  <button
+                    type="button"
+                    onclick={() => (repoDescriptionDisplay = 'truncate')}
+                    class="flex-1 rounded-lg px-3 py-2 text-sm transition-colors {repoDescriptionDisplay ===
+                    'truncate'
+                      ? 'bg-violet-600 text-white'
+                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}">Truncate</button
+                  >
+                  <button
+                    type="button"
+                    onclick={() => (repoDescriptionDisplay = 'full')}
+                    class="flex-1 rounded-lg px-3 py-2 text-sm transition-colors {repoDescriptionDisplay ===
+                    'full'
+                      ? 'bg-violet-600 text-white'
+                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}">Full</button
+                  >
+                </div>
+              </div>
+
+              <div>
+                <label for="repo-description" class="mb-1 block text-sm text-gray-400"
+                  >Description override</label
+                >
+                <textarea
+                  id="repo-description"
+                  bind:value={repoDescription}
+                  rows="2"
+                  placeholder="Uses fetched description if empty"
+                  class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+                ></textarea>
+              </div>
+            {/if}
           </div>
         {/if}
       </div>

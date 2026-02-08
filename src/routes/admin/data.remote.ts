@@ -12,12 +12,16 @@ import {
   extractSpotifyEmbedInfo,
   fetchBandcampMetadata,
   isBandcampUrl,
+  isGitHubRepoUrl,
+  extractGitHubRepoInfo,
+  fetchGitHubMetadata,
   detectPlatformFromUrl
 } from '$lib/server/oembed';
 import type {
   SpotifyEmbedData,
   YouTubeEmbedData,
   BandcampEmbedData,
+  RepoEmbedData,
   EmbedData,
   BlockConfig
 } from '$lib/server/schema';
@@ -99,6 +103,96 @@ const reorderBlocksSchema = v.array(
 // ============================================================================
 // Helper Functions
 // ============================================================================
+
+/**
+ * Shared helper: fetch metadata and build embedData for supported platform URLs
+ */
+async function fetchPlatformMetadata(
+  url: string,
+  existingLabel: string | null
+): Promise<{
+  thumbnailUrl: string | null;
+  label: string | null;
+  embedData: EmbedData | null;
+}> {
+  let thumbnailUrl: string | null = null;
+  let label = existingLabel;
+  let embedData: EmbedData | null = null;
+
+  if (isYouTubeUrl(url)) {
+    const metadata = await fetchYouTubeMetadata(url);
+    if (metadata) {
+      thumbnailUrl = metadata.thumbnailUrl;
+      if (!label) label = metadata.title;
+    }
+    const videoId = extractYouTubeVideoId(url);
+    if (videoId) {
+      embedData = {
+        platform: 'youtube',
+        id: videoId,
+        enabled: true
+      } satisfies YouTubeEmbedData;
+    }
+  } else if (isSpotifyUrl(url)) {
+    const metadata = await fetchSpotifyMetadata(url);
+    if (metadata) {
+      thumbnailUrl = metadata.thumbnailUrl;
+      if (!label) label = metadata.title;
+    }
+    const spotifyInfo = extractSpotifyEmbedInfo(url);
+    if (spotifyInfo) {
+      embedData = {
+        platform: 'spotify',
+        id: spotifyInfo.id,
+        type: spotifyInfo.type,
+        enabled: true,
+        theme: 'dark',
+        compact: false
+      } satisfies SpotifyEmbedData;
+    }
+  } else if (isBandcampUrl(url)) {
+    const metadata = await fetchBandcampMetadata(url);
+    if (metadata) {
+      thumbnailUrl = metadata.thumbnailUrl;
+      if (!label) label = metadata.title;
+      if (metadata.embedId && metadata.embedType) {
+        embedData = {
+          platform: 'bandcamp',
+          id: metadata.embedId,
+          type: metadata.embedType,
+          enabled: true,
+          size: 'large',
+          bgColor: null,
+          linkColor: null,
+          tracklist: false,
+          artwork: 'small'
+        } satisfies BandcampEmbedData;
+      }
+    }
+  } else if (isGitHubRepoUrl(url)) {
+    const repoInfo = extractGitHubRepoInfo(url);
+    if (repoInfo) {
+      const metadata = await fetchGitHubMetadata(url);
+      if (metadata) {
+        if (!label) label = metadata.name;
+        thumbnailUrl = metadata.avatarUrl || null;
+        embedData = {
+          platform: 'github',
+          id: `${repoInfo.owner}/${repoInfo.repo}`,
+          enabled: true,
+          description: metadata.description,
+          language: metadata.language,
+          stars: metadata.stars,
+          forks: metadata.forks,
+          topics: metadata.topics,
+          avatarUrl: metadata.avatarUrl
+        } satisfies RepoEmbedData;
+      }
+    }
+  }
+
+  return { thumbnailUrl, label, embedData };
+}
 
 function getNextPosition<T extends { position?: number | null }>(items: T[]): number {
   return items.reduce((max, item) => Math.max(max, item.position ?? 0), 0) + 1;
@@ -250,61 +344,7 @@ export const addLink = form(linkSchema, async ({ url, blockId, category, label }
   }
 
   // Auto-fetch metadata for supported URLs
-  let thumbnailUrl: string | null = null;
-  let fetchedLabel = label || null;
-  let embedData: EmbedData | null = null;
-
-  if (isYouTubeUrl(url)) {
-    const metadata = await fetchYouTubeMetadata(url);
-    if (metadata) {
-      thumbnailUrl = metadata.thumbnailUrl;
-      if (!fetchedLabel) fetchedLabel = metadata.title;
-    }
-    const videoId = extractYouTubeVideoId(url);
-    if (videoId) {
-      embedData = {
-        platform: 'youtube',
-        id: videoId,
-        enabled: true
-      } satisfies YouTubeEmbedData;
-    }
-  } else if (isSpotifyUrl(url)) {
-    const metadata = await fetchSpotifyMetadata(url);
-    if (metadata) {
-      thumbnailUrl = metadata.thumbnailUrl;
-      if (!fetchedLabel) fetchedLabel = metadata.title;
-    }
-    const spotifyInfo = extractSpotifyEmbedInfo(url);
-    if (spotifyInfo) {
-      embedData = {
-        platform: 'spotify',
-        id: spotifyInfo.id,
-        type: spotifyInfo.type,
-        enabled: true,
-        theme: 'dark',
-        compact: false
-      } satisfies SpotifyEmbedData;
-    }
-  } else if (isBandcampUrl(url)) {
-    const metadata = await fetchBandcampMetadata(url);
-    if (metadata) {
-      thumbnailUrl = metadata.thumbnailUrl;
-      if (!fetchedLabel) fetchedLabel = metadata.title;
-      if (metadata.embedId && metadata.embedType) {
-        embedData = {
-          platform: 'bandcamp',
-          id: metadata.embedId,
-          type: metadata.embedType,
-          enabled: true,
-          size: 'large',
-          bgColor: null,
-          linkColor: null,
-          tracklist: false,
-          artwork: 'small'
-        } satisfies BandcampEmbedData;
-      }
-    }
-  }
+  const fetched = await fetchPlatformMetadata(url, label || null);
 
   // Get next position
   const existing = await db.select().from(links);
@@ -317,9 +357,9 @@ export const addLink = form(linkSchema, async ({ url, blockId, category, label }
       category: detectedCategory || 'other',
       platform: detectedPlatform || 'link',
       url,
-      label: fetchedLabel,
-      thumbnailUrl,
-      embedData,
+      label: fetched.label,
+      thumbnailUrl: fetched.thumbnailUrl,
+      embedData: fetched.embedData,
       position,
       visible: true
     })
@@ -375,61 +415,7 @@ export const createLink = command(
     }
 
     // Auto-fetch metadata for supported URLs
-    let thumbnailUrl: string | null = null;
-    let fetchedLabel = label || null;
-    let embedData: EmbedData | null = null;
-
-    if (isYouTubeUrl(url)) {
-      const metadata = await fetchYouTubeMetadata(url);
-      if (metadata) {
-        thumbnailUrl = metadata.thumbnailUrl;
-        if (!fetchedLabel) fetchedLabel = metadata.title;
-      }
-      const videoId = extractYouTubeVideoId(url);
-      if (videoId) {
-        embedData = {
-          platform: 'youtube',
-          id: videoId,
-          enabled: true
-        } satisfies YouTubeEmbedData;
-      }
-    } else if (isSpotifyUrl(url)) {
-      const metadata = await fetchSpotifyMetadata(url);
-      if (metadata) {
-        thumbnailUrl = metadata.thumbnailUrl;
-        if (!fetchedLabel) fetchedLabel = metadata.title;
-      }
-      const spotifyInfo = extractSpotifyEmbedInfo(url);
-      if (spotifyInfo) {
-        embedData = {
-          platform: 'spotify',
-          id: spotifyInfo.id,
-          type: spotifyInfo.type,
-          enabled: true,
-          theme: 'dark',
-          compact: false
-        } satisfies SpotifyEmbedData;
-      }
-    } else if (isBandcampUrl(url)) {
-      const metadata = await fetchBandcampMetadata(url);
-      if (metadata) {
-        thumbnailUrl = metadata.thumbnailUrl;
-        if (!fetchedLabel) fetchedLabel = metadata.title;
-        if (metadata.embedId && metadata.embedType) {
-          embedData = {
-            platform: 'bandcamp',
-            id: metadata.embedId,
-            type: metadata.embedType,
-            enabled: true,
-            size: 'large',
-            bgColor: null,
-            linkColor: null,
-            tracklist: false,
-            artwork: 'small'
-          } satisfies BandcampEmbedData;
-        }
-      }
-    }
+    const fetched = await fetchPlatformMetadata(url, label || null);
 
     // Get next position
     const existing = await db.select().from(links);
@@ -442,9 +428,9 @@ export const createLink = command(
         category: detectedCategory || 'other',
         platform: detectedPlatform || 'link',
         url,
-        label: fetchedLabel,
-        thumbnailUrl,
-        embedData,
+        label: fetched.label,
+        thumbnailUrl: fetched.thumbnailUrl,
+        embedData: fetched.embedData,
         position,
         visible: true
       })
@@ -482,12 +468,28 @@ const youtubeEmbedSchema = v.object({
   enabled: v.optional(v.boolean())
 });
 
+const repoEmbedSchema = v.object({
+  platform: v.picklist(['github', 'gitlab', 'codeberg']),
+  id: v.string(),
+  enabled: v.optional(v.boolean()),
+  showAvatar: v.optional(v.boolean()),
+  descriptionDisplay: v.optional(v.picklist(['truncate', 'full'])),
+  description: v.optional(v.nullable(v.string())),
+  language: v.optional(v.nullable(v.string())),
+  stars: v.optional(v.number()),
+  forks: v.optional(v.number()),
+  topics: v.optional(v.array(v.string())),
+  avatarUrl: v.optional(v.string())
+});
+
 const updateLinkSchema = v.object({
   id: v.number(),
   label: v.optional(v.nullable(v.string())),
   url: v.optional(v.string()),
   embedData: v.optional(
-    v.nullable(v.union([bandcampEmbedSchema, spotifyEmbedSchema, youtubeEmbedSchema]))
+    v.nullable(
+      v.union([bandcampEmbedSchema, spotifyEmbedSchema, youtubeEmbedSchema, repoEmbedSchema])
+    )
   )
 });
 

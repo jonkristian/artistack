@@ -24,6 +24,7 @@ export type AppearanceData = {
   colorAccent: string;
   colorText: string;
   colorTextMuted: string;
+  colorIcon: string;
   layout: 'default' | 'minimal' | 'card';
   showShareButton: boolean;
   showPressKit: boolean;
@@ -54,6 +55,7 @@ export function buildDraftFromServerData(data: {
     colorAccent?: string | null;
     colorText?: string | null;
     colorTextMuted?: string | null;
+    colorIcon?: string | null;
     layout?: string | null;
     showShareButton?: boolean | null;
     showPressKit?: boolean | null;
@@ -71,6 +73,7 @@ export function buildDraftFromServerData(data: {
       colorAccent: s?.colorAccent ?? '#8b5cf6',
       colorText: s?.colorText ?? '#f4f4f5',
       colorTextMuted: s?.colorTextMuted ?? '#a1a1aa',
+      colorIcon: s?.colorIcon ?? '#a1a1aa',
       layout: (s?.layout as 'default' | 'minimal' | 'card') ?? 'default',
       showShareButton: s?.showShareButton !== false,
       showPressKit: s?.showPressKit ?? false

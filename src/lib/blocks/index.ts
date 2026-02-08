@@ -37,7 +37,7 @@ export const blockRegistry: Record<string, BlockDefinition> = {
     adminComponent: LinksBlockAdmin,
     adminSettingsComponent: LinksBlockSettings,
     defaultLabel: 'Links',
-    defaultConfig: {}
+    defaultConfig: { displayAs: 'rows' as const }
   },
   tour_dates: {
     type: 'tour_dates',

@@ -42,6 +42,7 @@
     colorAccent: settings?.colorAccent ?? '#8b5cf6',
     colorText: settings?.colorText ?? '#f4f4f5',
     colorTextMuted: settings?.colorTextMuted ?? '#a1a1aa',
+    colorIcon: settings?.colorIcon ?? '#a1a1aa',
     layout: settings?.layout ?? 'default',
     showShareButton: settings?.showShareButton ?? true,
     showPressKit: settings?.showPressKit ?? false
@@ -56,6 +57,7 @@
 		--color-accent: {previewSettings.colorAccent};
 		--color-text: {previewSettings.colorText};
 		--color-text-muted: {previewSettings.colorTextMuted};
+		--color-icon: {previewSettings.colorIcon};
 	"
 >
   <Layout
