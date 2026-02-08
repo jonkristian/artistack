@@ -33,7 +33,11 @@
 
   // Favicon state
   let selectedFaviconUrl = $state<string | null>(null);
+  let faviconText = $state('');
+  let faviconRounded = $state(false);
+  let faviconLength = $state(2);
   let faviconGenerated = $state(false);
+  let faviconCacheBust = $state(Date.now());
   let isGenerating = $state(false);
 
   // SMTP state
@@ -99,9 +103,14 @@
       if (selectedFaviconUrl) {
         await generateFavicon({ sourceUrl: selectedFaviconUrl });
       } else {
-        await generateFaviconFromInitials({});
+        await generateFaviconFromInitials({
+          name: faviconText || undefined,
+          rounded: faviconRounded,
+          length: faviconLength
+        });
       }
       faviconGenerated = true;
+      faviconCacheBust = Date.now();
       await invalidateAll();
     } catch (error) {
       console.error('Failed to generate favicon:', error);
@@ -354,23 +363,73 @@
     <SectionCard title="Favicon & PWA">
       <div class="space-y-4">
         <p class="text-sm text-gray-400">
-          Select an image to generate a favicon and PWA icons for browser tabs, bookmarks, and
-          mobile home screens.
+          Generate favicon and PWA icons from an image or text initials.
         </p>
 
-        <div class="max-w-48">
-          <MediaPicker
-            value={selectedFaviconUrl}
-            label="Favicon Source"
-            media={data.media ?? []}
-            aspectRatio="1/1"
-            noCrop={true}
-            onselect={(url) => (selectedFaviconUrl = url)}
-          />
+        <div class="grid grid-cols-[auto_1fr] gap-6">
+          <div class="w-36">
+            <span class="mb-2 block text-sm font-medium text-gray-300">Image</span>
+            <MediaPicker
+              value={selectedFaviconUrl}
+              label=""
+              media={data.media ?? []}
+              aspectRatio="1/1"
+              noCrop={true}
+              onselect={(url) => (selectedFaviconUrl = url)}
+            />
+          </div>
+
+          <div class="space-y-3" class:opacity-40={!!selectedFaviconUrl}>
+            <div>
+              <label for="favicon-text" class="mb-2 block text-sm font-medium text-gray-300">
+                Text
+              </label>
+              <input
+                id="favicon-text"
+                type="text"
+                bind:value={faviconText}
+                disabled={!!selectedFaviconUrl}
+                placeholder={data.settings?.siteTitle || data.profile?.name || 'Site Title'}
+                class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+              />
+              <p class="mt-1 text-sm text-gray-500">
+                Leave empty to use site title.
+              </p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label for="favicon-length" class="mb-2 block text-sm font-medium text-gray-300">
+                  Initials
+                </label>
+                <select
+                  id="favicon-length"
+                  bind:value={faviconLength}
+                  disabled={!!selectedFaviconUrl}
+                  class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-gray-600 focus:outline-none"
+                >
+                  <option value={1}>1 letter</option>
+                  <option value={2}>2 letters</option>
+                </select>
+              </div>
+
+              <div>
+                <label for="favicon-rounded" class="mb-2 block text-sm font-medium text-gray-300">
+                  Shape
+                </label>
+                <select
+                  id="favicon-rounded"
+                  bind:value={faviconRounded}
+                  disabled={!!selectedFaviconUrl}
+                  class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-gray-600 focus:outline-none"
+                >
+                  <option value={false}>Square</option>
+                  <option value={true}>Circle</option>
+                </select>
+              </div>
+            </div>
+          </div>
         </div>
-        <p class="text-sm text-gray-500">
-          Leave empty to generate from site title initials.
-        </p>
 
         <div class="flex items-center gap-4">
           <button
@@ -402,16 +461,18 @@
         </div>
 
         {#if faviconGenerated}
+          {#key faviconCacheBust}
           <div class="flex items-center gap-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4">
             <div class="flex gap-2">
-              <img src="/favicon-32.png" alt="Favicon 32x32" class="h-8 w-8 rounded" />
-              <img src="/icon-192.png" alt="Icon 192x192" class="h-8 w-8 rounded" />
+              <img src="/favicon-32.png?v={faviconCacheBust}" alt="Favicon 32x32" class="h-8 w-8 rounded" />
+              <img src="/icon-192.png?v={faviconCacheBust}" alt="Icon 192x192" class="h-8 w-8 rounded" />
             </div>
             <div class="text-sm text-gray-400">
               <p>Generated files: favicon.ico, apple-touch-icon.png, icon-192.png, icon-512.png</p>
               <p class="text-xs text-gray-500">PWA manifest available at /manifest.json</p>
             </div>
           </div>
+          {/key}
         {/if}
       </div>
     </SectionCard>

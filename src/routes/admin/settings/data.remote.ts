@@ -188,45 +188,26 @@ export const generateFavicon = command(generateFaviconSchema, async ({ sourceUrl
 // Favicon from Initials Command
 // ============================================================================
 
-export const generateFaviconFromInitials = command(v.object({}), async () => {
+export const generateFaviconFromInitials = command(
+  v.object({
+    name: v.optional(v.string()),
+    rounded: v.optional(v.boolean()),
+    length: v.optional(v.number())
+  }),
+  async ({ name, rounded = false, length = 2 }) => {
   const existing = await getOrCreateSettings();
   const [artistProfile] = await db.select().from(profile).limit(1);
 
-  // Determine display name and initials
-  const displayName = existing.siteTitle || artistProfile?.name || 'A';
-  const initials = displayName
-    .split(/\s+/)
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
+  const displayName = name || existing.siteTitle || artistProfile?.name || 'A';
 
-  const bgColor = existing.colorBg || '#0c0a14';
-  const textColor = existing.colorText || '#f4f4f5';
+  const bg = (existing.colorBg || '#0c0a14').replace('#', '');
+  const color = (existing.colorText || '#f4f4f5').replace('#', '');
 
-  // Load Inter Bold font and base64-encode for embedding in SVG
-  const { createRequire } = await import('module');
-  const require = createRequire(import.meta.url);
-  const fontPath = require.resolve('@fontsource/inter/files/inter-latin-700-normal.woff');
-  const fontBuffer = await readFile(fontPath);
-  const fontBase64 = fontBuffer.toString('base64');
-
-  function buildSvg(size: number): string {
-    const fontSize = initials.length === 1 ? size * 0.55 : size * 0.42;
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-      <defs><style>
-        @font-face {
-          font-family: 'Inter';
-          font-weight: 700;
-          src: url('data:font/woff;base64,${fontBase64}') format('woff');
-        }
-      </style></defs>
-      <rect width="${size}" height="${size}" fill="${bgColor}"/>
-      <text x="50%" y="50%" dy="0.35em" text-anchor="middle"
-        font-family="Inter" font-weight="700"
-        font-size="${fontSize}" fill="${textColor}">${initials}</text>
-    </svg>`;
-  }
+  // Fetch initials image from UI Avatars API
+  const url = `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=${bg}&color=${color}&size=512&bold=true&format=png&rounded=${rounded}&length=${length}`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('Failed to fetch avatar from UI Avatars');
+  const sourceBuffer = Buffer.from(await response.arrayBuffer());
 
   const sizes = [
     { name: 'favicon-16.png', size: 16 },
@@ -240,8 +221,10 @@ export const generateFaviconFromInitials = command(v.object({}), async () => {
   const generatedImages: { name: string; size: number; buffer: Buffer }[] = [];
 
   for (const { name, size } of sizes) {
-    const svg = buildSvg(size);
-    const buffer = await sharp(Buffer.from(svg)).png().toBuffer();
+    const buffer = await sharp(sourceBuffer)
+      .resize(size, size, { fit: 'cover', position: 'center' })
+      .png()
+      .toBuffer();
 
     generatedImages.push({ name, size, buffer });
     await writeFile(join('data', name), buffer);
