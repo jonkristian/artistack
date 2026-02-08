@@ -1,5 +1,6 @@
 # 08-02-2026
 
+- Added simple wysiwyg to bio.
 - Unified draft store across Dashboard and Appearance pages
 - Cross-page editing: changes persist when navigating between admin pages
 - Single Update button saves both content and appearance changes

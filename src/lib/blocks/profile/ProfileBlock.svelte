@@ -53,12 +53,14 @@
     {/if}
 
     {#if showBio && profile.bio}
-      <p
-        class="mx-auto max-w-md px-2 text-base leading-relaxed {showName ? 'mt-3' : 'mt-6'}"
+      <div
+        class="profile-bio mx-auto max-w-md px-2 text-base leading-relaxed {showName
+          ? 'mt-3'
+          : 'mt-6'}"
         style="color: var(--color-text-muted)"
       >
-        {profile.bio}
-      </p>
+        {@html profile.bio}
+      </div>
     {/if}
   </div>
 
@@ -101,3 +103,9 @@
     </div>
   {/if}
 </header>
+
+<style>
+  .profile-bio :global(p + p) {
+    margin-top: 0.5em;
+  }
+</style>

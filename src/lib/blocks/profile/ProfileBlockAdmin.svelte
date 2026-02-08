@@ -2,6 +2,7 @@
   import type { Block, Profile, Link, Media } from '$lib/server/schema';
   import { getTempId } from '$lib/stores/pageDraft.svelte';
   import { socialIcons } from '$lib/blocks/utils';
+  import RichTextEditor from '$lib/components/ui/RichTextEditor.svelte';
 
   let {
     block,
@@ -106,14 +107,12 @@
     />
   </div>
   <div>
-    <label for="profile-bio-{block.id}" class="mb-1 block text-sm text-gray-400">Bio</label>
-    <textarea
-      id="profile-bio-{block.id}"
-      bind:value={profile.bio}
+    <span class="mb-1 block text-sm text-gray-400">Bio</span>
+    <RichTextEditor
+      content={profile.bio ?? ''}
       placeholder="A short bio or tagline"
-      rows={3}
-      class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
-    ></textarea>
+      onUpdate={(html) => (profile.bio = html)}
+    />
   </div>
   <div>
     <label for="profile-email-{block.id}" class="mb-1 block text-sm text-gray-400">Email</label>
