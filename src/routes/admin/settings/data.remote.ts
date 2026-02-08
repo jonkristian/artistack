@@ -201,15 +201,31 @@ export const generateFaviconFromInitials = command(v.object({}), async () => {
     .toUpperCase()
     .slice(0, 2);
 
-  const bgHex = existing.colorBg || '#0c0a14';
+  const bgColor = existing.colorBg || '#0c0a14';
   const textColor = existing.colorText || '#f4f4f5';
 
-  // Parse hex color to RGBA object for sharp
-  function hexToRgba(hex: string) {
-    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return m
-      ? { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16), alpha: 1 }
-      : { r: 0, g: 0, b: 0, alpha: 1 };
+  // Load Inter Bold font and base64-encode for embedding in SVG
+  const { createRequire } = await import('module');
+  const require = createRequire(import.meta.url);
+  const fontPath = require.resolve('@fontsource/inter/files/inter-latin-700-normal.woff');
+  const fontBuffer = await readFile(fontPath);
+  const fontBase64 = fontBuffer.toString('base64');
+
+  function buildSvg(size: number): string {
+    const fontSize = initials.length === 1 ? size * 0.55 : size * 0.42;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+      <defs><style>
+        @font-face {
+          font-family: 'Inter';
+          font-weight: 700;
+          src: url('data:font/woff;base64,${fontBase64}') format('woff');
+        }
+      </style></defs>
+      <rect width="${size}" height="${size}" fill="${bgColor}"/>
+      <text x="50%" y="50%" dy="0.35em" text-anchor="middle"
+        font-family="Inter" font-weight="700"
+        font-size="${fontSize}" fill="${textColor}">${initials}</text>
+    </svg>`;
   }
 
   const sizes = [
@@ -224,26 +240,8 @@ export const generateFaviconFromInitials = command(v.object({}), async () => {
   const generatedImages: { name: string; size: number; buffer: Buffer }[] = [];
 
   for (const { name, size } of sizes) {
-    const fontPt = initials.length === 1 ? Math.round(size * 0.5) : Math.round(size * 0.38);
-
-    // Render text using sharp's Pango text input (reliable font fallback)
-    const textImage = await sharp({
-      text: {
-        text: `<span foreground="${textColor}" weight="bold">${initials}</span>`,
-        font: `sans-serif ${fontPt}`,
-        rgba: true
-      }
-    })
-      .png()
-      .toBuffer();
-
-    // Create background and composite text centered
-    const buffer = await sharp({
-      create: { width: size, height: size, channels: 4, background: hexToRgba(bgHex) }
-    })
-      .composite([{ input: textImage, gravity: 'centre' }])
-      .png()
-      .toBuffer();
+    const svg = buildSvg(size);
+    const buffer = await sharp(Buffer.from(svg)).png().toBuffer();
 
     generatedImages.push({ name, size, buffer });
     await writeFile(join('data', name), buffer);
