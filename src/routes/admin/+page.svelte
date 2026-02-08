@@ -103,6 +103,8 @@
   }
 
   function handleToggleCollapsed(id: number, collapsed: boolean) {
+    const block = draftData.blocks.find((b) => b.id === id);
+    if (block) block.collapsed = collapsed;
     if (id > 0) {
       toggleBlockCollapsed({ id, collapsed });
     }

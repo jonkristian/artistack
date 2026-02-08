@@ -11,7 +11,7 @@
 - Added new Repo integration, block and card.
 
 
-# 08-02-2026
+# 06-02-2026
 
 - Save/Undo system with draft state and diff-based publishing
 - Native drag-and-drop for block and link reordering
