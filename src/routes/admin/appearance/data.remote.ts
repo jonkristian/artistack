@@ -10,19 +10,22 @@ import { eq } from 'drizzle-orm';
 
 // Hex color validator (accepts #RGB, #RRGGBB, or #RRGGBBAA formats)
 const hexColor = v.pipe(
-	v.string(),
-	v.regex(/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/, 'Invalid hex color format')
+  v.string(),
+  v.regex(/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/, 'Invalid hex color format')
 );
 
 const appearanceSchema = v.object({
-	// Colors - validated as hex colors
-	colorBg: v.optional(v.nullable(hexColor)),
-	colorCard: v.optional(v.nullable(hexColor)),
-	colorAccent: v.optional(v.nullable(hexColor)),
-	colorText: v.optional(v.nullable(hexColor)),
-	colorTextMuted: v.optional(v.nullable(hexColor)),
-	// Layout - restricted to valid options
-	layout: v.optional(v.picklist(['default', 'minimal', 'card']))
+  // Colors - validated as hex colors
+  colorBg: v.optional(v.nullable(hexColor)),
+  colorCard: v.optional(v.nullable(hexColor)),
+  colorAccent: v.optional(v.nullable(hexColor)),
+  colorText: v.optional(v.nullable(hexColor)),
+  colorTextMuted: v.optional(v.nullable(hexColor)),
+  // Layout - restricted to valid options
+  layout: v.optional(v.picklist(['default', 'minimal', 'card'])),
+  // UI options
+  showShareButton: v.optional(v.boolean()),
+  showPressKit: v.optional(v.boolean())
 });
 
 // ============================================================================
@@ -30,14 +33,11 @@ const appearanceSchema = v.object({
 // ============================================================================
 
 async function getOrCreateSettings() {
-	const [existing] = await db.select().from(settings).limit(1);
-	if (existing) return existing;
+  const [existing] = await db.select().from(settings).limit(1);
+  if (existing) return existing;
 
-	const [created] = await db
-		.insert(settings)
-		.values({})
-		.returning();
-	return created;
+  const [created] = await db.insert(settings).values({}).returning();
+  return created;
 }
 
 // ============================================================================
@@ -45,21 +45,21 @@ async function getOrCreateSettings() {
 // ============================================================================
 
 export const updateAppearance = command(appearanceSchema, async (data) => {
-	const existing = await getOrCreateSettings();
+  const existing = await getOrCreateSettings();
 
-	// Filter out undefined values
-	const updates: Record<string, unknown> = {};
-	for (const [key, value] of Object.entries(data)) {
-		if (value !== undefined) {
-			updates[key] = value;
-		}
-	}
+  // Filter out undefined values
+  const updates: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value !== undefined) {
+      updates[key] = value;
+    }
+  }
 
-	const [updated] = await db
-		.update(settings)
-		.set(updates)
-		.where(eq(settings.id, existing.id))
-		.returning();
+  const [updated] = await db
+    .update(settings)
+    .set(updates)
+    .where(eq(settings.id, existing.id))
+    .returning();
 
-	return { success: true, settings: updated };
+  return { success: true, settings: updated };
 });

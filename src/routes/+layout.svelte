@@ -1,12 +1,12 @@
 <script lang="ts">
-	import '../app.css';
+  import '../app.css';
 
-	let { children } = $props();
+  let { children } = $props();
 </script>
 
 <svelte:head>
-	<title>Artistack</title>
-	<meta name="description" content="Artist link hub" />
+  <title>Artistack</title>
+  <meta name="description" content="Artist link hub" />
 </svelte:head>
 
 {@render children()}

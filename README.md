@@ -20,10 +20,11 @@ A self-hosted link-in-bio page for musicians and bands.
 <summary>More screenshots</summary>
 <br>
 
-| Stats | Integrations |
-|-------|--------------|
+| Stats                           | Integrations                                  |
+| ------------------------------- | --------------------------------------------- |
 | ![Stats](screenshots/stats.png) | ![Integrations](screenshots/integrations.png) |
-| ![Media](screenshots/media.png) | ![Appearance](screenshots/appearance.png) |
+| ![Media](screenshots/media.png) | ![Appearance](screenshots/appearance.png)     |
+
 </details>
 
 ## Tech Stack
@@ -37,16 +38,19 @@ A self-hosted link-in-bio page for musicians and bands.
 ## Getting Started
 
 1. Install dependencies:
+
    ```bash
    bun install
    ```
 
 2. Copy the example environment file and configure:
+
    ```bash
    cp .env.example .env
    ```
 
 3. Set up the database:
+
    ```bash
    npx drizzle-kit push
    ```

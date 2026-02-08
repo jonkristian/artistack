@@ -6,6 +6,6 @@ import { env } from '$env/dynamic/public';
 const baseURL = env.PUBLIC_ORIGIN || 'http://localhost:5173';
 
 export const authClient = createAuthClient({
-	baseURL,
-	plugins: [emailOTPClient()]
+  baseURL,
+  plugins: [emailOTPClient()]
 });

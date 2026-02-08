@@ -14,18 +14,24 @@ const WEBP_QUALITY = 85;
 
 // Magic bytes for allowed image types
 const MAGIC_BYTES: Record<string, { bytes: number[]; offset?: number }[]> = {
-	'image/jpeg': [{ bytes: [0xff, 0xd8, 0xff] }],
-	'image/png': [{ bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] }],
-	'image/gif': [{ bytes: [0x47, 0x49, 0x46, 0x38, 0x37, 0x61] }, { bytes: [0x47, 0x49, 0x46, 0x38, 0x39, 0x61] }],
-	'image/webp': [{ bytes: [0x52, 0x49, 0x46, 0x46], offset: 0 }, { bytes: [0x57, 0x45, 0x42, 0x50], offset: 8 }]
+  'image/jpeg': [{ bytes: [0xff, 0xd8, 0xff] }],
+  'image/png': [{ bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] }],
+  'image/gif': [
+    { bytes: [0x47, 0x49, 0x46, 0x38, 0x37, 0x61] },
+    { bytes: [0x47, 0x49, 0x46, 0x38, 0x39, 0x61] }
+  ],
+  'image/webp': [
+    { bytes: [0x52, 0x49, 0x46, 0x46], offset: 0 },
+    { bytes: [0x57, 0x45, 0x42, 0x50], offset: 8 }
+  ]
 };
 
 /**
  * Check if content looks like SVG (starts with XML declaration or <svg tag)
  */
 function isSvgContent(buffer: Buffer): boolean {
-	const start = buffer.subarray(0, 256).toString('utf8').trim().toLowerCase();
-	return start.startsWith('<?xml') || start.startsWith('<svg') || start.includes('<svg');
+  const start = buffer.subarray(0, 256).toString('utf8').trim().toLowerCase();
+  return start.startsWith('<?xml') || start.startsWith('<svg') || start.includes('<svg');
 }
 
 // Allowed type parameter values (sanitized)
@@ -35,189 +41,222 @@ const ALLOWED_TYPES = ['logo', 'photo', 'background', 'image', 'media'];
  * Validates file content by checking magic bytes
  */
 function validateMagicBytes(buffer: Buffer, mimeType: string): boolean {
-	const signatures = MAGIC_BYTES[mimeType];
-	if (!signatures) return false;
+  const signatures = MAGIC_BYTES[mimeType];
+  if (!signatures) return false;
 
-	// For WebP, we need to check two separate signatures
-	if (mimeType === 'image/webp') {
-		const riffMatch = buffer.subarray(0, 4).equals(Buffer.from([0x52, 0x49, 0x46, 0x46]));
-		const webpMatch = buffer.subarray(8, 12).equals(Buffer.from([0x57, 0x45, 0x42, 0x50]));
-		return riffMatch && webpMatch;
-	}
+  // For WebP, we need to check two separate signatures
+  if (mimeType === 'image/webp') {
+    const riffMatch = buffer.subarray(0, 4).equals(Buffer.from([0x52, 0x49, 0x46, 0x46]));
+    const webpMatch = buffer.subarray(8, 12).equals(Buffer.from([0x57, 0x45, 0x42, 0x50]));
+    return riffMatch && webpMatch;
+  }
 
-	// For other types, check if any signature matches
-	return signatures.some((sig) => {
-		const offset = sig.offset || 0;
-		const expected = Buffer.from(sig.bytes);
-		const actual = buffer.subarray(offset, offset + sig.bytes.length);
-		return actual.equals(expected);
-	});
+  // For other types, check if any signature matches
+  return signatures.some((sig) => {
+    const offset = sig.offset || 0;
+    const expected = Buffer.from(sig.bytes);
+    const actual = buffer.subarray(offset, offset + sig.bytes.length);
+    return actual.equals(expected);
+  });
 }
 
 /**
  * Detects the actual MIME type from file content
  */
 function detectMimeType(buffer: Buffer): string | null {
-	for (const [mimeType] of Object.entries(MAGIC_BYTES)) {
-		if (validateMagicBytes(buffer, mimeType)) {
-			return mimeType;
-		}
-	}
-	return null;
+  for (const [mimeType] of Object.entries(MAGIC_BYTES)) {
+    if (validateMagicBytes(buffer, mimeType)) {
+      return mimeType;
+    }
+  }
+  return null;
 }
 
 export const POST: RequestHandler = async ({ request }) => {
-	await requireAuth(request);
+  await requireAuth(request);
 
-	const formData = await request.formData();
-	const file = formData.get('file') as File | null;
-	const type = formData.get('type') as string | null;
+  const formData = await request.formData();
+  const file = formData.get('file') as File | null;
+  const type = formData.get('type') as string | null;
 
-	if (!file) {
-		throw error(400, 'No file provided');
-	}
+  console.log('[Upload] Start:', {
+    name: file?.name,
+    type: file?.type,
+    size: file?.size,
+    formType: type
+  });
 
-	// Validate file size first (max 10MB for raw uploads, will be compressed)
-	const maxSize = 10 * 1024 * 1024;
-	if (file.size > maxSize) {
-		throw error(400, 'File too large. Maximum size is 10MB');
-	}
+  if (!file) {
+    throw error(400, 'No file provided');
+  }
 
-	// Read file buffer for content validation
-	const buffer = Buffer.from(await file.arrayBuffer());
+  // Validate file size first (max 10MB for raw uploads, will be compressed)
+  const maxSize = 10 * 1024 * 1024;
+  if (file.size > maxSize) {
+    console.log('[Upload] Rejected: file too large', file.size);
+    throw error(400, 'File too large. Maximum size is 10MB');
+  }
 
-	// Detect actual MIME type from file content (not trusting the reported type)
-	const isSvg = isSvgContent(buffer);
-	const detectedMimeType = isSvg ? 'image/svg+xml' : detectMimeType(buffer);
-	if (!detectedMimeType) {
-		throw error(400, 'Invalid file content. Allowed: JPEG, PNG, WebP, GIF, SVG');
-	}
+  // Read file buffer for content validation
+  const buffer = Buffer.from(await file.arrayBuffer());
+  console.log(
+    '[Upload] Buffer read:',
+    buffer.length,
+    'bytes, first 16 bytes:',
+    [...buffer.subarray(0, 16)].map((b) => b.toString(16).padStart(2, '0')).join(' ')
+  );
 
-	// Verify the claimed MIME type matches the detected type (optional strictness)
-	const allowedTypes = Object.keys(MAGIC_BYTES);
-	if (!allowedTypes.includes(file.type) || file.type !== detectedMimeType) {
-		console.warn(`MIME type mismatch: claimed ${file.type}, detected ${detectedMimeType}`);
-	}
+  // Detect actual MIME type from file content (not trusting the reported type)
+  const isSvg = isSvgContent(buffer);
+  const detectedMimeType = isSvg ? 'image/svg+xml' : detectMimeType(buffer);
+  console.log('[Upload] Detected MIME:', detectedMimeType, { isSvg });
+  if (!detectedMimeType) {
+    console.log('[Upload] Rejected: unrecognized content type');
+    throw error(400, 'Invalid file content. Allowed: JPEG, PNG, WebP, GIF, SVG');
+  }
 
-	// Sanitize the type parameter
-	const sanitizedType = type && ALLOWED_TYPES.includes(type) ? type : 'image';
+  // Only warn for truly suspicious mismatches (non-image claiming to be image)
+  const imageTypes = [...Object.keys(MAGIC_BYTES), 'image/svg+xml'];
+  if (file.type && !imageTypes.includes(file.type)) {
+    console.warn(`MIME type mismatch: claimed ${file.type}, detected ${detectedMimeType}`);
+  }
 
-	// Ensure upload directory exists
-	if (!existsSync(UPLOAD_DIR)) {
-		await mkdir(UPLOAD_DIR, { recursive: true });
-	}
+  // Sanitize the type parameter
+  const sanitizedType = type && ALLOWED_TYPES.includes(type) ? type : 'image';
 
-	const timestamp = Date.now();
-	const baseFilename = `${sanitizedType}-${timestamp}`;
+  // Ensure upload directory exists
+  if (!existsSync(UPLOAD_DIR)) {
+    await mkdir(UPLOAD_DIR, { recursive: true });
+  }
 
-	// Get original file extension
-	const originalExtMap: Record<string, string> = {
-		'image/jpeg': 'jpg',
-		'image/png': 'png',
-		'image/gif': 'gif',
-		'image/webp': 'webp',
-		'image/svg+xml': 'svg'
-	};
-	const originalExt = originalExtMap[detectedMimeType] || 'bin';
-	const originalFilename = `${baseFilename}-original.${originalExt}`;
+  const timestamp = Date.now();
+  const baseFilename = `${sanitizedType}-${timestamp}`;
 
-	// Handle SVG files separately (no Sharp processing)
-	if (detectedMimeType === 'image/svg+xml') {
-		await writeFile(join(UPLOAD_DIR, originalFilename), buffer);
+  // Get original file extension
+  const originalExtMap: Record<string, string> = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/gif': 'gif',
+    'image/webp': 'webp',
+    'image/svg+xml': 'svg'
+  };
+  const originalExt = originalExtMap[detectedMimeType] || 'bin';
+  const originalFilename = `${baseFilename}-original.${originalExt}`;
 
-		return json({
-			url: `/uploads/${originalFilename}`,
-			originalUrl: `/uploads/${originalFilename}`,
-			size: buffer.length,
-			originalSize: buffer.length,
-			mimeType: 'image/svg+xml'
-		});
-	}
+  // Handle SVG files separately (no Sharp processing)
+  if (detectedMimeType === 'image/svg+xml') {
+    await writeFile(join(UPLOAD_DIR, originalFilename), buffer);
 
-	// Get original dimensions
-	const metadata = await sharp(buffer).metadata();
-	const originalWidth = metadata.width || 0;
-	const originalHeight = metadata.height || 0;
+    return json({
+      url: `/uploads/${originalFilename}`,
+      originalUrl: `/uploads/${originalFilename}`,
+      size: buffer.length,
+      originalSize: buffer.length,
+      mimeType: 'image/svg+xml'
+    });
+  }
 
-	// Process image with sharp for optimized web version
-	let sharpInstance = sharp(buffer)
-		.rotate() // Auto-rotate based on EXIF orientation
-		.withMetadata({ orientation: undefined }); // Strip EXIF but keep color profile
+  // Get original dimensions
+  let metadata;
+  try {
+    metadata = await sharp(buffer).metadata();
+  } catch (e) {
+    console.error('[Upload] Sharp metadata failed:', e);
+    throw error(400, 'Failed to read image metadata');
+  }
+  const originalWidth = metadata.width || 0;
+  const originalHeight = metadata.height || 0;
+  console.log('[Upload] Metadata:', {
+    width: originalWidth,
+    height: originalHeight,
+    format: metadata.format
+  });
 
-	// Resize if too large (maintain aspect ratio)
-	if (originalWidth > MAX_DIMENSION || originalHeight > MAX_DIMENSION) {
-		sharpInstance = sharpInstance.resize(MAX_DIMENSION, MAX_DIMENSION, {
-			fit: 'inside',
-			withoutEnlargement: true
-		});
-	}
+  // Process image with sharp for optimized web version
+  let sharpInstance = sharp(buffer)
+    .rotate() // Auto-rotate based on EXIF orientation
+    .withMetadata({ orientation: undefined }); // Strip EXIF but keep color profile
 
-	// Determine output format - convert PNG to WebP for better compression, keep JPEG as JPEG
-	let outputBuffer: Buffer;
-	let outputExt: string;
-	let outputMimeType: string;
+  // Resize if too large (maintain aspect ratio)
+  if (originalWidth > MAX_DIMENSION || originalHeight > MAX_DIMENSION) {
+    sharpInstance = sharpInstance.resize(MAX_DIMENSION, MAX_DIMENSION, {
+      fit: 'inside',
+      withoutEnlargement: true
+    });
+  }
 
-	if (detectedMimeType === 'image/gif') {
-		// Keep GIFs as-is (for animations)
-		outputBuffer = buffer;
-		outputExt = 'gif';
-		outputMimeType = 'image/gif';
-	} else if (detectedMimeType === 'image/png' || detectedMimeType === 'image/webp') {
-		// Convert to WebP for better compression
-		outputBuffer = await sharpInstance.webp({ quality: WEBP_QUALITY }).toBuffer();
-		outputExt = 'webp';
-		outputMimeType = 'image/webp';
-	} else {
-		// JPEG stays as JPEG
-		outputBuffer = await sharpInstance.jpeg({ quality: JPEG_QUALITY, mozjpeg: true }).toBuffer();
-		outputExt = 'jpg';
-		outputMimeType = 'image/jpeg';
-	}
+  // Determine output format - convert PNG to WebP for better compression, keep JPEG as JPEG
+  let outputBuffer: Buffer;
+  let outputExt: string;
+  let outputMimeType: string;
 
-	// Generate thumbnail
-	let thumbnailBuffer: Buffer;
-	if (detectedMimeType === 'image/gif') {
-		// For GIFs, just resize (loses animation but that's OK for thumbnails)
-		thumbnailBuffer = await sharp(buffer, { animated: false })
-			.resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE, { fit: 'inside', withoutEnlargement: true })
-			.webp({ quality: 80 })
-			.toBuffer();
-	} else {
-		thumbnailBuffer = await sharp(buffer)
-			.rotate()
-			.resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE, { fit: 'inside', withoutEnlargement: true })
-			.webp({ quality: 80 })
-			.toBuffer();
-	}
+  if (detectedMimeType === 'image/gif') {
+    // Keep GIFs as-is (for animations)
+    outputBuffer = buffer;
+    outputExt = 'gif';
+    outputMimeType = 'image/gif';
+  } else if (detectedMimeType === 'image/png' || detectedMimeType === 'image/webp') {
+    // Convert to WebP for better compression
+    outputBuffer = await sharpInstance.webp({ quality: WEBP_QUALITY }).toBuffer();
+    outputExt = 'webp';
+    outputMimeType = 'image/webp';
+  } else {
+    // JPEG stays as JPEG
+    outputBuffer = await sharpInstance.jpeg({ quality: JPEG_QUALITY, mozjpeg: true }).toBuffer();
+    outputExt = 'jpg';
+    outputMimeType = 'image/jpeg';
+  }
 
-	// Get final dimensions (of optimized version)
-	const finalMetadata = await sharp(outputBuffer).metadata();
-	const width = finalMetadata.width || originalWidth;
-	const height = finalMetadata.height || originalHeight;
+  // Generate thumbnail
+  let thumbnailBuffer: Buffer;
+  if (detectedMimeType === 'image/gif') {
+    // For GIFs, just resize (loses animation but that's OK for thumbnails)
+    thumbnailBuffer = await sharp(buffer, { animated: false })
+      .resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE, { fit: 'inside', withoutEnlargement: true })
+      .webp({ quality: 80 })
+      .toBuffer();
+  } else {
+    thumbnailBuffer = await sharp(buffer)
+      .rotate()
+      .resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE, { fit: 'inside', withoutEnlargement: true })
+      .webp({ quality: 80 })
+      .toBuffer();
+  }
 
-	// Write files: original, optimized, and thumbnail
-	const filename = `${baseFilename}.${outputExt}`;
-	const thumbnailFilename = `${baseFilename}-thumb.webp`;
+  // Get final dimensions (of optimized version)
+  const finalMetadata = await sharp(outputBuffer).metadata();
+  const width = finalMetadata.width || originalWidth;
+  const height = finalMetadata.height || originalHeight;
 
-	await Promise.all([
-		writeFile(join(UPLOAD_DIR, originalFilename), buffer), // Original
-		writeFile(join(UPLOAD_DIR, filename), outputBuffer), // Optimized
-		writeFile(join(UPLOAD_DIR, thumbnailFilename), thumbnailBuffer) // Thumbnail
-	]);
+  // Write files: original, optimized, and thumbnail
+  const filename = `${baseFilename}.${outputExt}`;
+  const thumbnailFilename = `${baseFilename}-thumb.webp`;
 
-	// Return URLs and metadata
-	const url = `/uploads/${filename}`;
-	const originalUrl = `/uploads/${originalFilename}`;
-	const thumbnailUrl = `/uploads/${thumbnailFilename}`;
+  try {
+    await Promise.all([
+      writeFile(join(UPLOAD_DIR, originalFilename), buffer), // Original
+      writeFile(join(UPLOAD_DIR, filename), outputBuffer), // Optimized
+      writeFile(join(UPLOAD_DIR, thumbnailFilename), thumbnailBuffer) // Thumbnail
+    ]);
+  } catch (e) {
+    console.error('[Upload] Write failed:', e);
+    throw error(500, 'Failed to save uploaded file');
+  }
 
-	return json({
-		url,
-		originalUrl,
-		thumbnailUrl,
-		width,
-		height,
-		size: outputBuffer.length,
-		originalSize: buffer.length,
-		mimeType: outputMimeType
-	});
+  // Return URLs and metadata
+  const url = `/uploads/${filename}`;
+  const originalUrl = `/uploads/${originalFilename}`;
+  const thumbnailUrl = `/uploads/${thumbnailFilename}`;
+  console.log('[Upload] Success:', { url, originalUrl, thumbnailUrl });
+
+  return json({
+    url,
+    originalUrl,
+    thumbnailUrl,
+    width,
+    height,
+    size: outputBuffer.length,
+    originalSize: buffer.length,
+    mimeType: outputMimeType
+  });
 };

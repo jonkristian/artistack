@@ -1,39 +1,44 @@
 /**
- * Simple bridge between pageDraft store and the sidebar Save/Undo buttons.
+ * Simple pending changes store.
+ * Tracks whether there are unpublished changes and handles publish.
  */
 
-import { getState, undo as draftUndo, setSaving, commitSave } from './pageDraft.svelte';
+import { getState, setSaving, commitSave } from './pageDraft.svelte';
 
-let saveCallback: (() => Promise<void>) | null = null;
+let publishCallback: (() => Promise<void>) | null = null;
 
-const draftState = getState();
-
-export function registerSaveHandler(handler: () => Promise<void>) {
-	saveCallback = handler;
+export function registerPublishHandler(handler: () => Promise<void>) {
+  publishCallback = handler;
 }
 
-export function clearSaveHandler() {
-	saveCallback = null;
+export function clearPublishHandler() {
+  publishCallback = null;
 }
 
 export function getPendingState() {
-	return {
-		get isDirty() { return draftState.isDirty; },
-		get saving() { return draftState.saving; }
-	};
+  // Call getState() fresh each time to ensure proper reactivity tracking
+  const state = getState();
+  return {
+    get isDirty() {
+      return state.isDirty;
+    },
+    get saving() {
+      return state.saving;
+    }
+  };
 }
 
-export async function save() {
-	if (!saveCallback || draftState.saving) return;
-	setSaving(true);
-	try {
-		await saveCallback();
-		commitSave();
-	} finally {
-		setSaving(false);
-	}
-}
-
-export function undo() {
-	draftUndo();
+/**
+ * Publish - commits current draft to real data tables
+ */
+export async function publish() {
+  const state = getState();
+  if (!publishCallback || state.saving) return;
+  setSaving(true);
+  try {
+    await publishCallback();
+    commitSave();
+  } finally {
+    setSaving(false);
+  }
 }

@@ -4,18 +4,18 @@ import { existsSync } from 'fs';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async () => {
-	const filePath = 'data/favicon.ico';
+  const filePath = 'data/favicon.ico';
 
-	if (!existsSync(filePath)) {
-		throw error(404, 'Favicon not generated yet');
-	}
+  if (!existsSync(filePath)) {
+    throw error(404, 'Favicon not generated yet');
+  }
 
-	const file = await readFile(filePath);
+  const file = await readFile(filePath);
 
-	return new Response(file, {
-		headers: {
-			'Content-Type': 'image/x-icon',
-			'Cache-Control': 'public, max-age=86400'
-		}
-	});
+  return new Response(file, {
+    headers: {
+      'Content-Type': 'image/x-icon',
+      'Cache-Control': 'public, max-age=86400'
+    }
+  });
 };
