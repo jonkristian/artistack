@@ -57,7 +57,11 @@ const BOT_PATTERNS = [
   /censys/i,
   /shodan/i,
   /nmap/i,
-  /\{USER_AGENT\}/i
+  /\{USER_AGENT\}/i,
+  /air\.ai/i,
+  /req\/v\d/i,
+  /GoogleOther/i,
+  /^Mozilla\/5\.0$/
 ];
 
 // Paths to skip tracking
