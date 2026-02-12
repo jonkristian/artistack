@@ -25,7 +25,7 @@ export type AppearanceData = {
   colorText: string;
   colorTextMuted: string;
   colorIcon: string;
-  layout: 'default' | 'minimal' | 'card';
+  layout: 'default' | 'simple';
   showShareButton: boolean;
   showPressKit: boolean;
 };
@@ -74,7 +74,7 @@ export function buildDraftFromServerData(data: {
       colorText: s?.colorText ?? '#f4f4f5',
       colorTextMuted: s?.colorTextMuted ?? '#a1a1aa',
       colorIcon: s?.colorIcon ?? '#a1a1aa',
-      layout: (s?.layout as 'default' | 'minimal' | 'card') ?? 'default',
+      layout: (s?.layout as AppearanceData['layout']) ?? 'default',
       showShareButton: s?.showShareButton !== false,
       showPressKit: s?.showPressKit ?? false
     }

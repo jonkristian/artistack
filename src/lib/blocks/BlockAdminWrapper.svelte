@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Block } from '$lib/server/schema';
+  import type { Block, BaseBlockConfig } from '$lib/server/schema';
   import { blockRegistry } from '$lib/blocks';
   import type { Snippet } from 'svelte';
 
@@ -23,6 +23,20 @@
   let settingsOpen = $state(false);
 
   const def = $derived(blockRegistry[block.type]);
+
+  const config = $derived((block.config as BaseBlockConfig) ?? {});
+  const marginTop = $derived(config.marginTop ?? 'none');
+  const marginBottom = $derived(config.marginBottom ?? 'medium');
+
+  const spacingOptions = ['none', 'small', 'medium', 'large'] as const;
+
+  function setMarginTop(value: BaseBlockConfig['marginTop']) {
+    block.config = { ...block.config, marginTop: value };
+  }
+
+  function setMarginBottom(value: BaseBlockConfig['marginBottom']) {
+    block.config = { ...block.config, marginBottom: value };
+  }
 
   function toggleExpanded() {
     ontogglecollapsed?.(block.id, !block.collapsed);
@@ -58,7 +72,6 @@
     <!-- Actions -->
     <div class="flex items-center gap-1">
       <!-- Settings cog -->
-      {#if settings}
         <button
           onclick={() => (settingsOpen = !settingsOpen)}
           class="rounded p-1 transition-colors hover:bg-gray-800 {settingsOpen
@@ -81,7 +94,6 @@
             />
           </svg>
         </button>
-      {/if}
 
       <!-- Visibility toggle -->
       <button
@@ -156,9 +168,50 @@
   </div>
 
   <!-- Settings panel -->
-  {#if settings && settingsOpen}
-    <div class="border-t border-gray-800 bg-gray-800/30 px-4 py-4">
-      {@render settings()}
+  {#if settingsOpen}
+    <div class="border-t border-gray-800 bg-gray-800/30 px-4 py-4 space-y-4">
+      {#if settings}
+        {@render settings()}
+      {/if}
+
+      <!-- Spacing (common to all blocks) -->
+      <div class="space-y-3">
+        <span class="block text-xs font-medium uppercase tracking-wider text-gray-500">Spacing</span>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <span class="mb-1.5 block text-sm text-gray-400">Top</span>
+            <div class="flex gap-1">
+              {#each spacingOptions as opt}
+                <button
+                  type="button"
+                  onclick={() => setMarginTop(opt)}
+                  class="flex-1 rounded px-1.5 py-1 text-xs font-medium capitalize transition-colors {marginTop === opt
+                    ? 'bg-violet-600 text-white'
+                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}"
+                >
+                  {opt === 'none' ? '0' : opt[0].toUpperCase()}
+                </button>
+              {/each}
+            </div>
+          </div>
+          <div>
+            <span class="mb-1.5 block text-sm text-gray-400">Bottom</span>
+            <div class="flex gap-1">
+              {#each spacingOptions as opt}
+                <button
+                  type="button"
+                  onclick={() => setMarginBottom(opt)}
+                  class="flex-1 rounded px-1.5 py-1 text-xs font-medium capitalize transition-colors {marginBottom === opt
+                    ? 'bg-violet-600 text-white'
+                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}"
+                >
+                  {opt === 'none' ? '0' : opt[0].toUpperCase()}
+                </button>
+              {/each}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   {/if}
 

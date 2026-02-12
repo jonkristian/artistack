@@ -2,6 +2,7 @@
   import { ColorWheel, LayoutPreview } from '$lib/components/ui';
   import { SectionCard } from '$lib/components/cards';
   import Default from '$lib/themes/Default.svelte';
+  import Simple from '$lib/themes/Simple.svelte';
   import * as draft from '$lib/stores/pageDraft.svelte';
   import type { UnifiedDraftData } from '../publishDraft';
   import type { PageData } from './$types';
@@ -16,8 +17,14 @@
 
   // Available layouts
   const availableLayouts = [
-    { id: 'default', name: 'Default', description: 'Classic centered layout with photo and links' }
+    { id: 'default', name: 'Default', description: 'Classic centered layout with card and gradient border' },
+    { id: 'simple', name: 'Simple', description: 'Clean, centered layout without card' }
   ];
+
+  const layoutComponents = { default: Default, simple: Simple } as const;
+  const activeLayout = $derived(
+    layoutComponents[(draftData.appearance.layout as keyof typeof layoutComponents) ?? 'default'] ?? Default
+  );
 
   // Live preview settings (merges draft appearance onto server settings)
   const liveSettings = $derived({
@@ -107,9 +114,6 @@
             </label>
           {/each}
         </div>
-        {#if availableLayouts.length === 1}
-          <p class="mt-3 text-xs text-gray-600">More layouts coming soon</p>
-        {/if}
       </SectionCard>
 
       <!-- Options -->
@@ -175,7 +179,7 @@
     style="background-color: {draftData.appearance.colorBg}"
   >
     <LayoutPreview
-      layout={Default}
+      layout={activeLayout}
       profile={draftData.profile}
       settings={liveSettings}
       links={draftData.links}

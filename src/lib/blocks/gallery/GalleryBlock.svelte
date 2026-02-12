@@ -38,7 +38,7 @@
 </script>
 
 {#if blockMedia.length > 0}
-  <section class="mb-8">
+  <section>
     {#if config.heading}
       <h2
         class="mb-3 text-[10px] font-semibold tracking-widest uppercase"

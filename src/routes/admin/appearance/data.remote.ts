@@ -23,7 +23,7 @@ const appearanceSchema = v.object({
   colorTextMuted: v.optional(v.nullable(hexColor)),
   colorIcon: v.optional(v.nullable(hexColor)),
   // Layout - restricted to valid options
-  layout: v.optional(v.picklist(['default', 'minimal', 'card'])),
+  layout: v.optional(v.picklist(['default', 'simple'])),
   // UI options
   showShareButton: v.optional(v.boolean()),
   showPressKit: v.optional(v.boolean())

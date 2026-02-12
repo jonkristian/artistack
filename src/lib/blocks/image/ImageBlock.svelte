@@ -39,7 +39,7 @@
 </script>
 
 {#if config.imageUrl}
-  <section class={isFullWidth ? 'mb-8 -mx-2 sm:-mx-6' : 'mb-8'}>
+  <section class={isFullWidth ? '-mx-2 sm:-mx-6' : ''}>
     <div class="flex {alignmentClass}">
       <div class="relative {sizeClass}">
         {#if showGlow}

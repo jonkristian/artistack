@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import Default from '$lib/themes/Default.svelte';
+  import Simple from '$lib/themes/Simple.svelte';
 
   let { data }: { data: PageData } = $props();
 
@@ -19,8 +20,8 @@
 
   // Layout components registry - add new layouts here
   const layouts = {
-    default: Default
-    // Add more layouts: minimal: Minimal, bold: Bold, etc.
+    default: Default,
+    simple: Simple
   } as const;
 
   const Layout = $derived(

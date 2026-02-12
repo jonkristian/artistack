@@ -2,6 +2,7 @@
 
 - Added 18 new bot detection patterns to hooks.server.ts
 - Default: Remove margin on first block if full-size image.
+- Added new `Simple` theme and margin controls to blocks.
 
 
 # 08-02-2026

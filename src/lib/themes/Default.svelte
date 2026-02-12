@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { Profile, Settings, Link, TourDate, Media, Block, ImageBlockConfig } from '$lib/server/schema';
+  import type { Profile, Settings, Link, TourDate, Media, Block, ImageBlockConfig, BaseBlockConfig } from '$lib/server/schema';
   import { blockRegistry } from '$lib/blocks';
-  import { shareProfile } from '$lib/blocks/utils';
+  import { shareProfile, marginTopClasses, marginBottomClasses } from '$lib/blocks/utils';
 
   let {
     profile,
@@ -62,9 +62,12 @@
     >
       {#each visibleBlocks as block (block.id)}
         {@const def = blockRegistry[block.type]}
+        {@const cfg = (block.config as BaseBlockConfig) ?? {}}
         {#if def}
           {@const BlockComponent = def.component}
-          <BlockComponent {block} {profile} {settings} {links} {tourDates} {media} {locale} />
+          <div class="{marginTopClasses[cfg.marginTop ?? 'none']} {marginBottomClasses[cfg.marginBottom ?? 'medium']}">
+            <BlockComponent {block} {profile} {settings} {links} {tourDates} {media} {locale} />
+          </div>
         {/if}
       {/each}
 

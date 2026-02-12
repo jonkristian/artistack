@@ -5,6 +5,7 @@
   import { blockRegistry } from '$lib/blocks';
   import BlockAdminWrapper from '$lib/blocks/BlockAdminWrapper.svelte';
   import Default from '$lib/themes/Default.svelte';
+  import Simple from '$lib/themes/Simple.svelte';
   import { invalidateAll } from '$app/navigation';
   import { tick, untrack } from 'svelte';
   import { toast } from '$lib/stores/toast.svelte';
@@ -37,6 +38,11 @@
     ...data.settings,
     ...draftData.appearance
   });
+
+  const layoutComponents = { default: Default, simple: Simple } as const;
+  const activeLayout = $derived(
+    layoutComponents[(liveSettings.layout as keyof typeof layoutComponents) ?? 'default'] ?? Default
+  );
 
   // Link edit dialog state
   let editingLink = $state<Link | null>(null);
@@ -203,7 +209,7 @@
     style="background-color: {draftData.appearance.colorBg}"
   >
     <LayoutPreview
-      layout={Default}
+      layout={activeLayout}
       profile={draftData.profile}
       settings={liveSettings}
       links={draftData.links}

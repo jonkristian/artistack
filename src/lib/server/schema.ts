@@ -205,12 +205,17 @@ export interface Venue {
 }
 
 // Block config types
-export interface ProfileBlockConfig {
+export interface BaseBlockConfig {
+  marginTop?: 'none' | 'small' | 'medium' | 'large'; // Default: 'none'
+  marginBottom?: 'none' | 'small' | 'medium' | 'large'; // Default: 'medium'
+}
+
+export interface ProfileBlockConfig extends BaseBlockConfig {
   showName?: boolean; // default true
   showBio?: boolean; // default true
 }
 
-export interface ImageBlockConfig {
+export interface ImageBlockConfig extends BaseBlockConfig {
   mediaId?: number; // Reference to media library
   imageUrl?: string; // Cropped image URL (from MediaPicker)
   shape?: 'circle' | 'rounded' | 'square'; // Default: 'rounded'
@@ -219,25 +224,25 @@ export interface ImageBlockConfig {
   showGlow?: boolean; // Accent color glow effect
 }
 
-export interface LinksBlockConfig {
+export interface LinksBlockConfig extends BaseBlockConfig {
   heading?: string;
   displayAs?: 'rows' | 'grid';
   gridColumns?: number; // 2-6, default 3
   stackOnMobile?: boolean; // default true
 }
 
-export interface TourDatesBlockConfig {
+export interface TourDatesBlockConfig extends BaseBlockConfig {
   showPastShows?: boolean; // default true
   heading?: string;
 }
 
-export interface GalleryBlockConfig {
+export interface GalleryBlockConfig extends BaseBlockConfig {
   mediaIds?: number[];
   displayAs?: 'grid' | 'carousel' | 'bento'; // default 'grid'
   heading?: string;
 }
 
-export interface ProductsBlockConfig {
+export interface ProductsBlockConfig extends BaseBlockConfig {
   displayAs?: 'grid' | 'list' | 'featured'; // default 'grid'
   category?: string; // filter by category
   limit?: number; // max products to show
