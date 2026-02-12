@@ -2,6 +2,8 @@
   import type { Block, Link, Media } from '$lib/server/schema';
   import { SortableList } from '$lib/components/ui';
   import { toast } from '$lib/stores/toast.svelte';
+  import { detectPlatformFromUrl } from '$lib/utils/platforms';
+  import { getTempId } from '$lib/stores/pageDraft.svelte';
   import {
     createLink as serverCreateLink,
     deleteLink as serverDeleteLink
@@ -38,21 +40,51 @@
     adding = true;
 
     try {
-      // Create link on server - gets real ID and metadata
-      const result = await serverCreateLink({
-        url: urlToAdd,
-        blockId: block.id
-      });
+      if (block.id < 0) {
+        // Block is unsaved — add a draft-only link (publish will create it with the real blockId)
+        const detected = detectPlatformFromUrl(urlToAdd);
+        let platform = detected?.platform;
+        if (!platform) {
+          try {
+            platform = new URL(urlToAdd).hostname.replace('www.', '').split('.')[0];
+          } catch {
+            platform = 'link';
+          }
+        }
+        const category = detected?.category === 'event' ? 'other' : (detected?.category || 'other');
 
-      if (result.link) {
-        // Add the server-created link to the array
-        links.push(result.link);
+        const tempLink: Link = {
+          id: getTempId(),
+          blockId: block.id,
+          category,
+          platform: platform || 'link',
+          url: urlToAdd,
+          label: null,
+          thumbnailUrl: null,
+          embedData: null,
+          position: links.filter((l) => l.blockId === block.id).length,
+          visible: true,
+          createdAt: new Date()
+        };
+        links.push(tempLink);
         links.length = links.length;
         toast.info('Link added');
+      } else {
+        // Block exists on server — create link immediately
+        const result = await serverCreateLink({
+          url: urlToAdd,
+          blockId: block.id
+        });
+
+        if (result.link) {
+          links.push(result.link);
+          links.length = links.length;
+          toast.info('Link added');
+        }
       }
     } catch (e) {
       toast.error('Failed to add link');
-      newUrl = urlToAdd; // Restore URL on error
+      newUrl = urlToAdd;
     } finally {
       adding = false;
     }
@@ -66,11 +98,13 @@
       links.length = links.length;
     }
 
-    // Delete from server
-    try {
-      await serverDeleteLink(id);
-    } catch {
-      // Silently fail - link is already removed from UI
+    // Delete from server (skip for temp/draft links)
+    if (id > 0) {
+      try {
+        await serverDeleteLink(id);
+      } catch {
+        // Silently fail - link is already removed from UI
+      }
     }
   }
 

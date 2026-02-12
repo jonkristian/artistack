@@ -150,10 +150,18 @@ export async function publishAllChanges(draftData: UnifiedDraftData) {
   }
 
   // --- Links ---
+  const deletedBlockIds = draft.hasChanges('blocks')
+    ? new Set(draft.computeCollectionDiff<Block>('blocks').deleted)
+    : new Set<number>();
+
   if (draft.hasChanges('links')) {
     const linkDiff = draft.computeCollectionDiff<Link>('links');
+    const originalLinks = draft.getSnapshot<Link[]>('links') ?? [];
 
     for (const id of linkDiff.deleted) {
+      // Skip links whose block was already deleted (cascade-deleted by server)
+      const originalLink = originalLinks.find((l) => l.id === id);
+      if (originalLink && deletedBlockIds.has(originalLink.blockId)) continue;
       await serverDeleteLink(id);
     }
 
@@ -163,8 +171,8 @@ export async function publishAllChanges(draftData: UnifiedDraftData) {
       await serverCreateLink({
         url: link.url,
         blockId,
-        category: link.category as 'social' | 'streaming' | 'merch' | 'other',
-        platform: link.platform,
+        category: (link.category as 'social' | 'streaming' | 'merch' | 'other') ?? undefined,
+        platform: link.platform ?? undefined,
         label: link.label ?? undefined
       });
     }
@@ -195,7 +203,11 @@ export async function publishAllChanges(draftData: UnifiedDraftData) {
   if (draft.hasChanges('tourDates')) {
     const tdDiff = draft.computeCollectionDiff<TourDate>('tourDates');
 
+    const originalTourDates = draft.getSnapshot<TourDate[]>('tourDates') ?? [];
     for (const id of tdDiff.deleted) {
+      // Skip tour dates whose block was already deleted (cascade-deleted by server)
+      const originalTd = originalTourDates.find((t) => t.id === id);
+      if (originalTd && deletedBlockIds.has(originalTd.blockId)) continue;
       await serverDeleteTourDate(id);
     }
 

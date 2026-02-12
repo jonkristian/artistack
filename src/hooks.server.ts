@@ -39,7 +39,25 @@ const BOT_PATTERNS = [
   /pagespeed/i,
   /gtmetrix/i,
   /uptimerobot/i,
-  /pingdom/i
+  /uptime-kuma/i,
+  /pingdom/i,
+  /curl\//i,
+  /go-http-client/i,
+  /python\//i,
+  /aiohttp/i,
+  /axios/i,
+  /node-fetch/i,
+  /wget/i,
+  /httpie/i,
+  /palo alto/i,
+  /cortex/i,
+  /scaninfo/i,
+  /masscan/i,
+  /zgrab/i,
+  /censys/i,
+  /shodan/i,
+  /nmap/i,
+  /\{USER_AGENT\}/i
 ];
 
 // Paths to skip tracking

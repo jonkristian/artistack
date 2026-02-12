@@ -1,3 +1,8 @@
+# 12-02-2026
+
+- Added 18 new bot detection patterns to hooks.server.ts
+
+
 # 08-02-2026
 
 - Added simple wysiwyg to bio.

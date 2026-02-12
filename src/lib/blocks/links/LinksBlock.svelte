@@ -12,7 +12,7 @@
   import { BandcampEmbed, SpotifyEmbed, YouTubeEmbed } from '$lib/components/embeds';
   import { RepoCard } from '$lib/components/cards';
   import { trackClick } from '$lib/blocks/utils';
-  import { platformIcons } from '$lib/utils/platforms';
+  import { platformIcons, platformColors } from '$lib/utils/platforms';
 
   let {
     block,
