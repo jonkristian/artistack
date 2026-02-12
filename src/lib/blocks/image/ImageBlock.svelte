@@ -30,7 +30,7 @@
       small: 'h-24 w-24',
       medium: 'h-40 w-40',
       large: 'h-56 w-56',
-      full: 'w-full max-w-md'
+      full: 'w-full'
     }[size]
   );
 
@@ -39,7 +39,7 @@
 </script>
 
 {#if config.imageUrl}
-  <section class="mb-8">
+  <section class={isFullWidth ? 'mb-8 -mx-2 sm:-mx-6' : 'mb-8'}>
     <div class="flex {alignmentClass}">
       <div class="relative {sizeClass}">
         {#if showGlow}
@@ -51,7 +51,7 @@
         <img
           src={config.imageUrl}
           alt=""
-          class="relative h-full w-full {shapeClass} object-cover shadow-lg"
+          class="relative h-full w-full {isFullWidth ? '' : shapeClass} object-cover {isFullWidth ? '' : 'shadow-lg'}"
           style={isFullWidth ? 'aspect-ratio: 16/9' : ''}
         />
       </div>

@@ -1,6 +1,7 @@
 # 12-02-2026
 
 - Added 18 new bot detection patterns to hooks.server.ts
+- Default: Remove margin on first block if full-size image.
 
 
 # 08-02-2026

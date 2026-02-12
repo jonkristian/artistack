@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Profile, Settings, Link, TourDate, Media, Block } from '$lib/server/schema';
+  import type { Profile, Settings, Link, TourDate, Media, Block, ImageBlockConfig } from '$lib/server/schema';
   import { blockRegistry } from '$lib/blocks';
   import { shareProfile } from '$lib/blocks/utils';
 
@@ -35,6 +35,13 @@
   const visibleBlocks = $derived(
     blocks.filter((b) => b.visible !== false).sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
   );
+
+  // Check if first block is a full-width image (no top padding needed)
+  const firstBlockFlush = $derived(() => {
+    const first = visibleBlocks[0];
+    if (!first || first.type !== 'image') return false;
+    return (first.config as ImageBlockConfig)?.size === 'full';
+  });
 </script>
 
 <main
@@ -50,7 +57,7 @@
     ></div>
     <!-- Card content -->
     <div
-      class="relative min-h-screen w-full overflow-visible rounded-t-3xl px-2 pt-8 pb-8 sm:min-h-[calc(100vh-4rem)] sm:px-6 sm:shadow-xl"
+      class="relative min-h-screen w-full overflow-hidden rounded-t-3xl px-2 pb-8 sm:min-h-[calc(100vh-4rem)] sm:px-6 sm:shadow-xl {firstBlockFlush() ? '' : 'pt-8'}"
       style="background-color: var(--color-card)"
     >
       {#each visibleBlocks as block (block.id)}
