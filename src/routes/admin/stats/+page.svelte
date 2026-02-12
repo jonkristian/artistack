@@ -186,38 +186,15 @@
     return n.toString();
   }
 
-  // Country code to name mapping (common countries)
-  const countryNames: Record<string, string> = {
-    US: 'United States',
-    GB: 'United Kingdom',
-    DE: 'Germany',
-    FR: 'France',
-    CA: 'Canada',
-    AU: 'Australia',
-    NL: 'Netherlands',
-    SE: 'Sweden',
-    NO: 'Norway',
-    DK: 'Denmark',
-    FI: 'Finland',
-    ES: 'Spain',
-    IT: 'Italy',
-    BR: 'Brazil',
-    MX: 'Mexico',
-    JP: 'Japan',
-    KR: 'South Korea',
-    IN: 'India',
-    RU: 'Russia',
-    PL: 'Poland',
-    BE: 'Belgium',
-    CH: 'Switzerland',
-    AT: 'Austria',
-    IE: 'Ireland',
-    NZ: 'New Zealand',
-    PT: 'Portugal'
-  };
+  // Use Intl API for complete country name resolution
+  const regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
 
   function getCountryName(code: string): string {
-    return countryNames[code] || code;
+    try {
+      return regionNames.of(code) ?? code;
+    } catch {
+      return code;
+    }
   }
 </script>
 
