@@ -88,19 +88,19 @@ function copyToClipboard(onCopied?: () => void) {
   onCopied?.();
 }
 
-// Block spacing helpers
-export const marginTopClasses: Record<string, string> = {
-  none: 'mt-0',
-  small: 'mt-4',
-  medium: 'mt-8',
-  large: 'mt-12'
+// Block spacing helpers (using padding to avoid margin collapsing)
+export const spacingTopClasses: Record<string, string> = {
+  none: 'pt-0',
+  small: 'pt-4',
+  medium: 'pt-8',
+  large: 'pt-12'
 };
 
-export const marginBottomClasses: Record<string, string> = {
-  none: 'mb-0',
-  small: 'mb-4',
-  medium: 'mb-8',
-  large: 'mb-12'
+export const spacingBottomClasses: Record<string, string> = {
+  none: 'pb-0',
+  small: 'pb-4',
+  medium: 'pb-8',
+  large: 'pb-12'
 };
 
 // Shape styling helpers
