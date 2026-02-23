@@ -380,7 +380,7 @@
             <tbody class="divide-y divide-gray-800">
               {#each data.linkClicks.clicksByLink as link}
                 <tr>
-                  <td class="py-3 text-sm text-white">{link.label ?? 'Unnamed'}</td>
+                  <td class="py-3 text-sm text-white">{link.label || link.platform || 'Unnamed'}</td>
                   <td class="py-3 text-sm text-gray-400 capitalize">{link.platform}</td>
                   <td class="py-3 pr-4 text-right text-sm text-white">{link.count}</td>
                   <td class="py-3">
