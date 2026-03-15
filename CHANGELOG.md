@@ -1,44 +1,33 @@
-# 12-02-2026
+# 1.0.0 (15-03-2026)
 
+- Fixed link reordering not persisting on save
+- Added privacy policy and terms of service page (`/privacy`)
 - Added 18 new bot detection patterns to hooks.server.ts
-- Default: Remove margin on first block if full-size image.
-- Added new `Simple` theme and margin controls to blocks.
-
-
-# 08-02-2026
-
-- Added simple wysiwyg to bio.
+- Default: Remove margin on first block if full-size image
+- Added new `Simple` theme and margin controls to blocks
+- Simple wysiwyg for bio editing
 - Unified draft store across Dashboard and Appearance pages
 - Cross-page editing: changes persist when navigating between admin pages
 - Single Update button saves both content and appearance changes
 - Nav change indicators (purple dots) show which sections have pending edits
 - Links block layout option: rows (default) or grid with configurable columns (2-6)
-- Stack on mobile toggle for grid mode (collapses to single column on small screens)
-- Icon color wheel in Appearance settings (replaces hardcoded platform brand colors)
-- Added new Repo integration, block and card.
-- Favicon generator now fall back to site title initials.
-
-
-# 06-02-2026
-
+- Stack on mobile toggle for grid mode
+- Icon color wheel in Appearance settings
+- Repo integration, block and card
+- Favicon generator with site title initials fallback
 - Save/Undo system with draft state and diff-based publishing
 - Native drag-and-drop for block and link reordering
 - Gallery and single image block types
 - Block collapse/expand with persistent state
-- Prettier + Tailwind CSS class sorting
-- Removed drizzle migrations (using push for development)
-
-# 30-01-2026
-
 - Stats dashboard with page views, link clicks, referrers, and geography
-- Spotify and YouTube stats integration (auto-detects from your links)
-- Discord webhook notifications with scheduled reports (daily/weekly/monthly)
+- Spotify and YouTube stats integration
+- Discord webhook notifications with scheduled reports
 - Unified Google API settings (Places + YouTube)
 - SMTP email configuration and password reset
 - Favicon generator
-- Discord settings moved to Integrations page
 - Tour dates sorted by date with collapsible past shows
-- City-based venue search (enter city first for better results)
+- City-based venue search
 - Auto-save profile fields on blur
 - Toast notifications for all actions
-- Added Press Kit functionality
+- Press Kit functionality
+- Prettier + Tailwind CSS class sorting

@@ -194,7 +194,9 @@ export async function publishAllChanges(draftData: UnifiedDraftData) {
 
     const linkBlockIds = new Set(draftData.links.filter((l) => l.id > 0).map((l) => l.blockId));
     for (const blockId of linkBlockIds) {
-      const blockLinks = draftData.links.filter((l) => l.blockId === blockId && l.id > 0);
+      const blockLinks = draftData.links
+        .filter((l) => l.blockId === blockId && l.id > 0)
+        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
       await serverReorderLinks(blockLinks.map((l, i) => ({ id: l.id, position: i })));
     }
   }
