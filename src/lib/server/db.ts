@@ -1,11 +1,24 @@
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { mkdirSync } from 'fs';
+import { dirname } from 'path';
 import * as schema from './schema';
 import * as authSchema from './auth-schema';
 
 // Same variable the migration runner reads, so the two can never disagree
 // about which file they are operating on.
-const sqlite = new Database(process.env.DATABASE_PATH ?? 'data/artistack.db');
+const DB_PATH = process.env.DATABASE_PATH ?? 'data/artistack.db';
+
+/*
+ * Created if absent, because this module is imported — and therefore run — by
+ * SvelteKit's postbuild analyse step, inside a build container that has no
+ * data/ directory. better-sqlite3 does not create parent directories, so the
+ * build died with "Cannot open database because the directory does not exist".
+ * At runtime the persistent volume supplies this path instead.
+ */
+mkdirSync(dirname(DB_PATH), { recursive: true });
+
+const sqlite = new Database(DB_PATH);
 
 /*
  * Tuned for `data/` living on a network-attached volume, where an fsync costs

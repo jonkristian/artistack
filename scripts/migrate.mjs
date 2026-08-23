@@ -11,9 +11,9 @@
  * marks it as applied when it finds a database that already has the pre-clips
  * tables but no migrations journal. A genuinely empty database runs both.
  */
-import { existsSync } from 'fs';
+import { mkdirSync } from 'fs';
 import { readdir, readFile } from 'fs/promises';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { createHash } from 'crypto';
 import Database from 'better-sqlite3';
 
@@ -21,6 +21,7 @@ const DB_PATH = process.env.DATABASE_PATH ?? 'data/artistack.db';
 const MIGRATIONS_DIR = 'drizzle';
 const BASELINE = '0000_baseline_pre_clips.sql';
 
+mkdirSync(dirname(DB_PATH), { recursive: true });
 const db = new Database(DB_PATH);
 db.pragma('foreign_keys = OFF');
 
