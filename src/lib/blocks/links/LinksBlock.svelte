@@ -53,7 +53,9 @@
       </h2>
     {/if}
     <div
-      class="{isGrid ? 'grid gap-3' : 'space-y-3'}{isGrid && stackOnMobile ? ' links-grid-stack' : ''}"
+      class="{isGrid ? 'grid gap-3' : 'space-y-3'}{isGrid && stackOnMobile
+        ? ' links-grid-stack'
+        : ''}"
       style={isGrid ? `grid-template-columns: repeat(${gridColumns}, minmax(0, 1fr))` : undefined}
     >
       {#each blockLinks as link (link.id)}
@@ -110,11 +112,7 @@
                 class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl"
                 style="background: linear-gradient(135deg, var(--color-icon, #a1a1aa)40, var(--color-icon, #a1a1aa)20)"
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  class="h-6 w-6"
-                  style="fill: var(--color-icon)"
-                >
+                <svg viewBox="0 0 24 24" class="h-6 w-6" style="fill: var(--color-icon)">
                   <path d={platformIcons[link.platform]} />
                 </svg>
               </div>
@@ -157,11 +155,7 @@
                   style="color: var(--color-text-muted)"
                 >
                   {#if platformIcons[link.platform]}
-                    <svg
-                      viewBox="0 0 24 24"
-                      class="h-4 w-4"
-                      style="fill: var(--color-icon)"
-                    >
+                    <svg viewBox="0 0 24 24" class="h-4 w-4" style="fill: var(--color-icon)">
                       <path d={platformIcons[link.platform]} />
                     </svg>
                   {/if}
@@ -176,11 +170,7 @@
                     'var(--color-accent)'}40, {platformColors[link.platform] ||
                     'var(--color-accent)'}20)"
                 >
-                  <svg
-                    viewBox="0 0 24 24"
-                    class="h-6 w-6"
-                    style="fill: var(--color-icon)"
-                  >
+                  <svg viewBox="0 0 24 24" class="h-6 w-6" style="fill: var(--color-icon)">
                     <path d={platformIcons[link.platform]} />
                   </svg>
                 </div>

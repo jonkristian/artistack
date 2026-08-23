@@ -25,7 +25,6 @@
     const index = tourDates.findIndex((t) => t.id === id);
     if (index !== -1) {
       tourDates.splice(index, 1);
-      tourDates.length = tourDates.length; // trigger reactivity
       toast.info('Tour date deleted');
     }
   }
@@ -94,12 +93,7 @@
     onclick={() => onaddtourdate(block.id)}
     class="flex w-full flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-600 px-4 py-8 text-center transition-colors hover:border-gray-500"
   >
-    <svg
-      class="mb-2 h-8 w-8 text-gray-500"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
+    <svg class="mb-2 h-8 w-8 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path
         stroke-linecap="round"
         stroke-linejoin="round"

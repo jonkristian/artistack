@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ColorWheel, LayoutPreview } from '$lib/components/ui';
+  import { ColorWheel, LayoutPreview, ToggleSwitch } from '$lib/components/ui';
   import { SectionCard } from '$lib/components/cards';
   import Default from '$lib/themes/Default.svelte';
   import Simple from '$lib/themes/Simple.svelte';
@@ -17,13 +17,18 @@
 
   // Available layouts
   const availableLayouts = [
-    { id: 'default', name: 'Default', description: 'Classic centered layout with card and gradient border' },
+    {
+      id: 'default',
+      name: 'Default',
+      description: 'Classic centered layout with card and gradient border'
+    },
     { id: 'simple', name: 'Simple', description: 'Clean, centered layout without card' }
   ];
 
   const layoutComponents = { default: Default, simple: Simple } as const;
   const activeLayout = $derived(
-    layoutComponents[(draftData.appearance.layout as keyof typeof layoutComponents) ?? 'default'] ?? Default
+    layoutComponents[(draftData.appearance.layout as keyof typeof layoutComponents) ?? 'default'] ??
+      Default
   );
 
   // Live preview settings (merges draft appearance onto server settings)
@@ -123,25 +128,12 @@
             <span class="text-sm font-medium text-white">Show share button</span>
             <p class="text-xs text-gray-500">Display a share button at the bottom of the page</p>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={draftData.appearance.showShareButton}
-            aria-label="Show share button"
-            onclick={() =>
-              (draftData.appearance.showShareButton = !draftData.appearance.showShareButton)}
-            class="relative h-6 w-11 rounded-full transition-colors {draftData.appearance
-              .showShareButton
-              ? 'bg-violet-600'
-              : 'bg-gray-700'}"
-          >
-            <span
-              class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform {draftData
-                .appearance.showShareButton
-                ? 'translate-x-5'
-                : ''}"
-            ></span>
-          </button>
+          <ToggleSwitch
+            bind:checked={draftData.appearance.showShareButton}
+            label="Show share button"
+            size="md"
+            hideLabel
+          />
         </label>
         <label class="mt-4 flex cursor-pointer items-center justify-between">
           <div>
@@ -150,24 +142,12 @@
               Display a press kit download link at the bottom of the page
             </p>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={draftData.appearance.showPressKit}
-            aria-label="Show press kit"
-            onclick={() => (draftData.appearance.showPressKit = !draftData.appearance.showPressKit)}
-            class="relative h-6 w-11 rounded-full transition-colors {draftData.appearance
-              .showPressKit
-              ? 'bg-violet-600'
-              : 'bg-gray-700'}"
-          >
-            <span
-              class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform {draftData
-                .appearance.showPressKit
-                ? 'translate-x-5'
-                : ''}"
-            ></span>
-          </button>
+          <ToggleSwitch
+            bind:checked={draftData.appearance.showPressKit}
+            label="Show press kit"
+            size="md"
+            hideLabel
+          />
         </label>
       </SectionCard>
     </div>

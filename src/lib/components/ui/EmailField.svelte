@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { labelClass } from '$lib/utils/classes';
   interface Props {
     value: string;
     onchange: (value: string) => void;
@@ -22,7 +23,7 @@
 </script>
 
 <div>
-  <label for={id} class="mb-1 block text-sm text-gray-400">{label}</label>
+  <label for={id} class={labelClass}>{label}</label>
   <div class="relative">
     <input
       type="email"

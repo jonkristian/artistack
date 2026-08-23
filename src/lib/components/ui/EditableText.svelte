@@ -21,13 +21,6 @@
   let editValue = $state('');
   let saving = $state(false);
 
-  // Sync editValue when value prop changes (if not currently editing)
-  $effect(() => {
-    if (!isEditing) {
-      editValue = value;
-    }
-  });
-
   async function save() {
     if (editValue === value) {
       isEditing = false;

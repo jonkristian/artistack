@@ -10,7 +10,7 @@ import {
   getDetectedPlatformIds,
   getGoogleConfig
 } from '$lib/server/social-stats';
-import type { SpotifyConfig, GoogleConfig } from '$lib/server/social-stats';
+import type { SpotifyConfig } from '$lib/server/social-stats';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ request }) => {

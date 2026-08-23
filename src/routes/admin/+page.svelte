@@ -1,6 +1,8 @@
 <script lang="ts">
   import { SortableBlockList, LayoutPreview } from '$lib/components/ui';
   import { LinkEditDialog, TourDateEditDialog } from '$lib/components/dialogs';
+  import type { TourDateValues } from '$lib/components/dialogs/TourDateEditDialog.svelte';
+  import type { LinkValues } from '$lib/components/dialogs/LinkEditDialog.svelte';
   import SetupCard from '$lib/components/admin/SetupCard.svelte';
   import { blockRegistry } from '$lib/blocks';
   import BlockAdminWrapper from '$lib/blocks/BlockAdminWrapper.svelte';
@@ -55,6 +57,25 @@
     editingLink = null;
   }
 
+  // Applied here, like the tour dates: draftData is this component's state, so
+  // the child handing values back is what keeps reactivity honest.
+  function handleLinkSave(values: LinkValues) {
+    const editing = editingLink;
+    if (editing) {
+      const target = draftData.links.find((l) => l.id === editing.id);
+      if (target) Object.assign(target, values);
+      toast.info('Link updated');
+    }
+    closeLinkDialog();
+  }
+
+  function handleLinkDelete(id: number) {
+    const index = draftData.links.findIndex((l) => l.id === id);
+    if (index !== -1) draftData.links.splice(index, 1);
+    toast.info('Link deleted');
+    closeLinkDialog();
+  }
+
   // Tour date edit dialog state
   let editingTourDate = $state<TourDate | 'new' | null>(null);
   let editingTourDateBlockId = $state<number | undefined>(undefined);
@@ -67,6 +88,39 @@
   function closeTourDateDialog() {
     editingTourDate = null;
     editingTourDateBlockId = undefined;
+  }
+
+  /*
+   * Applied here rather than inside the dialog. The dialog is passed a plain
+   * prop, not `bind:`, so mutating it from there tripped Svelte's ownership
+   * warning; the block admins below use `bind:` and mutate directly.
+   */
+  function handleTourDateSave(values: TourDateValues) {
+    // Copied to a local so it narrows inside the find() callback.
+    const editing = editingTourDate;
+
+    if (editing === 'new') {
+      const blockId = editingTourDateBlockId ?? 0;
+      draftData.tourDates.push({
+        id: draft.getTempId(),
+        blockId,
+        position: draftData.tourDates.filter((t) => t.blockId === blockId).length,
+        ...values
+      });
+      toast.info('Tour date added');
+    } else if (editing) {
+      const target = draftData.tourDates.find((t) => t.id === editing.id);
+      if (target) Object.assign(target, values);
+      toast.info('Tour date updated');
+    }
+    closeTourDateDialog();
+  }
+
+  function handleTourDateDelete(id: number) {
+    const index = draftData.tourDates.findIndex((t) => t.id === id);
+    if (index !== -1) draftData.tourDates.splice(index, 1);
+    toast.info('Tour date deleted');
+    closeTourDateDialog();
   }
 
   // Theme colors for embed options
@@ -220,19 +274,26 @@
   </div>
 </div>
 
-<!-- Link Edit Dialog -->
-<LinkEditDialog
-  link={editingLink}
-  links={draftData.links}
-  {themeColors}
-  onclose={closeLinkDialog}
-/>
+<!-- Link Edit Dialog. Mounted only while open, same as the tour date dialog. -->
+{#if editingLink}
+  <LinkEditDialog
+    link={editingLink}
+    {themeColors}
+    onsave={handleLinkSave}
+    ondelete={handleLinkDelete}
+    onclose={closeLinkDialog}
+  />
+{/if}
 
 <!-- Tour Date Edit Dialog -->
-<TourDateEditDialog
-  tourDate={editingTourDate}
-  tourDates={draftData.tourDates}
-  blockId={editingTourDateBlockId}
-  googleApiKey={data.googleConfig?.placesEnabled ? data.googleConfig.apiKey : null}
-  onclose={closeTourDateDialog}
-/>
+<!-- Mounted only while open, so the form initialises on mount instead of
+     needing an effect to copy the selected date into local state. -->
+{#if editingTourDate}
+  <TourDateEditDialog
+    tourDate={editingTourDate}
+    googleApiKey={data.googleConfig?.placesEnabled ? data.googleConfig.apiKey : null}
+    onsave={handleTourDateSave}
+    ondelete={handleTourDateDelete}
+    onclose={closeTourDateDialog}
+  />
+{/if}

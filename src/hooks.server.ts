@@ -1,8 +1,6 @@
 import type { Handle } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { pageViews } from '$lib/server/schema';
 import { initScheduler } from '$lib/server/scheduler';
-import { isBot, parseReferrer, getClientIP, lookupCountry } from '$lib/server/tracking';
+import { isBot, recordPageView } from '$lib/server/tracking';
 
 // Initialize scheduled tasks (runs once on server start)
 initScheduler();
@@ -14,6 +12,7 @@ const SKIP_PATHS = [
   '/login',
   '/logout',
   '/go/', // Link tracking has its own endpoint
+  '/preview/', // Internal clip review, not audience traffic
   '/_app',
   '/favicon',
   '/manifest',
@@ -67,27 +66,9 @@ export const handle: Handle = async ({ event, resolve }) => {
   }
 
   // Don't await the tracking - fire and forget for better performance
-  trackPageView(request, path, userAgent, url.hostname).catch(() => {
+  recordPageView(request, path, userAgent, url.hostname).catch(() => {
     // Silently ignore tracking errors
   });
 
   return response;
 };
-
-async function trackPageView(
-  request: Request,
-  path: string,
-  userAgent: string,
-  hostname: string
-): Promise<void> {
-  const referrer = parseReferrer(request.headers.get('referer'), hostname);
-  const ip = getClientIP(request);
-  const country = ip ? await lookupCountry(ip) : null;
-
-  await db.insert(pageViews).values({
-    path,
-    referrer,
-    country,
-    userAgent: userAgent.substring(0, 500)
-  });
-}

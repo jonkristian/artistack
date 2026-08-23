@@ -119,7 +119,9 @@
 
   {#if embedData.description}
     <p
-      class="mt-2 text-xs leading-relaxed {embedData.descriptionDisplay === 'full' ? '' : 'line-clamp-2'}"
+      class="mt-2 text-xs leading-relaxed {embedData.descriptionDisplay === 'full'
+        ? ''
+        : 'line-clamp-2'}"
       style="color: var(--color-text-muted)"
       title={embedData.description}
     >

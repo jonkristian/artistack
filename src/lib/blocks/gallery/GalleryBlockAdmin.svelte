@@ -97,7 +97,7 @@
           <button
             type="button"
             onclick={() => removeImage(item.id)}
-            class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-gray-400 opacity-0 transition-opacity hover:text-white group-hover:opacity-100"
+            class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-gray-400 opacity-0 transition-opacity group-hover:opacity-100 hover:text-white"
             aria-label="Remove {item.alt || item.filename}"
           >
             <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -126,12 +126,7 @@
     onclick={() => (showPicker = true)}
     class="flex w-full flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-600 px-4 py-8 text-center transition-colors hover:border-gray-500"
   >
-    <svg
-      class="mb-2 h-8 w-8 text-gray-500"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
+    <svg class="mb-2 h-8 w-8 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path
         stroke-linecap="round"
         stroke-linejoin="round"
@@ -148,6 +143,6 @@
   {media}
   multiple
   bind:open={showPicker}
-  selectedIds={selectedIds}
+  {selectedIds}
   onmultiselect={handleMultiSelect}
 />

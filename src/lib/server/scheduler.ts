@@ -3,6 +3,9 @@ import { db } from './db';
 import { settings, integrations } from './schema';
 import { sendScheduledDiscordReport } from './discord';
 import { refreshAllSocialStats } from './social-stats';
+import { recoverStaleJobs, processQueue } from './render-queue';
+import { runReleaseTick } from './clip-queue';
+import { env } from '$env/dynamic/private';
 import { desc } from 'drizzle-orm';
 
 let isInitialized = false;
@@ -16,6 +19,12 @@ export function initScheduler(): void {
   isInitialized = true;
 
   console.log('[Scheduler] Initializing...');
+
+  // A render in flight when the process died can never finish, so clear those
+  // before picking up anything still queued.
+  void recoverStaleJobs()
+    .then(() => processQueue())
+    .catch((e) => console.error('[Scheduler] Render queue startup failed:', e));
 
   // Run every hour at minute 0
   cron.schedule('0 * * * *', async () => {
@@ -43,6 +52,18 @@ async function runScheduledTasks(): Promise<void> {
         } else {
           console.error('[Scheduler] Discord report failed:', result.error);
         }
+      }
+    }
+
+    // Task 1b: Release the next queued clip if a slot is due.
+    // The webhook payload carries absolute URLs, so it needs the public origin —
+    // there's no request to derive it from inside a cron tick.
+    const origin = env.BETTER_AUTH_BASE_URL || env.ORIGIN;
+    if (origin) {
+      try {
+        await runReleaseTick(origin);
+      } catch (e) {
+        console.error('[Scheduler] Clip release failed:', e);
       }
     }
 

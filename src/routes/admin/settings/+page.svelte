@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { fieldClass, labelClass } from '$lib/utils/classes';
   import { SectionCard } from '$lib/components/cards';
-  import { MediaPicker } from '$lib/components/ui';
+  import { MediaPicker, ToggleSwitch } from '$lib/components/ui';
   import type { PageData } from './$types';
   import {
     updateSettings,
@@ -168,15 +169,13 @@
     <SectionCard title="General">
       <div class="space-y-4">
         <div>
-          <label for="site-title" class="mb-2 block text-sm font-medium text-gray-300">
-            Site Title
-          </label>
+          <label for="site-title" class={labelClass}> Site Title </label>
           <input
             id="site-title"
             type="text"
             bind:value={siteTitle}
             placeholder={data.profile?.name || 'Artist Name'}
-            class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+            class={fieldClass}
           />
           <p class="mt-2 text-sm text-gray-500">
             Used for browser tab and PWA. Leave empty to use artist name.
@@ -184,14 +183,8 @@
         </div>
 
         <div>
-          <label for="locale" class="mb-2 block text-sm font-medium text-gray-300">
-            Date & Time Format
-          </label>
-          <select
-            id="locale"
-            bind:value={locale}
-            class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-gray-600 focus:outline-none"
-          >
+          <label for="locale" class={labelClass}> Date & Time Format </label>
+          <select id="locale" bind:value={locale} class={fieldClass}>
             {#each locales as l (l.code)}
               <option value={l.code}>{l.name}</option>
             {/each}
@@ -211,85 +204,73 @@
 
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label for="smtp-host" class="mb-2 block text-sm font-medium text-gray-300">
-              SMTP Host
-            </label>
+            <label for="smtp-host" class={labelClass}> SMTP Host </label>
             <input
               id="smtp-host"
               type="text"
               bind:value={smtpHost}
               placeholder="smtp.example.com"
-              class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+              class={fieldClass}
             />
           </div>
 
           <div>
-            <label for="smtp-port" class="mb-2 block text-sm font-medium text-gray-300">
-              Port
-            </label>
+            <label for="smtp-port" class={labelClass}> Port </label>
             <input
               id="smtp-port"
               type="number"
               bind:value={smtpPort}
               placeholder="587"
-              class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+              class={fieldClass}
             />
           </div>
         </div>
 
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label for="smtp-user" class="mb-2 block text-sm font-medium text-gray-300">
-              Username
-            </label>
+            <label for="smtp-user" class={labelClass}> Username </label>
             <input
               id="smtp-user"
               type="text"
               bind:value={smtpUser}
               placeholder="user@example.com"
-              class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+              class={fieldClass}
             />
           </div>
 
           <div>
-            <label for="smtp-password" class="mb-2 block text-sm font-medium text-gray-300">
-              Password
-            </label>
+            <label for="smtp-password" class={labelClass}> Password </label>
             <input
               id="smtp-password"
               type="password"
               bind:value={smtpPassword}
               placeholder="••••••••"
-              class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+              class={fieldClass}
             />
           </div>
         </div>
 
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label for="smtp-from-address" class="mb-2 block text-sm font-medium text-gray-300">
-              From Address
-            </label>
+            <label for="smtp-from-address" class={labelClass}> From Address </label>
             <input
               id="smtp-from-address"
               type="email"
               bind:value={smtpFromAddress}
               placeholder="noreply@example.com"
-              class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+              class={fieldClass}
             />
             <p class="mt-1 text-xs text-gray-500">Defaults to username if empty</p>
           </div>
 
           <div>
-            <label for="smtp-from-name" class="mb-2 block text-sm font-medium text-gray-300">
-              From Name
-            </label>
+            <label for="smtp-from-name" class={labelClass}> From Name </label>
             <input
               id="smtp-from-name"
               type="text"
               bind:value={smtpFromName}
               placeholder="Artistack"
-              class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+              class={fieldClass}
             />
           </div>
         </div>
@@ -301,22 +282,7 @@
             <p class="text-sm font-medium text-gray-300">Use TLS</p>
             <p class="text-xs text-gray-500">Enable TLS encryption for SMTP connection</p>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={smtpTls}
-            aria-label="Toggle TLS encryption"
-            onclick={() => (smtpTls = !smtpTls)}
-            class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none {smtpTls
-              ? 'bg-violet-600'
-              : 'bg-gray-700'}"
-          >
-            <span
-              class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out {smtpTls
-                ? 'translate-x-5'
-                : 'translate-x-0'}"
-            ></span>
-          </button>
+          <ToggleSwitch bind:checked={smtpTls} label="Toggle TLS encryption" size="md" hideLabel />
         </div>
 
         <div class="flex items-center gap-4">
@@ -368,7 +334,7 @@
 
         <div class="grid grid-cols-[auto_1fr] gap-6">
           <div class="w-36">
-            <span class="mb-2 block text-sm font-medium text-gray-300">Image</span>
+            <span class={labelClass}>Image</span>
             <MediaPicker
               value={selectedFaviconUrl}
               label=""
@@ -381,32 +347,26 @@
 
           <div class="space-y-3" class:opacity-40={!!selectedFaviconUrl}>
             <div>
-              <label for="favicon-text" class="mb-2 block text-sm font-medium text-gray-300">
-                Text
-              </label>
+              <label for="favicon-text" class={labelClass}> Text </label>
               <input
                 id="favicon-text"
                 type="text"
                 bind:value={faviconText}
                 disabled={!!selectedFaviconUrl}
                 placeholder={data.settings?.siteTitle || data.profile?.name || 'Site Title'}
-                class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+                class={fieldClass}
               />
-              <p class="mt-1 text-sm text-gray-500">
-                Leave empty to use site title.
-              </p>
+              <p class="mt-1 text-sm text-gray-500">Leave empty to use site title.</p>
             </div>
 
             <div class="grid grid-cols-2 gap-4">
               <div>
-                <label for="favicon-length" class="mb-2 block text-sm font-medium text-gray-300">
-                  Initials
-                </label>
+                <label for="favicon-length" class={labelClass}> Initials </label>
                 <select
                   id="favicon-length"
                   bind:value={faviconLength}
                   disabled={!!selectedFaviconUrl}
-                  class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-gray-600 focus:outline-none"
+                  class={fieldClass}
                 >
                   <option value={1}>1 letter</option>
                   <option value={2}>2 letters</option>
@@ -414,14 +374,12 @@
               </div>
 
               <div>
-                <label for="favicon-rounded" class="mb-2 block text-sm font-medium text-gray-300">
-                  Shape
-                </label>
+                <label for="favicon-rounded" class={labelClass}> Shape </label>
                 <select
                   id="favicon-rounded"
                   bind:value={faviconRounded}
                   disabled={!!selectedFaviconUrl}
-                  class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-gray-600 focus:outline-none"
+                  class={fieldClass}
                 >
                   <option value={false}>Square</option>
                   <option value={true}>Circle</option>
@@ -462,16 +420,28 @@
 
         {#if faviconGenerated}
           {#key faviconCacheBust}
-          <div class="flex items-center gap-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4">
-            <div class="flex gap-2">
-              <img src="/favicon-32.png?v={faviconCacheBust}" alt="Favicon 32x32" class="h-8 w-8 rounded" />
-              <img src="/icon-192.png?v={faviconCacheBust}" alt="Icon 192x192" class="h-8 w-8 rounded" />
+            <div
+              class="flex items-center gap-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4"
+            >
+              <div class="flex gap-2">
+                <img
+                  src="/favicon-32.png?v={faviconCacheBust}"
+                  alt="Favicon 32x32"
+                  class="h-8 w-8 rounded"
+                />
+                <img
+                  src="/icon-192.png?v={faviconCacheBust}"
+                  alt="Icon 192x192"
+                  class="h-8 w-8 rounded"
+                />
+              </div>
+              <div class="text-sm text-gray-400">
+                <p>
+                  Generated files: favicon.ico, apple-touch-icon.png, icon-192.png, icon-512.png
+                </p>
+                <p class="text-xs text-gray-500">PWA manifest available at /manifest.json</p>
+              </div>
             </div>
-            <div class="text-sm text-gray-400">
-              <p>Generated files: favicon.ico, apple-touch-icon.png, icon-192.png, icon-512.png</p>
-              <p class="text-xs text-gray-500">PWA manifest available at /manifest.json</p>
-            </div>
-          </div>
           {/key}
         {/if}
       </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { fieldClass } from '$lib/utils/classes';
   import { SectionCard } from '$lib/components/cards';
   import { PasswordFields } from '$lib/components/ui';
   import { invalidateAll } from '$app/navigation';
@@ -227,7 +228,7 @@
                 type="password"
                 bind:value={ownCurrentPassword}
                 placeholder="Current Password"
-                class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+                class={fieldClass}
               />
               <PasswordFields
                 newPassword={ownNewPassword}
@@ -335,18 +336,10 @@
         >
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <input
-                {...addForm.fields.name.as('text')}
-                placeholder="Name"
-                class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
-              />
+              <input {...addForm.fields.name.as('text')} placeholder="Name" class={fieldClass} />
             </div>
             <div>
-              <input
-                {...addForm.fields.email.as('email')}
-                placeholder="Email"
-                class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
-              />
+              <input {...addForm.fields.email.as('email')} placeholder="Email" class={fieldClass} />
             </div>
           </div>
           <div class="grid grid-cols-2 gap-3">
@@ -354,22 +347,19 @@
               <input
                 {...addForm.fields.password.as('password')}
                 placeholder="Password"
-                class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+                class={fieldClass}
               />
             </div>
             <div>
               <input
                 {...addForm.fields.confirmPassword.as('password')}
                 placeholder="Confirm Password"
-                class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+                class={fieldClass}
               />
             </div>
           </div>
           <div>
-            <select
-              {...addForm.fields.role.as('text')}
-              class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-gray-600 focus:outline-none"
-            >
+            <select {...addForm.fields.role.as('text')} class={fieldClass}>
               <option value="editor">Editor</option>
               <option value="admin">Admin</option>
             </select>

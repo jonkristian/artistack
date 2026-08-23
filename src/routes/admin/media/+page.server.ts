@@ -1,5 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
+import { tagsForMany, listTags } from '$lib/server/tags';
 import { media, profile, settings } from '$lib/server/schema';
 import { user } from '$lib/server/auth-schema';
 import { auth } from '$lib/server/auth';
@@ -25,6 +26,7 @@ export const load: PageServerLoad = async ({ request }) => {
   // Get settings for press kit
   const [settingsData] = await db.select().from(settings).limit(1);
   const pressKitMediaIds: number[] = (settingsData?.pressKitMediaIds ?? []) as number[];
+  const clipGraphicsMediaIds: number[] = (settingsData?.clipGraphicsMediaIds ?? []) as number[];
 
   // Check if press kit zip exists
   const pressKitZipPath = join(process.cwd(), 'data', 'uploads', 'press-kit.zip');
@@ -33,12 +35,25 @@ export const load: PageServerLoad = async ({ request }) => {
   // Get profile for bio
   const [profileData] = await db.select().from(profile).limit(1);
 
+  // One query for the grid rather than a lookup per tile.
+  const tagsByMedia = await tagsForMany(
+    'media',
+    allMedia.map((m) => m.id)
+  );
+
   return {
     media: allMedia,
+    tagsByMedia: Object.fromEntries(
+      [...tagsByMedia].map(([id, list]) => [id, list.map((t) => t.name)])
+    ) as Record<number, string[]>,
+    allTags: (await listTags()).map((t) => t.name),
     pressKitMediaIds,
+    clipGraphicsMediaIds,
     pressKitZipExists,
     bio: profileData?.bio || null,
     artistName: profileData?.name || 'Artist',
-    pressKitEnabled: settingsData?.pressKitEnabled ?? false
+    pressKitEnabled: settingsData?.pressKitEnabled ?? false,
+    clipsEnabled: settingsData?.clipsEnabled ?? false,
+    defaultClipGraphicMediaId: settingsData?.defaultClipGraphicMediaId ?? null
   };
 };

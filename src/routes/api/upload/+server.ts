@@ -1,13 +1,13 @@
 import { json, error } from '@sveltejs/kit';
-import { requireAuth } from '$lib/server/api';
+import { requireUploadAccess } from '$lib/server/api';
+import { finalizeSessionUpload } from '$lib/server/upload-session';
 import { mkdir, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import sharp from 'sharp';
 import type { RequestHandler } from './$types';
+import { UPLOAD_DIR, THUMBNAIL_SIZE } from '$lib/server/paths';
 
-const UPLOAD_DIR = 'data/uploads';
-const THUMBNAIL_SIZE = 400; // Thumbnail max dimension
 const MAX_DIMENSION = 2048; // Max dimension for full-size images
 const JPEG_QUALITY = 85;
 const WEBP_QUALITY = 85;
@@ -72,8 +72,8 @@ function detectMimeType(buffer: Buffer): string | null {
   return null;
 }
 
-export const POST: RequestHandler = async ({ request }) => {
-  await requireAuth(request);
+export const POST: RequestHandler = async ({ request, url: requestUrl }) => {
+  const uploadSession = await requireUploadAccess(request, requestUrl);
 
   const formData = await request.formData();
   const file = formData.get('file') as File | null;
@@ -147,13 +147,18 @@ export const POST: RequestHandler = async ({ request }) => {
   if (detectedMimeType === 'image/svg+xml') {
     await writeFile(join(UPLOAD_DIR, originalFilename), buffer);
 
-    return json({
+    const svgResult = {
+      filename: file.name,
       url: `/uploads/${originalFilename}`,
       originalUrl: `/uploads/${originalFilename}`,
       size: buffer.length,
       originalSize: buffer.length,
       mimeType: 'image/svg+xml'
-    });
+    };
+
+    if (uploadSession) await finalizeSessionUpload(uploadSession, svgResult);
+
+    return json(svgResult);
   }
 
   // Get original dimensions
@@ -249,7 +254,8 @@ export const POST: RequestHandler = async ({ request }) => {
   const thumbnailUrl = `/uploads/${thumbnailFilename}`;
   console.log('[Upload] Success:', { url, originalUrl, thumbnailUrl });
 
-  return json({
+  const result = {
+    filename: file.name,
     url,
     originalUrl,
     thumbnailUrl,
@@ -258,5 +264,11 @@ export const POST: RequestHandler = async ({ request }) => {
     size: outputBuffer.length,
     originalSize: buffer.length,
     mimeType: outputMimeType
-  });
+  };
+
+  // A token upload has no authenticated client to register the media row, so
+  // it's recorded here.
+  if (uploadSession) await finalizeSessionUpload(uploadSession, result);
+
+  return json(result);
 };

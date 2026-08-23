@@ -1,3 +1,26 @@
+# 1.1.0 (23-08-2026)
+
+- Clip Studio: turn raw footage into branded, post-ready vertical video
+- Upload footage straight from a phone by scanning a QR code
+- Timed captions burned in with libass, with a per-caption headline style
+- Music bed with player, in-point, crossfade takeover and ducking under speech
+- Look presets with preview stills rendered from your own footage
+- Clip graphics: designate logos in Media, then pick or randomise one per clip
+- Review flow with shareable preview links and Discord notifications
+- Release queue with scheduled publishing over a signed webhook
+- Post sheet generated per clip for posting, as markdown with frontmatter
+- Campaign links (`/c/<slug>`) so Stats attributes traffic to the clip that drove it
+- Global tags shared between clips and media, with autocomplete
+- Media roles (images, footage, music, renders) with filter tabs and bulk delete
+- Re-rendering a clip replaces the previous render instead of accumulating files
+- Default tags and description saved once and applied to every new clip
+- Fixed tour date and link dialogs locking the page on save
+- Fixed Norwegian characters being dropped from slugs (Tromsø, Blåbær)
+- Database migrations replace `drizzle-kit push`, which hung TTY-less deploys
+- SQLite runs in WAL mode, tuned for network-attached storage
+- `nixpacks.toml` installs ffmpeg, fontconfig and fonts so renders work in production
+- Shared admin components for toggles, selection, tag input and media drop zones
+
 # 1.0.0 (15-03-2026)
 
 - Fixed link reordering not persisting on save

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { fieldClass, labelClass } from '$lib/utils/classes';
   import type { Block, Profile, Link, Media } from '$lib/server/schema';
   import { getTempId } from '$lib/stores/pageDraft.svelte';
   import { socialIcons } from '$lib/blocks/utils';
@@ -82,7 +83,6 @@
     };
 
     links.push(newLink);
-    links.length = links.length;
     newSocialUrl = '';
   }
 
@@ -90,24 +90,23 @@
     const index = links.findIndex((l) => l.id === id);
     if (index !== -1) {
       links.splice(index, 1);
-      links.length = links.length;
     }
   }
 </script>
 
 <div class="space-y-4">
   <div>
-    <label for="profile-name-{block.id}" class="mb-1 block text-sm text-gray-400">Name</label>
+    <label for="profile-name-{block.id}" class={labelClass}>Name</label>
     <input
       id="profile-name-{block.id}"
       type="text"
       bind:value={profile.name}
       placeholder="Your name or brand"
-      class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+      class={fieldClass}
     />
   </div>
   <div>
-    <span class="mb-1 block text-sm text-gray-400">Bio</span>
+    <span class={labelClass}>Bio</span>
     <RichTextEditor
       content={profile.bio ?? ''}
       placeholder="A short bio or tagline"
@@ -115,13 +114,13 @@
     />
   </div>
   <div>
-    <label for="profile-email-{block.id}" class="mb-1 block text-sm text-gray-400">Email</label>
+    <label for="profile-email-{block.id}" class={labelClass}>Email</label>
     <input
       id="profile-email-{block.id}"
       type="email"
       bind:value={profile.email}
       placeholder="contact@example.com"
-      class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+      class={fieldClass}
     />
   </div>
 

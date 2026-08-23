@@ -34,3 +34,9 @@ package-lock.json
 /static/favicon-*.png
 /static/apple-touch-icon.png
 /static/icon-*.png
+
+# Data archives pulled from prod
+*.tar.gz
+
+# Working notes — plans, investigations, scratch. Not part of the project.
+notes/

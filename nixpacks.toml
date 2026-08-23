@@ -1,0 +1,39 @@
+# Coolify builds this repo with Nixpacks, whose default Node image has neither
+# ffmpeg nor fontconfig. Without them the clip studio fails quietly rather than
+# loudly: resolveFont() falls back to "sans-serif" when fc-match is missing,
+# libass has nothing to resolve that to, and clips render successfully with no
+# captions on them at all.
+#
+# Debian packages rather than Nix ones, because Debian's ffmpeg is built with
+# libass — which the ASS caption filter needs.
+
+[phases.setup]
+aptPkgs = [
+  # The renderer. ffprobe ships in the same package.
+  "ffmpeg",
+  # fc-match, which resolveFont() shells out to.
+  "fontconfig",
+  # Fonts for FONT_PREFERENCES to resolve against. Captions want a condensed
+  # face — narrow text fits more words per line on a 1080-wide vertical frame —
+  # so Roboto Condensed leads the preference list. The others are fallbacks.
+  "fonts-roboto-unhinted",
+  "fonts-liberation",
+  "fonts-dejavu-core",
+]
+
+# Deliberately no CLIP_FONT_FAMILY here. Pinning a font is supported (see
+# resolveFont) and makes rendering deterministic, but only once you have
+# confirmed the family actually exists in the built image — "Liberation Sans
+# Narrow" looks like a safe pin and is not: Liberation 2.x dropped the Narrow
+# faces, so it silently resolves to Nimbus Sans Narrow instead.
+#
+# Verify inside the running container, then pin whichever prints EXACT:
+#
+#   ffmpeg -version | grep enable-libass
+#   for f in "Roboto Condensed" "Liberation Sans" "DejaVu Sans"; do
+#     printf '%-22s -> %s\n' "$f" "$(fc-match -f '%{family}' "$f")"
+#   done
+#
+# A render whose font did not resolve now logs
+# "WARNING: no configured font resolved — captions may not render"
+# into the job log, so this fails visibly rather than shipping blank clips.

@@ -2,72 +2,95 @@
   import { invalidateAll } from '$app/navigation';
   import { toast } from '$lib/stores/toast.svelte';
   import type { PageData } from './$types';
-  import { addMedia, deleteMedia, addToPressKit, removeFromPressKit } from './data.remote';
+  import {
+    addMedia,
+    deleteMedia,
+    addToPressKit,
+    removeFromPressKit,
+    addToClipGraphics,
+    removeFromClipGraphics,
+    setDefaultClipGraphic,
+    setMediaTags
+  } from './data.remote';
+  import {
+    uploadFile as uploadToServer,
+    isVideoFile,
+    isAudioFile,
+    formatDuration,
+    ACCEPT_IMAGE,
+    ACCEPT_VIDEO,
+    ACCEPT_AUDIO
+  } from '$lib/utils/upload';
+  import { PhoneUploadDialog } from '$lib/components/dialogs';
+  import { MediaDropZone, SelectCheckbox, SelectionToolbar, TagInput } from '$lib/components/ui';
+  import { Selection } from '$lib/utils/selection.svelte';
+
+  let phoneUploadOpen = $state(false);
 
   let { data }: { data: PageData } = $props();
 
   let fileInput: HTMLInputElement;
   let uploading = $state(false);
   let generating = $state(false);
-  let dragOverPressKit = $state(false);
   let draggedMediaId = $state<number | null>(null);
+
+  // Role filter. 'all' deliberately includes renders — they're real files
+  // taking up real disk, so hiding them everywhere would make them impossible
+  // to clear out.
+  const ROLE_TABS = [
+    { key: 'all', label: 'All' },
+    { key: 'asset', label: 'Images' },
+    { key: 'source', label: 'Footage' },
+    { key: 'music', label: 'Music' },
+    { key: 'render', label: 'Renders' }
+  ] as const;
+
+  let roleFilter = $state<(typeof ROLE_TABS)[number]['key']>('all');
+
+  const roleCounts = $derived(
+    data.media.reduce<Record<string, number>>((acc, m) => {
+      acc[m.role] = (acc[m.role] ?? 0) + 1;
+      return acc;
+    }, {})
+  );
+
+  const shownMedia = $derived(
+    roleFilter === 'all' ? data.media : data.media.filter((m) => m.role === roleFilter)
+  );
 
   // Pagination
   const perPage = 20;
   let currentPage = $state(1);
-  const totalPages = $derived(Math.ceil(data.media.length / perPage));
+  const totalPages = $derived(Math.ceil(shownMedia.length / perPage));
   const visibleMedia = $derived(
-    data.media.slice((currentPage - 1) * perPage, currentPage * perPage)
+    shownMedia.slice((currentPage - 1) * perPage, currentPage * perPage)
   );
 
-  // Multi-select
-  let selectedIds = $state<Set<number>>(new Set());
-  const allOnPageSelected = $derived(
-    visibleMedia.length > 0 && visibleMedia.every((item) => selectedIds.has(item.id))
-  );
+  // Multi-select. Scoped to the current page, so paging doesn't drop a
+  // selection made on the page before.
+  const selection = new Selection();
 
-  function toggleSelect(id: number) {
-    const newSet = new Set(selectedIds);
-    if (newSet.has(id)) {
-      newSet.delete(id);
-    } else {
-      newSet.add(id);
-    }
-    selectedIds = newSet;
-  }
+  // The file whose tags are open for editing, or null.
+  let taggingId = $state<number | null>(null);
+  const taggingItem = $derived(data.media.find((m) => m.id === taggingId) ?? null);
 
-  function toggleSelectAll() {
-    if (allOnPageSelected) {
-      // Deselect all on current page
-      const newSet = new Set(selectedIds);
-      for (const item of visibleMedia) {
-        newSet.delete(item.id);
-      }
-      selectedIds = newSet;
-    } else {
-      // Select all on current page
-      const newSet = new Set(selectedIds);
-      for (const item of visibleMedia) {
-        newSet.add(item.id);
-      }
-      selectedIds = newSet;
-    }
-  }
-
-  function clearSelection() {
-    selectedIds = new Set();
+  async function saveTags(names: string[]) {
+    if (taggingId === null) return;
+    await setMediaTags({ id: taggingId, tags: names });
+    await invalidateAll();
   }
 
   async function deleteSelected() {
-    if (selectedIds.size === 0) return;
-    if (!confirm(`Delete ${selectedIds.size} image${selectedIds.size > 1 ? 's' : ''}?`)) return;
+    const count = selection.size;
+    if (count === 0) return;
+    if (!confirm(`Delete ${count} file${count > 1 ? 's' : ''}?`)) return;
 
-    for (const id of selectedIds) {
+    for (const id of selection.ids) {
       await deleteMedia(id);
     }
     await invalidateAll();
-    toast.success(`Deleted ${selectedIds.size} image${selectedIds.size > 1 ? 's' : ''}`);
-    clearSelection();
+    toast.success(`Deleted ${count} file${count > 1 ? 's' : ''}`);
+    selection.clear();
   }
 
   // Bio.txt option for press kit
@@ -78,6 +101,12 @@
 
   // Track which media items are in press kit
   const pressKitMediaIds = $derived(new Set(data.pressKitMediaIds));
+
+  const clipGraphicItems = $derived(
+    data.clipGraphicsMediaIds
+      .map((id) => data.media.find((m) => m.id === id))
+      .filter((m): m is NonNullable<typeof m> => m != null)
+  );
 
   // Press kit media items for display
   const pressKitItems = $derived(
@@ -97,70 +126,58 @@
     input.value = '';
   }
 
-  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+  // Images are buffered server-side and stay small; video and audio stream to
+  // disk, so they get larger ceilings. All are enforced on the server too.
+  const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
+  const MAX_AUDIO_SIZE = 100 * 1024 * 1024;
+  const MAX_VIDEO_SIZE = 500 * 1024 * 1024;
 
   async function uploadFile(file: File) {
-    if (file.size > MAX_FILE_SIZE) {
-      toast.error(`File "${file.name}" is too large. Max 10MB.`);
+    const limit = isVideoFile(file)
+      ? MAX_VIDEO_SIZE
+      : isAudioFile(file)
+        ? MAX_AUDIO_SIZE
+        : MAX_IMAGE_SIZE;
+    if (file.size > limit) {
+      toast.error(`File "${file.name}" is too large. Max ${limit / 1024 / 1024}MB.`);
       return;
     }
 
     uploading = true;
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('type', 'media');
-
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData
-      });
-
-      if (!res.ok) {
-        let message = 'Upload failed';
-        try {
-          const err = await res.json();
-          message = err.message || message;
-        } catch {
-          if (res.status === 413) {
-            message = 'File too large. Maximum size is 10MB.';
-          }
-        }
-        toast.error(message);
-        return;
-      }
-
-      const { url, originalUrl, thumbnailUrl, width, height, size, originalSize, mimeType } =
-        await res.json();
+      const result = await uploadToServer(file);
 
       await addMedia({
         filename: file.name,
-        url,
-        originalUrl,
-        thumbnailUrl,
-        mimeType,
-        width,
-        height,
-        size,
-        originalSize
+        url: result.url,
+        originalUrl: result.originalUrl,
+        thumbnailUrl: result.thumbnailUrl,
+        mimeType: result.mimeType,
+        width: result.width,
+        height: result.height,
+        size: result.size,
+        originalSize: result.originalSize,
+        durationMs: result.durationMs
       });
 
       await invalidateAll();
       toast.success('Uploaded');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Upload failed');
     } finally {
       uploading = false;
     }
   }
 
   async function handleDelete(id: number) {
-    if (!confirm('Delete this image?')) return;
+    if (!confirm('Delete this file?')) return;
     await deleteMedia(id);
     await invalidateAll();
     toast.success('Deleted');
   }
 
-  // Press Kit drag & drop
+  // Dragging a tile out of the grid; the drop zones handle the rest.
   function handleDragStart(e: DragEvent, mediaId: number) {
     draggedMediaId = mediaId;
     if (e.dataTransfer) {
@@ -171,31 +188,9 @@
 
   function handleDragEnd() {
     draggedMediaId = null;
-    dragOverPressKit = false;
   }
 
-  function handleDragOver(e: DragEvent) {
-    e.preventDefault();
-    dragOverPressKit = true;
-  }
-
-  function handleDragLeave() {
-    dragOverPressKit = false;
-  }
-
-  async function handleDrop(e: DragEvent) {
-    e.preventDefault();
-    dragOverPressKit = false;
-
-    const mediaId = draggedMediaId || Number(e.dataTransfer?.getData('text/plain'));
-    if (!mediaId) return;
-
-    // Don't add if already in press kit
-    if (pressKitMediaIds.has(mediaId)) {
-      draggedMediaId = null;
-      return;
-    }
-
+  async function handleAddToPressKit(mediaId: number) {
     await addToPressKit({ mediaId });
     await invalidateAll();
     toast.success('Added to Press Kit');
@@ -206,6 +201,25 @@
     await removeFromPressKit({ mediaId });
     await invalidateAll();
     toast.success('Removed from Press Kit');
+  }
+
+  async function handleAddToClipGraphics(mediaId: number) {
+    await addToClipGraphics({ mediaId });
+    await invalidateAll();
+    toast.success('Added to Clip Graphics');
+    draggedMediaId = null;
+  }
+
+  async function handleRemoveFromClipGraphics(mediaId: number) {
+    await removeFromClipGraphics({ mediaId });
+    await invalidateAll();
+    toast.success('Removed from Clip Graphics');
+  }
+
+  async function handleSetDefaultClipGraphic(mediaId: number) {
+    await setDefaultClipGraphic({ mediaId });
+    await invalidateAll();
+    toast.success('Default graphic set');
   }
 
   async function handleGeneratePressKit() {
@@ -259,35 +273,59 @@
       <h1 class="text-2xl font-semibold text-white">Media Library</h1>
       <p class="text-sm text-gray-500">Upload originals, crop when you use them</p>
     </div>
-    <button
-      onclick={() => fileInput.click()}
-      disabled={uploading}
-      class="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
-    >
-      {#if uploading}
-        <div
-          class="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"
-        ></div>
-        Uploading...
-      {:else}
+    <div class="flex items-center gap-2">
+      <button
+        onclick={() => (phoneUploadOpen = true)}
+        class="flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
+      >
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
             stroke-linecap="round"
             stroke-linejoin="round"
-            stroke-width="2"
-            d="M12 4v16m8-8H4"
+            stroke-width="1.5"
+            d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
           />
         </svg>
-        Upload
-      {/if}
-    </button>
+        From phone
+      </button>
+      <button
+        onclick={() => fileInput.click()}
+        disabled={uploading}
+        class="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
+      >
+        {#if uploading}
+          <div
+            class="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"
+          ></div>
+          Uploading...
+        {:else}
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M12 4v16m8-8H4"
+            />
+          </svg>
+          Upload
+        {/if}
+      </button>
+    </div>
   </header>
 
-  <!-- Press Kit Section (musicians only) -->
-  {#if showPressKit}
-    <section class="mb-8 rounded-xl border border-gray-800 bg-gray-900 p-5">
-      <div class="mb-4 flex items-center justify-between">
-        <div class="flex items-center gap-3">
+  <PhoneUploadDialog bind:open={phoneUploadOpen} label="Add to the media library" />
+
+  <!-- Curated sets: side by side when both are on, full width when only one is -->
+  <div class="mb-6 grid gap-6 {showPressKit && data.clipsEnabled ? 'lg:grid-cols-2' : ''}">
+    {#if showPressKit}
+      <MediaDropZone
+        title="Press Kit"
+        description="Drag files here to include them"
+        items={pressKitItems}
+        ondropmedia={handleAddToPressKit}
+        onremove={handleRemoveFromPressKit}
+      >
+        {#snippet icon()}
           <svg
             class="h-6 w-6 text-violet-400"
             fill="none"
@@ -301,17 +339,14 @@
               d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
             />
           </svg>
-          <div>
-            <h2 class="font-semibold text-white">Press Kit</h2>
-            <p class="text-xs text-gray-500">Drag files here to include them</p>
-          </div>
-        </div>
-        <div class="flex items-center gap-3">
+        {/snippet}
+
+        {#snippet actions()}
           <label class="flex items-center gap-1.5 text-xs text-gray-400">
             <input
               type="checkbox"
               bind:checked={includeBioTxt}
-              class="rounded border-gray-600 bg-gray-700 text-violet-500 focus:ring-violet-500"
+              class="rounded border-gray-600 bg-gray-700 text-violet-500"
             />
             Include bio
           </label>
@@ -353,75 +388,68 @@
               Generate ZIP
             {/if}
           </button>
-        </div>
-      </div>
+        {/snippet}
 
-      <!-- Drop zone -->
-      <div
-        role="region"
-        aria-label="Press kit drop zone"
-        ondragover={handleDragOver}
-        ondragleave={handleDragLeave}
-        ondrop={handleDrop}
-        class="rounded-lg border-2 border-dashed transition-colors {dragOverPressKit
-          ? 'border-violet-500 bg-violet-500/10'
-          : 'border-gray-700'}"
-      >
-        {#if pressKitItems.length === 0}
-          <div class="flex h-[120px] flex-col items-center justify-center text-gray-500">
-            <svg class="mb-2 h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="1.5"
-                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-              />
-            </svg>
-            <p class="text-sm">Drag files from below to add them</p>
-          </div>
-        {:else}
-          <div class="flex flex-wrap gap-3 p-3">
-            {#each pressKitItems as item (item.id)}
-              <div class="group relative">
-                <div class="h-20 w-20 overflow-hidden rounded-lg bg-gray-800">
-                  <img
-                    src={item.thumbnailUrl || item.url}
-                    alt={item.filename}
-                    class="h-full w-full object-cover"
-                  />
-                </div>
-                <button
-                  onclick={() => handleRemoveFromPressKit(item.id)}
-                  class="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-500"
-                  aria-label="Remove from press kit"
-                >
-                  <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </div>
-
-      {#if data.pressKitZipExists}
-        <p class="mt-3 text-xs text-gray-500">
-          <a href="/uploads/press-kit.zip" download class="text-violet-400 hover:underline"
-            >Download press-kit.zip</a
-          >
-          {#if data.bio}
-            <span class="text-gray-600">• Includes bio.txt</span>
+        {#snippet footer()}
+          {#if data.pressKitZipExists}
+            <p class="mt-3 text-xs text-gray-500">
+              <a href="/uploads/press-kit.zip" download class="text-violet-400 hover:underline">
+                Download press-kit.zip
+              </a>
+              {#if data.bio}
+                <span class="text-gray-600">• Includes bio.txt</span>
+              {/if}
+            </p>
           {/if}
-        </p>
-      {/if}
-    </section>
-  {/if}
+        {/snippet}
+      </MediaDropZone>
+    {/if}
+
+    {#if data.clipsEnabled}
+      <MediaDropZone
+        title="Clip Graphics"
+        description="Drag logos here to use them on clips"
+        items={clipGraphicItems}
+        ondropmedia={handleAddToClipGraphics}
+        onremove={handleRemoveFromClipGraphics}
+        emptyLabel="Drag logos from below to use them on clips"
+      >
+        {#snippet icon()}
+          <svg
+            class="h-6 w-6 text-violet-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.5"
+              d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
+            />
+          </svg>
+        {/snippet}
+
+        {#snippet overlay(item)}
+          <!-- The default is what a clip uses when it hasn't picked one itself. -->
+          {#if data.defaultClipGraphicMediaId === item.id}
+            <span
+              class="absolute bottom-1 left-1 rounded bg-violet-600 px-1 py-0.5 text-[9px] font-medium text-white"
+            >
+              Default
+            </span>
+          {:else}
+            <button
+              onclick={() => handleSetDefaultClipGraphic(item.id)}
+              class="absolute bottom-1 left-1 rounded bg-black/70 px-1 py-0.5 text-[9px] text-gray-300 opacity-0 transition-opacity group-hover:opacity-100 hover:text-white"
+            >
+              Set default
+            </button>
+          {/if}
+        {/snippet}
+      </MediaDropZone>
+    {/if}
+  </div>
 
   <!-- Media Gallery -->
   {#if data.media.length === 0}
@@ -442,51 +470,46 @@
         />
       </svg>
       <p class="mb-2 text-lg font-medium text-gray-400">No media yet</p>
-      <p class="mb-4 text-sm text-gray-500">Upload images to build your media library</p>
+      <p class="mb-4 text-sm text-gray-500">Upload images and video to build your media library</p>
       <button
         onclick={() => fileInput.click()}
         class="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500"
       >
-        Upload your first image
+        Upload your first file
       </button>
     </div>
   {:else}
-    <!-- Toolbar -->
-    <div class="mb-4 flex items-center justify-between">
-      <p class="text-sm text-gray-500">
-        {data.media.length} files {#if showPressKit && pressKitItems.length > 0}· {pressKitItems.length}
-          in press kit{/if}
-      </p>
-      <div class="flex items-center gap-2">
-        <button
-          onclick={toggleSelectAll}
-          class="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
-        >
-          {allOnPageSelected ? 'Deselect all' : 'Select all'}
-        </button>
-        {#if selectedIds.size > 0}
+    <!-- Filters and bulk actions share a row: the tab counts already report
+         how many files there are, so a separate tally said it twice. -->
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex flex-wrap gap-1.5">
+        {#each ROLE_TABS as tab (tab.key)}
+          {@const count = tab.key === 'all' ? data.media.length : (roleCounts[tab.key] ?? 0)}
           <button
-            onclick={deleteSelected}
-            class="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-500"
+            onclick={() => {
+              roleFilter = tab.key;
+              currentPage = 1;
+              selection.clear();
+            }}
+            disabled={count === 0 && tab.key !== 'all'}
+            class="rounded-lg px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-30 {roleFilter ===
+            tab.key
+              ? 'bg-violet-600 text-white'
+              : 'border border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white'}"
           >
-            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-              />
-            </svg>
-            Delete ({selectedIds.size})
+            {tab.label}
+            <span class="ml-1 tabular-nums opacity-60">{count}</span>
           </button>
-          <button
-            onclick={clearSelection}
-            class="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
-          >
-            Clear
-          </button>
-        {/if}
+        {/each}
       </div>
+
+      <SelectionToolbar
+        count={selection.size}
+        allSelected={selection.covers(visibleMedia)}
+        onToggleAll={() => selection.toggleAll(visibleMedia)}
+        onDelete={deleteSelected}
+        onClear={() => selection.clear()}
+      />
     </div>
 
     <div class="grid grid-cols-2 gap-4 pb-16 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
@@ -505,59 +528,92 @@
             ? 'cursor-default'
             : showPressKit
               ? 'cursor-grab'
-              : ''} {draggedMediaId === item.id ? 'opacity-50' : ''} {selectedIds.has(item.id)
+              : ''} {draggedMediaId === item.id ? 'opacity-50' : ''} {selection.has(item.id)
             ? 'ring-2 ring-violet-500'
             : ''}"
         >
           <div class="aspect-square">
-            <img
-              src={item.thumbnailUrl || item.url}
-              alt={item.alt || item.filename}
-              loading="lazy"
-              class="h-full w-full object-cover"
-            />
+            {#if item.mimeType.startsWith('audio/')}
+              <!-- No poster frame exists for audio, so draw a tile instead of
+                   pointing an <img> at the audio file. -->
+              <div class="flex h-full w-full items-center justify-center bg-gray-800">
+                <svg class="h-10 w-10 text-violet-400" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 3v10.55A4 4 0 1014 17V7h4V3h-6z" />
+                </svg>
+              </div>
+            {:else}
+              <img
+                src={item.thumbnailUrl || item.url}
+                alt={item.alt || item.filename}
+                loading="lazy"
+                class="h-full w-full object-cover"
+              />
+            {/if}
           </div>
-          <!-- Select checkbox - always visible -->
-          <button
-            type="button"
+          <!-- Video marker: the thumbnail is a poster frame, so without this a
+               clip is indistinguishable from a still at a glance. -->
+          {#if item.mimeType.startsWith('video/')}
+            <div
+              class="pointer-events-none absolute inset-0 flex items-center justify-center transition-opacity group-hover:opacity-0"
+            >
+              <div class="rounded-full bg-black/50 p-2.5 backdrop-blur-sm">
+                <svg class="h-5 w-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </div>
+            </div>
+            {#if item.durationMs}
+              <div
+                class="pointer-events-none absolute right-2 bottom-12 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white tabular-nums"
+              >
+                {formatDuration(item.durationMs)}
+              </div>
+            {/if}
+          {/if}
+          {#if data.tagsByMedia[item.id]?.length}
+            <span
+              class="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-gray-300"
+              title={data.tagsByMedia[item.id].join(', ')}
+            >
+              {data.tagsByMedia[item.id].length} tag{data.tagsByMedia[item.id].length === 1
+                ? ''
+                : 's'}
+            </span>
+          {/if}
+          <SelectCheckbox
+            checked={selection.has(item.id)}
             onclick={(e) => {
               e.stopPropagation();
-              toggleSelect(item.id);
+              selection.toggle(item.id);
             }}
-            class="absolute top-2 left-2 z-10 flex h-5 w-5 items-center justify-center rounded border-2 transition-colors {selectedIds.has(
-              item.id
-            )
-              ? 'border-violet-500 bg-violet-500'
-              : 'border-white/60 bg-black/40 hover:border-white'}"
-            aria-label={selectedIds.has(item.id) ? 'Deselect' : 'Select'}
-          >
-            {#if selectedIds.has(item.id)}
-              <svg class="h-3 w-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="3"
-                  d="M5 13l4 4L19 7"
-                />
-              </svg>
-            {/if}
-          </button>
+          />
           <!-- Hover overlay -->
           <div
             class="absolute inset-0 flex flex-col items-center justify-center bg-black/70 opacity-0 transition-opacity group-hover:opacity-100"
           >
-            <button
-              onclick={() => handleDelete(item.id)}
-              class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-500"
-            >
-              Delete
-            </button>
+            <div class="flex gap-2">
+              <button
+                onclick={() => (taggingId = item.id)}
+                class="rounded-lg border border-gray-600 bg-gray-800 px-3 py-1.5 text-sm text-gray-200 transition-colors hover:bg-gray-700"
+              >
+                Tags
+              </button>
+              <button
+                onclick={() => handleDelete(item.id)}
+                class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-500"
+              >
+                Delete
+              </button>
+            </div>
             <div class="mt-3 text-center text-xs text-gray-400">
               {#if item.width && item.height}
                 <p>{item.width} × {item.height}</p>
               {/if}
               {#if item.size}
                 <p>{formatFileSize(item.size)}</p>
+              {/if}
+              {#if item.durationMs}
+                <p>{formatDuration(item.durationMs)}</p>
               {/if}
             </div>
           </div>
@@ -602,7 +658,7 @@
   {/if}
 
   <!-- Fixed Pagination -->
-  {#if data.media.length > 0 && totalPages > 1}
+  {#if shownMedia.length > 0 && totalPages > 1}
     <div
       class="fixed right-0 bottom-0 left-56 flex items-center justify-center gap-2 border-t border-gray-800 bg-gray-950/95 py-3 backdrop-blur-sm"
     >
@@ -640,9 +696,39 @@
   <input
     bind:this={fileInput}
     type="file"
-    accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml,.svg"
+    accept={`${ACCEPT_IMAGE},${ACCEPT_VIDEO},${ACCEPT_AUDIO}`}
     multiple
     onchange={handleFileSelect}
     class="hidden"
   />
 </div>
+
+<!-- Tag editor. Mounted only while open so TagInput initialises on mount. -->
+{#if taggingItem}
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+    role="presentation"
+    onclick={(e) => {
+      if (e.target === e.currentTarget) taggingId = null;
+    }}
+  >
+    <div class="w-full max-w-md rounded-xl border border-gray-700 bg-gray-900 p-6">
+      <div class="mb-4 flex items-start justify-between gap-4">
+        <div class="min-w-0">
+          <h2 class="truncate text-sm font-medium text-white">{taggingItem.filename}</h2>
+          <p class="mt-0.5 text-xs text-gray-500">Tags are shared with clips</p>
+        </div>
+        <button
+          onclick={() => (taggingId = null)}
+          aria-label="Close"
+          class="shrink-0 text-gray-400 hover:text-white">✕</button
+        >
+      </div>
+      <TagInput
+        initial={data.tagsByMedia[taggingItem.id] ?? []}
+        suggestions={data.allTags}
+        onchange={saveTags}
+      />
+    </div>
+  </div>
+{/if}

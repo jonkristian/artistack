@@ -42,17 +42,6 @@ function formatNumber(n: number): string {
   return n.toString();
 }
 
-// Format percent change with emoji
-function formatChange(current: number, previous: number): string {
-  if (previous === 0) {
-    return current > 0 ? '📈 +100%' : '➡️ 0%';
-  }
-  const change = Math.round(((current - previous) / previous) * 100);
-  if (change > 0) return `📈 +${change}%`;
-  if (change < 0) return `📉 ${change}%`;
-  return '➡️ 0%';
-}
-
 export function buildStatsEmbed(data: DiscordReportData): DiscordEmbed {
   const { overview, pageViews, linkClicks, socialStats, isTest } = data;
 

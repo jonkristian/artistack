@@ -1,4 +1,18 @@
-import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import type { ClipRenderConfig, TimedCaption, ClipStatus } from '../clips/types';
+
+// Clip config types live in $lib/clips/types so the admin UI can import the
+// defaults at runtime; re-exported here so server code has one import site.
+export type {
+  TimedCaption,
+  ClipStatus,
+  ClipAspect,
+  ClipTone,
+  ClipFill,
+  CaptionPosition,
+  ClipRenderConfig
+} from '../clips/types';
+export { DEFAULT_CLIP_CONFIG } from '../clips/types';
 
 // Artist profile (single row for single-artist setup)
 export const profile = sqliteTable('profile', {
@@ -15,6 +29,12 @@ export const settings = sqliteTable('settings', {
   siteTitle: text('site_title'), // Overrides name for browser title, falls back to name if empty
   setupCompleted: integer('setup_completed', { mode: 'boolean' }).default(false),
   pressKitEnabled: integer('press_kit_enabled', { mode: 'boolean' }).default(false),
+  /**
+   * The clip studio as a whole. Distinct from publishEnabled below, which only
+   * governs the scheduled outbound release — you want to render and review
+   * clips long before any of them are wired up to go out.
+   */
+  clipsEnabled: integer('clips_enabled', { mode: 'boolean' }).default(false),
   pressKitMediaIds: text('press_kit_media_ids', { mode: 'json' }).$type<number[]>().default([]),
   layout: text('layout').default('default'),
   locale: text('locale').default('nb-NO'),
@@ -41,6 +61,37 @@ export const settings = sqliteTable('settings', {
   smtpFromAddress: text('smtp_from_address'),
   smtpFromName: text('smtp_from_name'),
   smtpTls: integer('smtp_tls', { mode: 'boolean' }).default(true),
+  // Clip publishing — an outbound webhook fired when a queued clip comes due.
+  // Deliberately generic rather than platform-specific: whatever consumes it
+  // (n8n today) owns the platform credentials and app review, which is the part
+  // that doesn't get cheaper by moving it in here.
+  publishWebhookUrl: text('publish_webhook_url'),
+  publishEnabled: integer('publish_enabled', { mode: 'boolean' }).default(false),
+  /** Days between releases when a clip doesn't set its own gap. */
+  publishIntervalDays: integer('publish_interval_days').default(3),
+  /** Hour of day (0-23) a due clip is released. */
+  publishHour: integer('publish_hour').default(10),
+  publishLastSent: integer('publish_last_sent', { mode: 'timestamp' }),
+  /** Optional shared secret, sent as X-Artistack-Signature. */
+  publishSecret: text('publish_secret'),
+  /**
+   * Images designated as clip graphics — logos and marks a clip can be dressed
+   * with. Same shape as pressKitMediaIds: a set of pointers into the library
+   * rather than a table, so a file stays an ordinary image and can be both.
+   */
+  clipGraphicsMediaIds: text('clip_graphics_media_ids', { mode: 'json' })
+    .$type<number[]>()
+    .default([]),
+  /** Used by clips that don't pick one of their own. */
+  defaultClipGraphicMediaId: integer('default_clip_graphic_media_id'),
+  /**
+   * Boilerplate a new clip starts with, saved from whichever clip you last got
+   * right. Most posts share their hashtags and their call to action, and typing
+   * them again per clip is the kind of copying a default exists to stop.
+   */
+  clipDefaultTagIds: text('clip_default_tag_ids', { mode: 'json' }).$type<number[]>().default([]),
+  clipDefaultDescription: text('clip_default_description'),
+
   // Discord Integration
   discordWebhookUrl: text('discord_webhook_url'),
   discordEnabled: integer('discord_enabled', { mode: 'boolean' }).default(false),
@@ -123,17 +174,200 @@ export const tourDates = sqliteTable(
 export const media = sqliteTable('media', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   filename: text('filename').notNull(),
-  url: text('url').notNull(), // Optimized version for web display
+  url: text('url').notNull(), // Optimized version for web display (video: the source file)
   originalUrl: text('original_url'), // Original file (for press kit downloads)
-  thumbnailUrl: text('thumbnail_url'), // Smaller version for grids/previews
+  thumbnailUrl: text('thumbnail_url'), // Smaller version for grids/previews (video: poster frame)
   mimeType: text('mime_type').notNull(),
   width: integer('width'),
   height: integer('height'),
   size: integer('size'), // bytes (of optimized version)
   originalSize: integer('original_size'), // bytes (of original)
+  durationMs: integer('duration_ms'), // video only; null for images
+  /**
+   * What this file is for. Set at write time rather than inferred, because a
+   * mime type can't tell raw footage apart from a finished render — both are
+   * video/mp4, but only one belongs in a clip's source list.
+   */
+  role: text('role').$type<MediaRole>().notNull().default('asset'),
   alt: text('alt'),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
 });
+
+export type MediaRole = 'asset' | 'source' | 'music' | 'render';
+
+/** Default role for a freshly uploaded file, before anything overrides it. */
+export function roleForMime(mimeType: string): MediaRole {
+  if (mimeType.startsWith('video/')) return 'source';
+  if (mimeType.startsWith('audio/')) return 'music';
+  return 'asset';
+}
+
+/** True when a media row is a video rather than an image. */
+export function isVideo(item: { mimeType: string }): boolean {
+  return item.mimeType.startsWith('video/');
+}
+
+/** True when a media row is an audio file (used as a clip's music bed). */
+export function isAudio(item: { mimeType: string }): boolean {
+  return item.mimeType.startsWith('audio/');
+}
+
+// ============================================================================
+// Clip Studio — assemble source clips into a branded, post-ready social video
+// ============================================================================
+
+/**
+ * Shared tag vocabulary.
+ *
+ * One table for every kind of content rather than a `tags` column per table, so
+ * a tag means the same thing on a clip as it does on a piece of footage, and
+ * renaming it renames it everywhere. `slug` is the identity — it is what stops
+ * "Indie Rock" and "indie rock" becoming two tags — while `name` keeps whatever
+ * casing was typed first for display.
+ */
+export const tags = sqliteTable('tags', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  slug: text('slug').notNull().unique(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
+});
+
+/** What a tag is attached to. Add a kind here when a new table becomes taggable. */
+export type TaggableType = 'clip' | 'media';
+
+/**
+ * Tag-to-content join.
+ *
+ * Polymorphic rather than one join table per content type: the point of a shared
+ * vocabulary is asking "what is tagged X" across kinds in a single query. SQLite
+ * has no cross-table foreign keys for this shape, so deletes are cleaned up by
+ * the callers in tags.ts.
+ */
+export const taggings = sqliteTable(
+  'taggings',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    tagId: integer('tag_id').notNull(),
+    entityType: text('entity_type').$type<TaggableType>().notNull(),
+    entityId: integer('entity_id').notNull()
+  },
+  (table) => [
+    uniqueIndex('taggings_unique_idx').on(table.tagId, table.entityType, table.entityId),
+    index('taggings_entity_idx').on(table.entityType, table.entityId)
+  ]
+);
+
+// A clip project: the render recipe. Sources live in clipSources, and each
+// render attempt is a row in renderJobs, so a project keeps its history.
+export const clipProjects = sqliteTable('clip_projects', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(), // the clip's title, and what the post sheet posts under
+  description: text('description'), // post body (the sidecar's markdown body)
+  config: text('config', { mode: 'json' }).$type<ClipRenderConfig>(),
+  captions: text('captions', { mode: 'json' }).$type<TimedCaption[]>().default([]),
+  outputMediaId: integer('output_media_id'), // FK to media, set once a render succeeds
+  /**
+   * The graphic the last render actually used. Written by the renderer, so a
+   * randomised pick is visible after the fact rather than a guess.
+   */
+  resolvedGraphicMediaId: integer('resolved_graphic_media_id'),
+
+  // --- Review and release ---
+  status: text('status').$type<ClipStatus>().notNull().default('draft'),
+  /**
+   * Unguessable token for the public preview page. Generated on first share, so
+   * a clip that's never been sent out has no reachable URL at all.
+   */
+  previewToken: text('preview_token').unique(),
+  reviewNote: text('review_note'), // why it was rejected, or a note on approval
+  reviewedAt: integer('reviewed_at', { mode: 'timestamp' }),
+
+  /** Position in the drip-release order; null means unqueued. */
+  queuePosition: integer('queue_position'),
+  /** Days to wait after this clip before releasing the next. Null uses the default cadence. */
+  queueGapDays: integer('queue_gap_days'),
+  publishedAt: integer('published_at', { mode: 'timestamp' }),
+
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
+});
+
+/**
+ * Short-lived upload sessions for the phone-upload QR flow.
+ *
+ * Footage almost always lives on a phone, and getting it onto the machine
+ * running the admin is the slowest step in the whole pipeline. Rather than
+ * asking someone to log in on a phone, an admin generates a QR that carries a
+ * capability token: it can upload, and nothing else. It expires, it's
+ * revocable, and it never exposes the library.
+ */
+export const uploadSessions = sqliteTable(
+  'upload_sessions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    token: text('token').notNull().unique(),
+    label: text('label'), // what it's for, shown on the phone
+    /** When set, uploaded video is added straight to this clip project's sources. */
+    projectId: integer('project_id'),
+    expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+    uploadCount: integer('upload_count').notNull().default(0),
+    revoked: integer('revoked', { mode: 'boolean' }).default(false),
+    lastUploadAt: integer('last_upload_at', { mode: 'timestamp' }),
+    createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
+  },
+  (table) => [index('upload_sessions_token_idx').on(table.token)]
+);
+
+export type UploadSession = typeof uploadSessions.$inferSelect;
+
+// Source clips for a project, in render order.
+export const clipSources = sqliteTable(
+  'clip_sources',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    projectId: integer('project_id').notNull(),
+    mediaId: integer('media_id').notNull(),
+    position: integer('position').default(0),
+    // Trim window in seconds; null means use the whole clip.
+    trimStart: integer('trim_start'),
+    trimEnd: integer('trim_end'),
+    // Silence this clip's own audio — lets a music bed play full over b-roll
+    // instead of being ducked by room noise.
+    muted: integer('muted', { mode: 'boolean' }).default(false),
+    // null inherits the project's watermark setting.
+    watermark: integer('watermark', { mode: 'boolean' })
+  },
+  (table) => [index('clip_sources_project_id_idx').on(table.projectId)]
+);
+
+// One render attempt. Rows are kept after completion so failures stay
+// inspectable — the ffmpeg log is the only way to diagnose a bad filter graph.
+export const renderJobs = sqliteTable(
+  'render_jobs',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    projectId: integer('project_id').notNull(),
+    status: text('status').notNull().default('queued'), // 'queued' | 'rendering' | 'done' | 'failed' | 'cancelled'
+    progress: integer('progress').default(0), // 0-100
+    error: text('error'),
+    log: text('log'), // tail of ffmpeg stderr, for debugging a failed render
+    mediaId: integer('media_id'), // FK to media, on success
+    startedAt: integer('started_at', { mode: 'timestamp' }),
+    finishedAt: integer('finished_at', { mode: 'timestamp' }),
+    createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
+  },
+  (table) => [
+    index('render_jobs_project_id_idx').on(table.projectId),
+    index('render_jobs_status_idx').on(table.status)
+  ]
+);
+
+export type ClipProject = typeof clipProjects.$inferSelect;
+export type NewClipProject = typeof clipProjects.$inferInsert;
+export type ClipSource = typeof clipSources.$inferSelect;
+export type NewClipSource = typeof clipSources.$inferInsert;
+export type RenderJob = typeof renderJobs.$inferSelect;
+export type NewRenderJob = typeof renderJobs.$inferInsert;
 
 // Page view tracking (GDPR compliant - no personal data)
 export const pageViews = sqliteTable(

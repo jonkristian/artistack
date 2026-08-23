@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { labelClass } from '$lib/utils/classes';
   import type { Link } from '$lib/server/schema';
   import { invalidateAll } from '$app/navigation';
   import { platformIcons, platformColors } from '$lib/utils/platforms';
@@ -14,13 +15,14 @@
   let editUrl = $state('');
   let editLabel = $state('');
 
-  // Sync edit values when link prop changes
-  $effect(() => {
-    if (!isEditing) {
-      editUrl = link.url;
-      editLabel = link.label ?? '';
-    }
-  });
+  // Seeded on entry rather than kept in sync by an effect: these are only read
+  // while the editor is open, and an effect reading what save() writes is the
+  // shape that loops.
+  function startEdit() {
+    editUrl = link.url;
+    editLabel = link.label ?? '';
+    isEditing = true;
+  }
 
   async function save() {
     if (editUrl === link.url && editLabel === link.label) {
@@ -66,7 +68,7 @@
     style="background-color: var(--theme-secondary)"
   >
     <div class="mb-3">
-      <label for="edit-link-label-{link.id}" class="mb-1 block text-sm text-gray-400">Label</label>
+      <label for="edit-link-label-{link.id}" class={labelClass}>Label</label>
       <input
         id="edit-link-label-{link.id}"
         type="text"
@@ -77,7 +79,7 @@
       />
     </div>
     <div class="mb-3">
-      <label for="edit-link-url-{link.id}" class="mb-1 block text-sm text-gray-400">URL</label>
+      <label for="edit-link-url-{link.id}" class={labelClass}>URL</label>
       <input
         id="edit-link-url-{link.id}"
         type="url"
@@ -111,7 +113,7 @@
   <!-- Link with thumbnail (YouTube, etc.) -->
   <a
     href={isAdmin ? undefined : link.url}
-    onclick={isAdmin ? () => (isEditing = true) : undefined}
+    onclick={isAdmin ? startEdit : undefined}
     class="group flex items-center gap-4 rounded-xl p-4 transition-all hover:scale-[1.02]"
     style="background-color: var(--theme-secondary)"
     target={isAdmin ? undefined : '_blank'}
@@ -158,7 +160,7 @@
   <!-- Standard link without thumbnail -->
   <a
     href={isAdmin ? undefined : link.url}
-    onclick={isAdmin ? () => (isEditing = true) : undefined}
+    onclick={isAdmin ? startEdit : undefined}
     class="group flex items-center gap-4 rounded-xl p-4 transition-all hover:scale-[1.02]"
     style="background-color: var(--theme-secondary)"
     target={isAdmin ? undefined : '_blank'}

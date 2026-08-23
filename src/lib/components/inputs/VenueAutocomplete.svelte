@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { fieldClass } from '$lib/utils/classes';
   import { onMount } from 'svelte';
   import type { Venue } from '$lib/server/schema';
 
@@ -125,7 +126,7 @@
     onfocus={handleFocus}
     onblur={handleBlur}
     placeholder="Venue name"
-    class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+    class={fieldClass}
   />
 
   {#if showSuggestions && suggestions.length > 0}

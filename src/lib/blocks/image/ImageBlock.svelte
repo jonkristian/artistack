@@ -51,7 +51,9 @@
         <img
           src={config.imageUrl}
           alt=""
-          class="relative h-full w-full {isFullWidth ? '' : shapeClass} object-cover {isFullWidth ? '' : 'shadow-lg'}"
+          class="relative h-full w-full {isFullWidth ? '' : shapeClass} object-cover {isFullWidth
+            ? ''
+            : 'shadow-lg'}"
           style={isFullWidth ? 'aspect-ratio: 16/9' : ''}
         />
       </div>

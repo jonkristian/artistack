@@ -1,24 +1,32 @@
 <script lang="ts">
+  import { fieldClass, labelClass } from '$lib/utils/classes';
   import type { PageData } from './$types';
   import {
     updateSpotifyConfig,
     saveGoogleConfig,
     updateDiscordSettings,
+    updatePublishSettings,
     testDiscordWebhook
   } from './data.remote';
   import { updateSettings } from '../settings/data.remote';
   import { invalidateAll } from '$app/navigation';
+  import { untrack } from 'svelte';
+  import { ToggleSwitch } from '$lib/components/ui';
 
   let { data }: { data: PageData } = $props();
 
-  // Spotify settings state
-  let spotifyClientId = $state('');
-  let spotifyClientSecret = $state('');
+  /*
+   * Seeded once from the load. These used to be filled by an $effect that ran
+   * on every data change, so an invalidateAll anywhere on the page overwrote a
+   * half-typed key with the stored value.
+   */
+  let spotifyClientId = $state(untrack(() => data.spotifyConfig?.clientId ?? ''));
+  let spotifyClientSecret = $state(untrack(() => data.spotifyConfig?.clientSecret ?? ''));
 
   // Google settings state (unified for Places + YouTube)
-  let googleApiKey = $state('');
-  let googlePlacesEnabled = $state(true);
-  let googleYoutubeEnabled = $state(true);
+  let googleApiKey = $state(untrack(() => data.googleConfig?.apiKey ?? ''));
+  let googlePlacesEnabled = $state(untrack(() => data.googleConfig?.placesEnabled ?? true));
+  let googleYoutubeEnabled = $state(untrack(() => data.googleConfig?.youtubeEnabled ?? true));
 
   // Discord settings state
   let discordWebhookUrl = $state('');
@@ -27,8 +35,18 @@
   let discordScheduleDay = $state(1);
   let discordScheduleTime = $state('09:00');
 
+  // Clip publishing state
+  let publishWebhookUrl = $state('');
+  let publishEnabled = $state(false);
+  let publishIntervalDays = $state(3);
+  let publishHour = $state(10);
+  let publishSecret = $state('');
+  let savingPublish = $state(false);
+  let publishResult = $state<{ success: boolean; message: string } | null>(null);
+
   // Artist features state
   let pressKitEnabled = $state(false);
+  let clipsEnabled = $state(false);
 
   // UI state
   let savingSpotify = $state(false);
@@ -44,23 +62,6 @@
   let youtubeDetectedId = $derived(data.detectedIds?.youtube?.rawId);
   let youtubeDetectedType = $derived(data.detectedIds?.youtube?.type);
 
-  // Sync Spotify config on data change
-  $effect(() => {
-    if (data.spotifyConfig) {
-      spotifyClientId = data.spotifyConfig.clientId ?? '';
-      spotifyClientSecret = data.spotifyConfig.clientSecret ?? '';
-    }
-  });
-
-  // Sync Google config on data change
-  $effect(() => {
-    if (data.googleConfig) {
-      googleApiKey = data.googleConfig.apiKey ?? '';
-      googlePlacesEnabled = data.googleConfig.placesEnabled ?? true;
-      googleYoutubeEnabled = data.googleConfig.youtubeEnabled ?? true;
-    }
-  });
-
   // Sync Discord and artist features settings on data change
   let syncedSettingsId: number | null = null;
   $effect(() => {
@@ -73,8 +74,34 @@
       discordScheduleDay = data.settings.discordScheduleDay ?? 1;
       discordScheduleTime = data.settings.discordScheduleTime ?? '09:00';
       pressKitEnabled = data.settings.pressKitEnabled ?? false;
+      clipsEnabled = data.settings.clipsEnabled ?? false;
+      publishWebhookUrl = data.settings.publishWebhookUrl ?? '';
+      publishEnabled = data.settings.publishEnabled ?? false;
+      publishIntervalDays = data.settings.publishIntervalDays ?? 3;
+      publishHour = data.settings.publishHour ?? 10;
+      publishSecret = data.settings.publishSecret ?? '';
     }
   });
+
+  async function savePublishSettings() {
+    savingPublish = true;
+    publishResult = null;
+    try {
+      await updatePublishSettings({
+        publishWebhookUrl: publishWebhookUrl || null,
+        publishEnabled,
+        publishIntervalDays,
+        publishHour,
+        publishSecret: publishSecret || null
+      });
+      await invalidateAll();
+      publishResult = { success: true, message: 'Settings saved!' };
+    } catch {
+      publishResult = { success: false, message: 'Failed to save settings' };
+    }
+    savingPublish = false;
+    setTimeout(() => (publishResult = null), 5000);
+  }
 
   // Format numbers with K/M suffixes
   function formatNumber(n: number): string {
@@ -163,6 +190,29 @@
     pressKitEnabled = !pressKitEnabled;
     await updateSettings({ pressKitEnabled });
   }
+
+  async function toggleClips() {
+    clipsEnabled = !clipsEnabled;
+    await updateSettings({ clipsEnabled });
+    await invalidateAll();
+  }
+
+  /**
+   * Persists straight away, like the press kit switch — the detail fields below
+   * keep their own Save button, so flipping the switch shouldn't also commit a
+   * half-typed webhook URL.
+   */
+  async function toggleClipPublishing() {
+    publishEnabled = !publishEnabled;
+    await updatePublishSettings({
+      publishWebhookUrl: data.settings?.publishWebhookUrl || null,
+      publishEnabled,
+      publishIntervalDays: data.settings?.publishIntervalDays ?? 3,
+      publishHour: data.settings?.publishHour ?? 10,
+      publishSecret: data.settings?.publishSecret || null
+    });
+    await invalidateAll();
+  }
 </script>
 
 <div class="min-h-screen bg-gray-950 p-6">
@@ -240,7 +290,7 @@
             type="password"
             bind:value={googleApiKey}
             placeholder="AIza..."
-            class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+            class={fieldClass}
           />
         </div>
 
@@ -251,22 +301,13 @@
               <span class="text-sm text-white">Places API</span>
               <p class="text-xs text-gray-500">Venue autocomplete for tour dates</p>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={googlePlacesEnabled}
-              aria-label="Toggle Places API"
-              onclick={() => (googlePlacesEnabled = !googlePlacesEnabled)}
-              class="relative h-6 w-11 rounded-full transition-colors {googlePlacesEnabled
-                ? 'bg-blue-600'
-                : 'bg-gray-600'}"
-            >
-              <span
-                class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform {googlePlacesEnabled
-                  ? 'translate-x-5'
-                  : ''}"
-              ></span>
-            </button>
+            <ToggleSwitch
+              bind:checked={googlePlacesEnabled}
+              label="Toggle Places API"
+              size="md"
+              accent="blue"
+              hideLabel
+            />
           </label>
 
           <label class="flex items-center justify-between">
@@ -281,22 +322,13 @@
                 </p>
               {/if}
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={googleYoutubeEnabled}
-              aria-label="Toggle YouTube Data API"
-              onclick={() => (googleYoutubeEnabled = !googleYoutubeEnabled)}
-              class="relative h-6 w-11 rounded-full transition-colors {googleYoutubeEnabled
-                ? 'bg-blue-600'
-                : 'bg-gray-600'}"
-            >
-              <span
-                class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform {googleYoutubeEnabled
-                  ? 'translate-x-5'
-                  : ''}"
-              ></span>
-            </button>
+            <ToggleSwitch
+              bind:checked={googleYoutubeEnabled}
+              label="Toggle YouTube Data API"
+              size="md"
+              accent="blue"
+              hideLabel
+            />
           </label>
         </div>
 
@@ -354,28 +386,19 @@
             type="url"
             bind:value={discordWebhookUrl}
             placeholder="https://discord.com/api/webhooks/..."
-            class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-indigo-500 focus:outline-none"
+            class={fieldClass}
           />
         </div>
 
         <label class="flex items-center justify-between">
           <span class="text-sm text-white">Enable scheduled reports</span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={discordEnabled}
-            aria-label="Toggle scheduled reports"
-            onclick={() => (discordEnabled = !discordEnabled)}
-            class="relative h-6 w-11 rounded-full transition-colors {discordEnabled
-              ? 'bg-indigo-600'
-              : 'bg-gray-600'}"
-          >
-            <span
-              class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform {discordEnabled
-                ? 'translate-x-5'
-                : ''}"
-            ></span>
-          </button>
+          <ToggleSwitch
+            bind:checked={discordEnabled}
+            label="Toggle scheduled reports"
+            size="md"
+            accent="indigo"
+            hideLabel
+          />
         </label>
 
         {#if discordEnabled}
@@ -383,11 +406,7 @@
             <div>
               <label for="discordSchedule" class="mb-1 block text-xs text-gray-500">Frequency</label
               >
-              <select
-                id="discordSchedule"
-                bind:value={discordSchedule}
-                class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none"
-              >
+              <select id="discordSchedule" bind:value={discordSchedule} class={fieldClass}>
                 <option value="daily">Daily</option>
                 <option value="weekly">Weekly</option>
                 <option value="monthly">Monthly</option>
@@ -403,11 +422,7 @@
                     : 'N/A'}
               </label>
               {#if discordSchedule === 'weekly'}
-                <select
-                  id="discordScheduleDay"
-                  bind:value={discordScheduleDay}
-                  class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none"
-                >
+                <select id="discordScheduleDay" bind:value={discordScheduleDay} class={fieldClass}>
                   <option value={1}>Monday</option>
                   <option value={2}>Tuesday</option>
                   <option value={3}>Wednesday</option>
@@ -417,21 +432,13 @@
                   <option value={0}>Sunday</option>
                 </select>
               {:else if discordSchedule === 'monthly'}
-                <select
-                  id="discordScheduleDay"
-                  bind:value={discordScheduleDay}
-                  class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none"
-                >
+                <select id="discordScheduleDay" bind:value={discordScheduleDay} class={fieldClass}>
                   {#each Array.from({ length: 28 }, (_, i) => i + 1) as day}
                     <option value={day}>{day}</option>
                   {/each}
                 </select>
               {:else}
-                <input
-                  disabled
-                  value="N/A"
-                  class="w-full rounded-lg border border-gray-700 bg-gray-800/50 px-3 py-2 text-sm text-gray-500"
-                />
+                <input disabled value="N/A" class={fieldClass} />
               {/if}
             </div>
 
@@ -441,7 +448,7 @@
                 id="discordScheduleTime"
                 type="time"
                 bind:value={discordScheduleTime}
-                class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none"
+                class={fieldClass}
               />
             </div>
           </div>
@@ -574,7 +581,7 @@
                 type="text"
                 bind:value={spotifyClientId}
                 placeholder="From Spotify Developer Dashboard"
-                class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-green-500 focus:outline-none"
+                class={fieldClass}
               />
             </div>
             <div>
@@ -586,7 +593,7 @@
                 type="password"
                 bind:value={spotifyClientSecret}
                 placeholder="From Spotify Developer Dashboard"
-                class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-green-500 focus:outline-none"
+                class={fieldClass}
               />
             </div>
           </div>
@@ -642,27 +649,166 @@
               <p class="text-xs text-gray-500">Enable downloadable press kit in Media library</p>
             </div>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={pressKitEnabled}
-            aria-label="Toggle press kit"
-            onclick={togglePressKit}
-            class="relative h-6 w-11 rounded-full transition-colors {pressKitEnabled
-              ? 'bg-violet-600'
-              : 'bg-gray-600'}"
-          >
-            <span
-              class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform {pressKitEnabled
-                ? 'translate-x-5'
-                : ''}"
-            ></span>
-          </button>
+          <ToggleSwitch
+            checked={pressKitEnabled}
+            label="Toggle press kit"
+            onchange={togglePressKit}
+            size="md"
+            hideLabel
+          />
         </div>
         <p class="mt-3 text-xs text-gray-500">
           When enabled, you can create a downloadable press kit with high-res images and bio from
           the Media page.
         </p>
+      </section>
+
+      <!-- Clip Publishing Toggle -->
+      <section class="mt-6 rounded-xl border border-gray-800 bg-gray-900 p-5">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600/20">
+              <svg
+                class="h-5 w-5 text-violet-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.5"
+                  d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
+                />
+              </svg>
+            </div>
+            <div>
+              <h3 class="font-semibold text-white">Clips</h3>
+              <p class="text-xs text-gray-500">Assemble footage into branded social videos</p>
+            </div>
+          </div>
+          <ToggleSwitch
+            checked={clipsEnabled}
+            label="Toggle clips"
+            onchange={toggleClips}
+            size="md"
+            hideLabel
+          />
+        </div>
+
+        {#if !clipsEnabled}
+          <p class="mt-3 text-xs text-gray-500">
+            Adds the Clips studio and its brand settings. Rendering and review work on their own —
+            scheduled publishing is a separate switch that appears once this is on.
+          </p>
+        {:else}
+          <!-- Scheduled release is deliberately a second switch: you render and
+               review clips long before any of them should go out. -->
+          <div class="mt-4 flex items-center justify-between border-t border-gray-800 pt-4">
+            <div>
+              <h4 class="text-sm font-medium text-white">Scheduled publishing</h4>
+              <p class="text-xs text-gray-500">
+                POST a queued clip to your webhook as its slot comes due — video link, poster,
+                preview link and post sheet as JSON. Whatever receives it (n8n, a script, your own
+                service) owns the platform credentials.
+              </p>
+            </div>
+            <ToggleSwitch
+              checked={publishEnabled}
+              onchange={toggleClipPublishing}
+              label="Toggle scheduled publishing"
+              size="md"
+              hideLabel
+            />
+          </div>
+        {/if}
+
+        {#if clipsEnabled && publishEnabled}
+          <!-- Enabling without a target does nothing at all, so say so rather
+               than leaving a switch that looks on but never fires. -->
+          {#if !publishWebhookUrl}
+            <p
+              class="mt-3 rounded-lg border border-amber-900/50 bg-amber-950/30 px-3 py-2 text-xs text-amber-300"
+            >
+              Nothing will be released until a webhook URL is set below.
+            </p>
+          {/if}
+
+          <div class="mt-4 space-y-4 border-t border-gray-800 pt-4">
+            <div>
+              <label class={labelClass} for="publish-url">Webhook URL</label>
+              <input
+                id="publish-url"
+                type="url"
+                bind:value={publishWebhookUrl}
+                placeholder="https://n8n.example.com/webhook/clip-publish"
+                class={fieldClass}
+              />
+            </div>
+
+            <div class="grid gap-4 sm:grid-cols-3">
+              <div>
+                <label class={labelClass} for="publish-interval"> Days between releases </label>
+                <input
+                  id="publish-interval"
+                  type="number"
+                  min="0"
+                  max="365"
+                  bind:value={publishIntervalDays}
+                  class={fieldClass}
+                />
+              </div>
+              <div>
+                <label class={labelClass} for="publish-hour"> Hour of day (0-23) </label>
+                <input
+                  id="publish-hour"
+                  type="number"
+                  min="0"
+                  max="23"
+                  bind:value={publishHour}
+                  class={fieldClass}
+                />
+              </div>
+              <div>
+                <label class={labelClass} for="publish-secret"> Signing secret </label>
+                <input
+                  id="publish-secret"
+                  type="password"
+                  bind:value={publishSecret}
+                  placeholder="optional"
+                  class={fieldClass}
+                />
+              </div>
+            </div>
+
+            <div class="flex items-center gap-3">
+              <button
+                onclick={savePublishSettings}
+                disabled={savingPublish}
+                class="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
+              >
+                {savingPublish ? 'Saving...' : 'Save publishing settings'}
+              </button>
+              {#if publishResult}
+                <span class="text-sm {publishResult.success ? 'text-green-400' : 'text-red-400'}">
+                  {publishResult.message}
+                </span>
+              {/if}
+            </div>
+
+            {#if data.settings?.publishLastSent}
+              <p class="text-xs text-gray-500">
+                Last release: {new Date(data.settings.publishLastSent).toLocaleString()}
+              </p>
+            {/if}
+
+            <p class="text-xs text-gray-600">
+              A signing secret is sent as an
+              <code class="text-gray-500">X-Artistack-Signature</code>
+              header (HMAC-SHA256 of the body), so the receiver can verify the call came from here.
+            </p>
+          </div>
+        {/if}
       </section>
     </div>
   </div>

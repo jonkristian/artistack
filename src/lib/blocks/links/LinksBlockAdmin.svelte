@@ -51,7 +51,7 @@
             platform = 'link';
           }
         }
-        const category = detected?.category === 'event' ? 'other' : (detected?.category || 'other');
+        const category = detected?.category === 'event' ? 'other' : detected?.category || 'other';
 
         const tempLink: Link = {
           id: getTempId(),
@@ -63,11 +63,9 @@
           thumbnailUrl: null,
           embedData: null,
           position: links.filter((l) => l.blockId === block.id).length,
-          visible: true,
-          createdAt: new Date()
+          visible: true
         };
         links.push(tempLink);
-        links.length = links.length;
         toast.info('Link added');
       } else {
         // Block exists on server — create link immediately
@@ -78,7 +76,6 @@
 
         if (result.link) {
           links.push(result.link);
-          links.length = links.length;
           toast.info('Link added');
         }
       }
@@ -95,7 +92,6 @@
     const index = links.findIndex((l) => l.id === id);
     if (index !== -1) {
       links.splice(index, 1);
-      links.length = links.length;
     }
 
     // Delete from server (skip for temp/draft links)
@@ -114,7 +110,6 @@
       const link = links.find((l) => l.id === item.id);
       if (link) link.position = i;
     });
-    links.length = links.length;
   }
 </script>
 

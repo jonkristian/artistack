@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import sharp from 'sharp';
 import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
+import { DATA_DIR, mediaPath } from '$lib/server/paths';
 import { testSmtpConnection } from '$lib/server/email';
 
 // ============================================================================
@@ -15,7 +16,8 @@ import { testSmtpConnection } from '$lib/server/email';
 const settingsSchema = v.object({
   siteTitle: v.optional(v.nullable(v.string())),
   locale: v.optional(v.string()),
-  pressKitEnabled: v.optional(v.boolean())
+  pressKitEnabled: v.optional(v.boolean()),
+  clipsEnabled: v.optional(v.boolean())
 });
 
 const generateFaviconSchema = v.object({
@@ -132,8 +134,7 @@ export const updateSettings = command(settingsSchema, async (data) => {
 export const generateFavicon = command(generateFaviconSchema, async ({ sourceUrl }) => {
   const existing = await getOrCreateSettings();
 
-  // Convert URL path to file path (e.g., /uploads/image.jpg -> data/uploads/image.jpg)
-  const sourcePath = join('data', sourceUrl.replace(/^\//, ''));
+  const sourcePath = mediaPath(sourceUrl);
 
   // Read source image
   const sourceBuffer = await readFile(sourcePath);
@@ -160,7 +161,7 @@ export const generateFavicon = command(generateFaviconSchema, async ({ sourceUrl
     generatedImages.push({ name, size, buffer });
 
     // Write to data folder
-    await writeFile(join('data', name), buffer);
+    await writeFile(join(DATA_DIR, name), buffer);
   }
 
   // Create ICO file from 16, 32, 48 sizes
@@ -169,7 +170,7 @@ export const generateFavicon = command(generateFaviconSchema, async ({ sourceUrl
     .map((img) => ({ size: img.size, buffer: img.buffer }));
 
   const icoBuffer = createIco(icoImages);
-  await writeFile(join('data', 'favicon.ico'), icoBuffer);
+  await writeFile(join(DATA_DIR, 'favicon.ico'), icoBuffer);
 
   // Update settings
   const [updated] = await db
@@ -195,61 +196,62 @@ export const generateFaviconFromInitials = command(
     length: v.optional(v.number())
   }),
   async ({ name, rounded = false, length = 2 }) => {
-  const existing = await getOrCreateSettings();
-  const [artistProfile] = await db.select().from(profile).limit(1);
+    const existing = await getOrCreateSettings();
+    const [artistProfile] = await db.select().from(profile).limit(1);
 
-  const displayName = name || existing.siteTitle || artistProfile?.name || 'A';
+    const displayName = name || existing.siteTitle || artistProfile?.name || 'A';
 
-  const bg = (existing.colorBg || '#0c0a14').replace('#', '');
-  const color = (existing.colorText || '#f4f4f5').replace('#', '');
+    const bg = (existing.colorBg || '#0c0a14').replace('#', '');
+    const color = (existing.colorText || '#f4f4f5').replace('#', '');
 
-  // Fetch initials image from UI Avatars API
-  const url = `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=${bg}&color=${color}&size=512&bold=true&format=png&rounded=${rounded}&length=${length}`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error('Failed to fetch avatar from UI Avatars');
-  const sourceBuffer = Buffer.from(await response.arrayBuffer());
+    // Fetch initials image from UI Avatars API
+    const url = `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=${bg}&color=${color}&size=512&bold=true&format=png&rounded=${rounded}&length=${length}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Failed to fetch avatar from UI Avatars');
+    const sourceBuffer = Buffer.from(await response.arrayBuffer());
 
-  const sizes = [
-    { name: 'favicon-16.png', size: 16 },
-    { name: 'favicon-32.png', size: 32 },
-    { name: 'favicon-48.png', size: 48 },
-    { name: 'apple-touch-icon.png', size: 180 },
-    { name: 'icon-192.png', size: 192 },
-    { name: 'icon-512.png', size: 512 }
-  ];
+    const sizes = [
+      { name: 'favicon-16.png', size: 16 },
+      { name: 'favicon-32.png', size: 32 },
+      { name: 'favicon-48.png', size: 48 },
+      { name: 'apple-touch-icon.png', size: 180 },
+      { name: 'icon-192.png', size: 192 },
+      { name: 'icon-512.png', size: 512 }
+    ];
 
-  const generatedImages: { name: string; size: number; buffer: Buffer }[] = [];
+    const generatedImages: { name: string; size: number; buffer: Buffer }[] = [];
 
-  for (const { name, size } of sizes) {
-    const buffer = await sharp(sourceBuffer)
-      .resize(size, size, { fit: 'cover', position: 'center' })
-      .png()
-      .toBuffer();
+    for (const { name, size } of sizes) {
+      const buffer = await sharp(sourceBuffer)
+        .resize(size, size, { fit: 'cover', position: 'center' })
+        .png()
+        .toBuffer();
 
-    generatedImages.push({ name, size, buffer });
-    await writeFile(join('data', name), buffer);
+      generatedImages.push({ name, size, buffer });
+      await writeFile(join(DATA_DIR, name), buffer);
+    }
+
+    // Create ICO file from 16, 32, 48 sizes
+    const icoImages = generatedImages
+      .filter((img) => [16, 32, 48].includes(img.size))
+      .map((img) => ({ size: img.size, buffer: img.buffer }));
+
+    const icoBuffer = createIco(icoImages);
+    await writeFile(join(DATA_DIR, 'favicon.ico'), icoBuffer);
+
+    // Update settings
+    const [updated] = await db
+      .update(settings)
+      .set({
+        faviconUrl: null,
+        faviconGenerated: true
+      })
+      .where(eq(settings.id, existing.id))
+      .returning();
+
+    return { success: true, settings: updated };
   }
-
-  // Create ICO file from 16, 32, 48 sizes
-  const icoImages = generatedImages
-    .filter((img) => [16, 32, 48].includes(img.size))
-    .map((img) => ({ size: img.size, buffer: img.buffer }));
-
-  const icoBuffer = createIco(icoImages);
-  await writeFile(join('data', 'favicon.ico'), icoBuffer);
-
-  // Update settings
-  const [updated] = await db
-    .update(settings)
-    .set({
-      faviconUrl: null,
-      faviconGenerated: true
-    })
-    .where(eq(settings.id, existing.id))
-    .returning();
-
-  return { success: true, settings: updated };
-});
+);
 
 // ============================================================================
 // SMTP Settings Commands

@@ -15,7 +15,6 @@ import {
   detectYouTubeChannelFromLinks,
   updateGoogleConfig,
   type SpotifyConfig,
-  type YouTubeConfig,
   type GoogleConfig
 } from '$lib/server/social-stats';
 
@@ -47,6 +46,15 @@ const discordSettingsSchema = v.object({
 
 const testWebhookSchema = v.object({
   webhookUrl: v.pipe(v.string(), v.url('Invalid webhook URL'))
+});
+
+// Clip publishing — where an approved, queued clip is sent when its slot is due.
+const publishSettingsSchema = v.object({
+  publishWebhookUrl: v.nullable(v.pipe(v.string(), v.url('Invalid webhook URL'))),
+  publishEnabled: v.boolean(),
+  publishIntervalDays: v.pipe(v.number(), v.minValue(0), v.maxValue(365)),
+  publishHour: v.pipe(v.number(), v.minValue(0), v.maxValue(23)),
+  publishSecret: v.nullable(v.string())
 });
 
 // ============================================================================
@@ -145,6 +153,24 @@ export const updateDiscordSettings = command(discordSettingsSchema, async (data)
       discordSchedule: data.discordSchedule,
       discordScheduleDay: data.discordScheduleDay,
       discordScheduleTime: data.discordScheduleTime
+    })
+    .where(eq(settings.id, existing.id))
+    .returning();
+
+  return { success: true, settings: updated };
+});
+
+export const updatePublishSettings = command(publishSettingsSchema, async (data) => {
+  const existing = await getOrCreateSettings();
+
+  const [updated] = await db
+    .update(settings)
+    .set({
+      publishWebhookUrl: data.publishWebhookUrl,
+      publishEnabled: data.publishEnabled,
+      publishIntervalDays: data.publishIntervalDays,
+      publishHour: data.publishHour,
+      publishSecret: data.publishSecret
     })
     .where(eq(settings.id, existing.id))
     .returning();

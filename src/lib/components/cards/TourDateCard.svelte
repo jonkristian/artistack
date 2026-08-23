@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { labelClass } from '$lib/utils/classes';
   import type { TourDate } from '$lib/server/schema';
   import { invalidateAll } from '$app/navigation';
   import { getPlatformInfoFromUrl } from '$lib/utils/platforms';
@@ -26,20 +27,21 @@
   let editEventUrl = $state('');
   let editSoldOut = $state(false);
 
-  // Sync edit values when tourDate prop changes
-  $effect(() => {
-    if (!isEditing) {
-      editDate = tourDate.date;
-      editTime = tourDate.time ?? '';
-      editTitle = tourDate.title ?? '';
-      editVenueName = tourDate.venue.name;
-      editVenueCity = tourDate.venue.city;
-      editLineup = tourDate.lineup ?? '';
-      editTicketUrl = tourDate.ticketUrl ?? '';
-      editEventUrl = tourDate.eventUrl ?? '';
-      editSoldOut = tourDate.soldOut ?? false;
-    }
-  });
+  // Seeded on entry rather than kept in sync by an effect: these are only read
+  // while the editor is open, and an effect reading what save() writes is the
+  // shape that loops.
+  function startEdit() {
+    editDate = tourDate.date;
+    editTime = tourDate.time ?? '';
+    editTitle = tourDate.title ?? '';
+    editVenueName = tourDate.venue.name;
+    editVenueCity = tourDate.venue.city;
+    editLineup = tourDate.lineup ?? '';
+    editTicketUrl = tourDate.ticketUrl ?? '';
+    editEventUrl = tourDate.eventUrl ?? '';
+    editSoldOut = tourDate.soldOut ?? false;
+    isEditing = true;
+  }
 
   const formattedDate = $derived(() => {
     try {
@@ -107,9 +109,7 @@
   >
     <div class="mb-3 grid grid-cols-2 gap-3">
       <div>
-        <label for="edit-tour-date-{tourDate.id}" class="mb-1 block text-sm text-gray-400"
-          >Date</label
-        >
+        <label for="edit-tour-date-{tourDate.id}" class={labelClass}>Date</label>
         <input
           id="edit-tour-date-{tourDate.id}"
           type="date"
@@ -118,9 +118,7 @@
         />
       </div>
       <div>
-        <label for="edit-tour-time-{tourDate.id}" class="mb-1 block text-sm text-gray-400"
-          >Time</label
-        >
+        <label for="edit-tour-time-{tourDate.id}" class={labelClass}>Time</label>
         <input
           id="edit-tour-time-{tourDate.id}"
           type="time"
@@ -130,9 +128,7 @@
       </div>
     </div>
     <div class="mb-3">
-      <label for="edit-tour-title-{tourDate.id}" class="mb-1 block text-sm text-gray-400"
-        >Title</label
-      >
+      <label for="edit-tour-title-{tourDate.id}" class={labelClass}>Title</label>
       <input
         id="edit-tour-title-{tourDate.id}"
         type="text"
@@ -142,9 +138,7 @@
       />
     </div>
     <div class="mb-3">
-      <label for="edit-tour-venue-{tourDate.id}" class="mb-1 block text-sm text-gray-400"
-        >Venue</label
-      >
+      <label for="edit-tour-venue-{tourDate.id}" class={labelClass}>Venue</label>
       <input
         id="edit-tour-venue-{tourDate.id}"
         type="text"
@@ -153,8 +147,7 @@
       />
     </div>
     <div class="mb-3">
-      <label for="edit-tour-city-{tourDate.id}" class="mb-1 block text-sm text-gray-400">City</label
-      >
+      <label for="edit-tour-city-{tourDate.id}" class={labelClass}>City</label>
       <input
         id="edit-tour-city-{tourDate.id}"
         type="text"
@@ -163,9 +156,7 @@
       />
     </div>
     <div class="mb-3">
-      <label for="edit-tour-lineup-{tourDate.id}" class="mb-1 block text-sm text-gray-400"
-        >Line-up</label
-      >
+      <label for="edit-tour-lineup-{tourDate.id}" class={labelClass}>Line-up</label>
       <input
         id="edit-tour-lineup-{tourDate.id}"
         type="text"
@@ -175,9 +166,7 @@
       />
     </div>
     <div class="mb-3">
-      <label for="edit-tour-ticket-{tourDate.id}" class="mb-1 block text-sm text-gray-400"
-        >Ticket URL</label
-      >
+      <label for="edit-tour-ticket-{tourDate.id}" class={labelClass}>Ticket URL</label>
       <input
         id="edit-tour-ticket-{tourDate.id}"
         type="url"
@@ -187,9 +176,7 @@
       />
     </div>
     <div class="mb-3">
-      <label for="edit-tour-event-{tourDate.id}" class="mb-1 block text-sm text-gray-400"
-        >Event URL</label
-      >
+      <label for="edit-tour-event-{tourDate.id}" class={labelClass}>Event URL</label>
       <input
         id="edit-tour-event-{tourDate.id}"
         type="url"
@@ -227,7 +214,7 @@
   </div>
 {:else}
   <button
-    onclick={isAdmin ? () => (isEditing = true) : undefined}
+    onclick={isAdmin ? startEdit : undefined}
     class="group flex w-full items-center gap-4 rounded-xl p-4 text-left transition-all {isAdmin
       ? 'cursor-pointer hover:scale-[1.02]'
       : ''}"

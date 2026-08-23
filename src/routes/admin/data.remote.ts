@@ -2,7 +2,7 @@ import * as v from 'valibot';
 import { form, command } from '$app/server';
 import { db } from '$lib/server/db';
 import { profile, links, tourDates, blocks, settings } from '$lib/server/schema';
-import { eq, asc } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import {
   fetchYouTubeMetadata,
   isYouTubeUrl,
@@ -22,8 +22,7 @@ import type {
   YouTubeEmbedData,
   BandcampEmbedData,
   RepoEmbedData,
-  EmbedData,
-  BlockConfig
+  EmbedData
 } from '$lib/server/schema';
 
 // ============================================================================

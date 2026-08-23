@@ -15,6 +15,8 @@ A self-hosted link-in-bio page for musicians and bands.
 - **Appearance** - Customizable colors and layout
 - **Media Library** - Image cropping and automatic optimization
 - **Press Kit** - DnD your media and create your own press kit
+- **Clip Studio** - Turn raw footage into branded vertical video, ready to post
+- **Tags** - One shared vocabulary across clips and media
 
 <details>
 <summary>More screenshots</summary>
@@ -52,8 +54,11 @@ A self-hosted link-in-bio page for musicians and bands.
 3. Set up the database:
 
    ```bash
-   npx drizzle-kit push
+   node scripts/migrate.mjs
    ```
+
+   Schema changes are authored with `bun run db:generate` and applied by that
+   script, which also runs on `bun run start`.
 
 4. Start the dev server:
    ```bash
@@ -65,7 +70,12 @@ A self-hosted link-in-bio page for musicians and bands.
 See `.env.example` for all available options:
 
 - `ORIGIN` - Your site URL (e.g., `https://example.com`)
+- `BETTER_AUTH_BASE_URL` - Same URL; used for auth and for absolute links in published clips
 - `BETTER_AUTH_SECRET` - Secret key for authentication
+
+Rendering clips needs `ffmpeg` and `fontconfig` with at least one font
+installed. `nixpacks.toml` covers this for container deploys; locally, install
+them through your package manager.
 
 ## License
 

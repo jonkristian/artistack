@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { fieldClass, labelClass } from '$lib/utils/classes';
+  import { ToggleSwitch } from '$lib/components/ui';
   import type { Block, LinksBlockConfig } from '$lib/server/schema';
 
   let { block }: { block: Block } = $props();
@@ -26,16 +28,14 @@
 
 <div class="space-y-4">
   <div>
-    <label for="links-heading-{block.id}" class="mb-1 block text-sm text-gray-400"
-      >Section Heading</label
-    >
+    <label for="links-heading-{block.id}" class={labelClass}>Section Heading</label>
     <input
       id="links-heading-{block.id}"
       type="text"
       value={config.heading ?? ''}
       onblur={updateHeading}
       placeholder="e.g., Listen, Follow"
-      class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+      class={fieldClass}
     />
   </div>
 
@@ -57,9 +57,7 @@
 
   {#if displayAs === 'grid'}
     <div>
-      <label for="links-columns-{block.id}" class="mb-1 block text-sm text-gray-400"
-        >Columns: {gridColumns}</label
-      >
+      <label for="links-columns-{block.id}" class={labelClass}>Columns: {gridColumns}</label>
       <input
         id="links-columns-{block.id}"
         type="range"
@@ -77,22 +75,13 @@
 
     <label class="flex cursor-pointer items-center justify-between">
       <span class="text-sm text-gray-400">Stack on mobile</span>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={stackOnMobile}
-        aria-label="Stack on mobile"
-        onclick={() => (block.config = { ...config, stackOnMobile: !stackOnMobile })}
-        class="relative h-6 w-11 rounded-full transition-colors {stackOnMobile
-          ? 'bg-violet-600'
-          : 'bg-gray-700'}"
-      >
-        <span
-          class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform {stackOnMobile
-            ? 'translate-x-5'
-            : ''}"
-        ></span>
-      </button>
+      <ToggleSwitch
+        checked={stackOnMobile}
+        onchange={() => (block.config = { ...config, stackOnMobile: !stackOnMobile })}
+        label="Stack on mobile"
+        size="md"
+        hideLabel
+      />
     </label>
   {/if}
 </div>

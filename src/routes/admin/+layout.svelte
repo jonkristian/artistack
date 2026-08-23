@@ -48,15 +48,19 @@
   const artistName = $derived(data.profile?.name ?? 'Artist');
   const pageTitle = $derived(`Artistack - ${artistName}`);
 
-  const navItems = [
+  // Clips is opt-in, so the nav entry only appears once the feature is on.
+  const navItems = $derived([
     { href: '/admin', label: 'Dashboard', icon: 'home' },
     { href: '/admin/stats', label: 'Stats', icon: 'chart' },
     { href: '/admin/media', label: 'Media', icon: 'image' },
+    ...(data.settings?.clipsEnabled
+      ? [{ href: '/admin/clips', label: 'Clips', icon: 'film' }]
+      : []),
     { href: '/admin/appearance', label: 'Appearance', icon: 'palette' },
     { href: '/admin/integrations', label: 'Integrations', icon: 'plug' },
     { href: '/admin/users', label: 'Users', icon: 'users' },
     { href: '/admin/settings', label: 'Settings', icon: 'settings' }
-  ];
+  ]);
 
   // Map nav hrefs to their dirty state
   function isNavDirty(href: string): boolean {
@@ -160,6 +164,15 @@
                     stroke-linejoin="round"
                     stroke-width="1.5"
                     d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                  />
+                </svg>
+              {:else if item.icon === 'film'}
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.5"
+                    d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
                   />
                 </svg>
               {:else if item.icon === 'palette'}

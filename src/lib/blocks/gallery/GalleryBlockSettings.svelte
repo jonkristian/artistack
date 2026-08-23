@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { fieldClass, labelClass } from '$lib/utils/classes';
   import type { Block, GalleryBlockConfig } from '$lib/server/schema';
 
   let { block }: { block: Block } = $props();
@@ -19,16 +20,14 @@
 
 <div class="space-y-4">
   <div>
-    <label for="images-heading-{block.id}" class="mb-1 block text-sm text-gray-400"
-      >Section Heading</label
-    >
+    <label for="images-heading-{block.id}" class={labelClass}>Section Heading</label>
     <input
       id="images-heading-{block.id}"
       type="text"
       value={config.heading ?? ''}
       onblur={updateHeading}
       placeholder="e.g., Gallery"
-      class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+      class={fieldClass}
     />
   </div>
 
