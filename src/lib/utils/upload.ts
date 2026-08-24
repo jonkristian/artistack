@@ -107,7 +107,72 @@ async function uploadError(res: Response): Promise<Error> {
   return new Error(`Upload failed (HTTP ${res.status})`);
 }
 
-export async function uploadFile(file: File, type = 'media'): Promise<UploadResult> {
+/**
+ * Sent in one request below this, chunked above it.
+ *
+ * Well under Cloudflare's 100MB proxy limit — the ceiling that makes chunking
+ * necessary at all — with room for headers and any other proxy in the path.
+ */
+const CHUNK_THRESHOLD = 50 * 1024 * 1024;
+const CHUNK_SIZE = 8 * 1024 * 1024;
+
+/** A url-safe id for grouping one file's chunks server-side. */
+function uploadId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+/**
+ * Sends the file as a series of small requests, in order.
+ *
+ * Sequential rather than parallel: an upload is bandwidth-bound, so overlapping
+ * requests buy nothing, and appending in arrival order means the server needs
+ * no offset bookkeeping.
+ */
+async function uploadInChunks(
+  file: File,
+  onProgress?: (fraction: number) => void
+): Promise<UploadResult> {
+  const id = uploadId();
+  const total = Math.ceil(file.size / CHUNK_SIZE);
+
+  for (let index = 0; index < total; index++) {
+    const slice = file.slice(index * CHUNK_SIZE, (index + 1) * CHUNK_SIZE);
+    const query = new URLSearchParams({
+      uploadId: id,
+      index: String(index),
+      total: String(total),
+      filename: file.name
+    });
+
+    const res = await fetch(`/api/upload/chunk?${query}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: slice
+    });
+    if (!res.ok) throw await uploadError(res);
+
+    onProgress?.((index + 1) / total);
+
+    // The last chunk's response carries the finished media.
+    if (index === total - 1) return res.json();
+  }
+
+  throw new Error('Upload produced no result');
+}
+
+export async function uploadFile(
+  file: File,
+  type = 'media',
+  onProgress?: (fraction: number) => void
+): Promise<UploadResult> {
+  if (isStreamedFile(file) && file.size > CHUNK_THRESHOLD) {
+    return uploadInChunks(file, onProgress);
+  }
+
   if (isStreamedFile(file)) {
     // Raw body, so the server can stream it to disk without buffering.
     const res = await fetch(`/api/upload/stream?filename=${encodeURIComponent(file.name)}`, {

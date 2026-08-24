@@ -2,6 +2,7 @@
 
 - Clip Studio: turn raw footage into branded, post-ready vertical video
 - Upload footage straight from a phone by scanning a QR code
+- Large uploads are sent in chunks, so a proxy's request size limit no longer blocks them
 - Timed captions burned in with libass, with a per-caption headline style
 - Music bed with player, in-point, crossfade takeover and ducking under speech
 - Look presets with preview stills rendered from your own footage
