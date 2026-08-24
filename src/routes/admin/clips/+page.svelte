@@ -82,6 +82,8 @@
 
   const mediaById = $derived(new Map(data.media.map((m) => [m.id, m])));
 
+  const confirmed = $derived(new Set(data.confirmedIds));
+
   const sourceCounts = $derived(
     data.sources.reduce<Record<number, number>>((acc, s) => {
       acc[s.projectId] = (acc[s.projectId] ?? 0) + 1;
@@ -242,6 +244,17 @@
                 >
                   {CLIP_STATUS_LABELS[project.status as ClipStatus] ?? project.status}
                 </span>
+                <!-- Published, but nothing ever reported reaching a platform.
+                     Catches the case where the posting workflow is down: it
+                     can't raise its own alarm, so the absence has to. -->
+                {#if project.status === 'published' && !confirmed.has(project.id)}
+                  <span
+                    class="rounded bg-amber-900 px-1.5 py-0.5 text-[10px] font-medium text-amber-300"
+                    title="No platform has reported this as live"
+                  >
+                    Unconfirmed
+                  </span>
+                {/if}
                 <span class="text-xs text-gray-500">
                   {sourceCounts[project.id] ?? 0} source{(sourceCounts[project.id] ?? 0) === 1
                     ? ''

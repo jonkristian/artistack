@@ -1052,7 +1052,7 @@
            action competing with the ones in the cards above. -->
       <button
         onclick={() => handleDelete(selected.id)}
-        class="w-full rounded-xl border border-gray-800 px-4 py-3 text-sm text-red-400 transition-colors hover:border-red-900 hover:bg-red-950/40"
+        class="w-full rounded-xl border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-400 transition-colors hover:border-red-600 hover:bg-red-600 hover:text-white"
       >
         Delete clip
       </button>
@@ -1211,7 +1211,7 @@
           {#if outputMedia}
             <button
               onclick={handleSendForReview}
-              class="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700"
+              class="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700"
             >
               {selected.status === 'review' ? 'Re-send for review' : 'Send for review'}
             </button>
@@ -1279,17 +1279,28 @@
           </p>
         {/if}
 
+        <!-- Its own strip rather than more buttons in the action row: this is a
+             decision about the clip, not another thing you can do to it. -->
         {#if selected.status === 'review'}
-          <div class="mb-4 flex gap-2">
+          <div class="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-800 pt-4">
+            <span class="mr-1 flex items-center gap-2 text-sm text-amber-300">
+              <span class="relative flex h-2 w-2">
+                <span
+                  class="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-60"
+                ></span>
+                <span class="relative inline-flex h-2 w-2 rounded-full bg-amber-400"></span>
+              </span>
+              In review
+            </span>
             <button
               onclick={() => handleDecision(true)}
-              class="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-600"
+              class="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-600"
             >
               Approve
             </button>
             <button
               onclick={() => handleDecision(false)}
-              class="rounded-lg bg-red-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+              class="rounded-lg bg-red-800 px-3 py-2 text-sm font-medium text-white hover:bg-red-700"
             >
               Reject
             </button>
@@ -1362,10 +1373,15 @@
                 <span
                   class="rounded px-1.5 py-0.5 font-medium {post.status === 'live'
                     ? 'bg-emerald-900 text-emerald-300'
-                    : 'bg-red-900 text-red-300'}"
+                    : post.status === 'draft'
+                      ? 'bg-amber-900 text-amber-300'
+                      : 'bg-red-900 text-red-300'}"
                 >
-                  {post.status === 'live' ? 'Live' : 'Failed'}
+                  {post.status === 'live' ? 'Live' : post.status === 'draft' ? 'Draft' : 'Failed'}
                 </span>
+                {#if post.status === 'draft'}
+                  <span class="text-gray-500">uploaded, post it by hand</span>
+                {/if}
                 <span class="text-gray-300 capitalize">{post.platform}</span>
                 {#if post.url}
                   <a

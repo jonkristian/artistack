@@ -263,6 +263,31 @@ export async function publishClip(
 
   await db.update(settings).set({ publishLastSent: new Date() }).where(eq(settings.id, config.id));
 
+  // Announced only after the webhook accepted it, so the channel never claims a
+  // release that didn't happen. Best-effort: a Discord outage must not fail a
+  // publish that already went through.
+  if (config.clipPublishedWebhookUrl) {
+    const announcement = {
+      username: 'Artistack Clips',
+      content: `**${project.name}** is out — ${sheet.ctaUrl}`,
+      embeds: [
+        {
+          title: project.name,
+          description: project.description?.trim() || undefined,
+          color: 0x22c55e,
+          image: output.thumbnailUrl ? { url: `${origin}${output.thumbnailUrl}` } : undefined,
+          footer: { text: 'Released from Artistack' },
+          timestamp: new Date().toISOString()
+        }
+      ]
+    };
+    await fetch(config.clipPublishedWebhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(announcement)
+    }).catch((e) => console.error('[ClipQueue] Published announcement failed:', e));
+  }
+
   return { success: true };
 }
 

@@ -112,7 +112,7 @@ export async function submitForReview(
   // Reviews go to their own channel when one is configured, falling back to the
   // general webhook. Discord is optional either way: the preview link is the
   // deliverable, and a site with no webhook should still be able to share one.
-  const webhookUrl = settingsData?.discordClipsWebhookUrl || settingsData?.discordWebhookUrl;
+  const webhookUrl = settingsData?.clipReviewWebhookUrl || settingsData?.discordWebhookUrl;
   if (!settingsData?.discordEnabled || !webhookUrl) {
     return { success: true, previewUrl: url };
   }

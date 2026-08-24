@@ -55,7 +55,9 @@ const publishSettingsSchema = v.object({
   publishEnabled: v.boolean(),
   publishIntervalDays: v.pipe(v.number(), v.minValue(0), v.maxValue(365)),
   publishHour: v.pipe(v.number(), v.minValue(0), v.maxValue(23)),
-  publishSecret: v.nullable(v.string())
+  publishSecret: v.nullable(v.string()),
+  clipReviewWebhookUrl: v.optional(v.nullable(v.pipe(v.string(), v.url('Invalid webhook URL')))),
+  clipPublishedWebhookUrl: v.optional(v.nullable(v.pipe(v.string(), v.url('Invalid webhook URL'))))
 });
 
 // ============================================================================
@@ -150,7 +152,6 @@ export const updateDiscordSettings = command(discordSettingsSchema, async (data)
     .update(settings)
     .set({
       discordWebhookUrl: data.discordWebhookUrl,
-      discordClipsWebhookUrl: data.discordClipsWebhookUrl ?? null,
       discordEnabled: data.discordEnabled,
       discordSchedule: data.discordSchedule,
       discordScheduleDay: data.discordScheduleDay,
@@ -172,7 +173,9 @@ export const updatePublishSettings = command(publishSettingsSchema, async (data)
       publishEnabled: data.publishEnabled,
       publishIntervalDays: data.publishIntervalDays,
       publishHour: data.publishHour,
-      publishSecret: data.publishSecret
+      publishSecret: data.publishSecret,
+      clipReviewWebhookUrl: data.clipReviewWebhookUrl ?? null,
+      clipPublishedWebhookUrl: data.clipPublishedWebhookUrl ?? null
     })
     .where(eq(settings.id, existing.id))
     .returning();

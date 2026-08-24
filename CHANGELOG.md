@@ -7,9 +7,11 @@
 - Look presets with preview stills rendered from your own footage
 - Clip graphics: designate logos in Media, then pick or randomise one per clip
 - Review flow with shareable preview links and Discord notifications
-- Clip reviews can post to their own Discord channel, apart from the stats reports
 - Release queue with scheduled publishing over a signed webhook
 - Published clips report back where they landed, per platform, with links to the posts
+- Platforms that only take an upload can report a draft, flagged as posted by hand
+- Published clips that no platform confirmed are flagged as unconfirmed
+- Separate Discord channels for clip reviews and release announcements
 - Clip reviews posted to Discord play the video inline instead of linking to it
 - Preview links expire after a week, refreshed each time a clip is sent for review
 - Post sheet generated per clip for posting, as markdown with frontmatter
@@ -30,6 +32,7 @@
 - `nixpacks.toml` installs ffmpeg, fontconfig and fonts so renders work in production
 - Health endpoint at `/healthz` for container orchestration
 - Signing secret can be generated in place rather than pasted in
+- Integrations cards share one icon treatment; Discord card renamed to Stats reports
 - Shared admin components for toggles, selection, tag input and media drop zones
 
 # 1.0.0 (15-03-2026)

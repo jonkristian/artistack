@@ -1,6 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
-import { clipProjects, clipSources, media, settings } from '$lib/server/schema';
+import { clipProjects, clipSources, clipPosts, media, settings } from '$lib/server/schema';
 import { getQueue } from '$lib/server/clip-queue';
 import { user } from '$lib/server/auth-schema';
 import { auth } from '$lib/server/auth';
@@ -36,7 +36,17 @@ export const load: PageServerLoad = async ({ request }) => {
 
   const allMedia = await db.select().from(media).orderBy(desc(media.createdAt));
 
+  // Which published clips actually reached a platform. A `draft` row means the
+  // file was uploaded for someone to post by hand, so it doesn't count as
+  // coverage — a clip carrying only those went nowhere public.
+  const liveRows = await db
+    .select({ projectId: clipPosts.projectId })
+    .from(clipPosts)
+    .where(eq(clipPosts.status, 'live'));
+  const confirmedIds = [...new Set(liveRows.map((r) => r.projectId))];
+
   return {
+    confirmedIds,
     projects,
     sources,
     media: allMedia,

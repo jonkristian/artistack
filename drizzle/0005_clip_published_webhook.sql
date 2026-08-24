@@ -1,0 +1,1 @@
+ALTER TABLE `settings` ADD `clip_published_webhook_url` text;

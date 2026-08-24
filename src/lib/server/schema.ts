@@ -96,12 +96,12 @@ export const settings = sqliteTable('settings', {
   discordWebhookUrl: text('discord_webhook_url'),
   discordEnabled: integer('discord_enabled', { mode: 'boolean' }).default(false),
   /**
-   * Where clip review requests go. Falls back to discordWebhookUrl when unset,
-   * so an existing setup keeps working — but the two want separating in
-   * practice: stats reports are a monthly skim, a review needs someone to act
-   * on it today, and they belong in different channels.
+   * Clip channels, separate from the stats webhook above because they serve
+   * different audiences: a review needs someone to act on it today, a release
+   * announcement is for everyone, and stats are a monthly skim.
    */
-  discordClipsWebhookUrl: text('discord_clips_webhook_url'),
+  clipReviewWebhookUrl: text('discord_clips_webhook_url'),
+  clipPublishedWebhookUrl: text('clip_published_webhook_url'),
   discordSchedule: text('discord_schedule').default('weekly'), // 'daily', 'weekly', 'monthly'
   discordScheduleDay: integer('discord_schedule_day').default(1), // 0-6 for weekly (Monday=1), 1-31 for monthly
   discordScheduleTime: text('discord_schedule_time').default('09:00'), // HH:MM
@@ -281,7 +281,8 @@ export const clipPosts = sqliteTable(
     id: integer('id').primaryKey({ autoIncrement: true }),
     projectId: integer('project_id').notNull(),
     platform: text('platform').notNull(),
-    status: text('status').$type<'live' | 'failed'>().notNull(),
+    /** `draft` covers platforms that only accept an upload you then post by hand. */
+    status: text('status').$type<'live' | 'failed' | 'draft'>().notNull(),
     /** Public URL of the post, when the platform gives one back. */
     url: text('url'),
     error: text('error'),

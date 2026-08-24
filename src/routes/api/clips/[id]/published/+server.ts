@@ -42,7 +42,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
   const platform = typeof body.platform === 'string' ? body.platform.trim().toLowerCase() : '';
   if (!platform) throw error(400, 'platform is required');
 
-  const status: 'live' | 'failed' = body.status === 'failed' ? 'failed' : 'live';
+  const status: 'live' | 'failed' | 'draft' =
+    body.status === 'failed' ? 'failed' : body.status === 'draft' ? 'draft' : 'live';
   const url = typeof body.url === 'string' && body.url.trim() ? body.url.trim() : null;
   const message = typeof body.error === 'string' && body.error.trim() ? body.error.trim() : null;
 
