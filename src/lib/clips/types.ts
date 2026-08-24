@@ -41,6 +41,46 @@ export const CLIP_STATUS_LABELS: Record<ClipStatus, string> = {
   published: 'Published'
 };
 
+/**
+ * Status colours, defined once because the overview and the editor both show
+ * them and had drifted into two maps. Approved and published are both good
+ * outcomes, so they share the green family but stay distinguishable — published
+ * is the end of the road, not a synonym for approved.
+ */
+export const CLIP_STATUS_STYLES: Record<ClipStatus, string> = {
+  draft: 'bg-gray-700 text-gray-300',
+  rendered: 'bg-sky-900 text-sky-300',
+  review: 'bg-amber-900 text-amber-300',
+  approved: 'bg-teal-900 text-teal-300',
+  rejected: 'bg-red-900 text-red-300',
+  queued: 'bg-violet-900 text-violet-300',
+  published: 'bg-emerald-900 text-emerald-300'
+};
+
+/** The same ladder as a dot colour. */
+export const CLIP_STATUS_DOTS: Record<ClipStatus, string> = {
+  draft: 'bg-gray-500',
+  rendered: 'bg-sky-400',
+  review: 'bg-amber-400',
+  approved: 'bg-teal-400',
+  rejected: 'bg-red-400',
+  queued: 'bg-violet-400',
+  published: 'bg-emerald-400'
+};
+
+/**
+ * Platform names as their owners write them. `capitalize` gives "Tiktok" and
+ * "Youtube"; anything unlisted falls back to it, so a new target still renders.
+ */
+export const PLATFORM_NAMES: Record<string, string> = {
+  tiktok: 'TikTok',
+  youtube: 'YouTube',
+  instagram: 'Instagram',
+  facebook: 'Facebook',
+  x: 'X',
+  bluesky: 'Bluesky'
+};
+
 export type ClipAspect = '9:16' | '1:1' | '16:9';
 export type ClipTone = 'none' | 'bw' | 'warm' | 'cool' | 'vintage';
 export type ClipFill = 'blur' | 'black' | 'crop';

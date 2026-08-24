@@ -99,7 +99,12 @@
         </span>
       {/if}
     </div>
-    <p class="mt-1 h-4 text-xs text-red-400 {passwordsDontMatch ? 'opacity-100' : 'opacity-0'}">
+    <!-- Kept in the layout so the fields don't jump, but hidden from screen
+         readers when it doesn't apply — faded out still reads aloud. -->
+    <p
+      aria-hidden={!passwordsDontMatch}
+      class="mt-1 h-4 text-xs text-red-400 {passwordsDontMatch ? 'opacity-100' : 'opacity-0'}"
+    >
       Passwords do not match
     </p>
   </div>

@@ -11,15 +11,10 @@ import { mkdir } from 'fs/promises';
 import { join } from 'path';
 
 export const POST: RequestHandler = async ({ request }) => {
-  // Verify admin role
+  // Editors curate the press kit in Media, so they can build it too.
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user) {
     return json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const [currentUser] = await db.select().from(user).where(eq(user.id, session.user.id)).limit(1);
-  if (currentUser?.role !== 'admin') {
-    return json({ error: 'Forbidden' }, { status: 403 });
   }
 
   // Parse bio option from request body

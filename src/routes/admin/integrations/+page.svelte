@@ -176,7 +176,6 @@
     try {
       await updateDiscordSettings({
         discordWebhookUrl: discordWebhookUrl || null,
-
         discordEnabled,
         discordSchedule,
         discordScheduleDay,

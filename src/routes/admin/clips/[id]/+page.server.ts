@@ -21,11 +21,6 @@ export const load: PageServerLoad = async ({ request, params }) => {
     throw redirect(302, '/login');
   }
 
-  const [currentUser] = await db.select().from(user).where(eq(user.id, session.user.id)).limit(1);
-  if (currentUser?.role !== 'admin') {
-    throw redirect(302, '/admin');
-  }
-
   const [siteSettings] = await db.select().from(settings).limit(1);
   if (!siteSettings?.clipsEnabled) {
     throw redirect(302, '/admin/integrations');

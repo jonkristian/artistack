@@ -4,7 +4,7 @@ import { settings, integrations } from './schema';
 import { sendScheduledDiscordReport } from './discord';
 import { refreshAllSocialStats } from './social-stats';
 import { recoverStaleJobs, processQueue } from './render-queue';
-import { runReleaseTick } from './clip-queue';
+import { runReleaseTick, checkPublishCoverage } from './clip-queue';
 import { env } from '$env/dynamic/private';
 import { desc } from 'drizzle-orm';
 
@@ -32,7 +32,17 @@ export function initScheduler(): void {
     await runScheduledTasks();
   });
 
-  console.log('[Scheduler] Started - runs every hour at :00');
+  // Its own tick: an alarm on an hourly schedule can sit unraised for 59
+  // minutes, and the whole point is noticing a release went nowhere.
+  cron.schedule('*/15 * * * *', async () => {
+    const origin = env.BETTER_AUTH_BASE_URL || env.ORIGIN;
+    if (!origin) return;
+    await checkPublishCoverage(origin).catch((e) =>
+      console.error('[Scheduler] Coverage check failed:', e)
+    );
+  });
+
+  console.log('[Scheduler] Started - hourly tasks, coverage check every 15m');
 }
 
 async function runScheduledTasks(): Promise<void> {

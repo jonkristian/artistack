@@ -1,3 +1,4 @@
+import { requireUser } from '$lib/server/guards';
 import * as v from 'valibot';
 import { form, command } from '$app/server';
 import { db } from '$lib/server/db';
@@ -210,6 +211,8 @@ async function getOrCreateProfile() {
 // ============================================================================
 
 export const addBlock = command(addBlockSchema, async ({ type, label, config }) => {
+  await requireUser();
+
   const existing = await db.select().from(blocks);
   const position = getNextPosition(existing);
 
@@ -228,6 +231,8 @@ export const addBlock = command(addBlockSchema, async ({ type, label, config }) 
 });
 
 export const updateBlock = command(updateBlockSchema, async ({ id, label, config, visible }) => {
+  await requireUser();
+
   const updateData: Record<string, unknown> = {};
 
   if (label !== undefined) updateData.label = label;
@@ -248,6 +253,8 @@ export const updateBlock = command(updateBlockSchema, async ({ id, label, config
 });
 
 export const deleteBlock = command(deleteBlockSchema, async (id) => {
+  await requireUser();
+
   // Delete associated links and tour dates
   await db.delete(links).where(eq(links.blockId, id));
   await db.delete(tourDates).where(eq(tourDates.blockId, id));
@@ -262,6 +269,8 @@ export const deleteBlock = command(deleteBlockSchema, async (id) => {
 });
 
 export const reorderBlocks = command(reorderBlocksSchema, async (items) => {
+  await requireUser();
+
   for (const item of items) {
     await db.update(blocks).set({ position: item.position }).where(eq(blocks.id, item.id));
   }
@@ -274,6 +283,8 @@ export const reorderBlocks = command(reorderBlocksSchema, async (items) => {
 // ============================================================================
 
 export const updateProfile = form(profileSchema, async ({ name, bio, email }) => {
+  await requireUser();
+
   const existing = await getOrCreateProfile();
 
   const [updated] = await db
@@ -286,6 +297,8 @@ export const updateProfile = form(profileSchema, async ({ name, bio, email }) =>
 });
 
 export const saveProfile = command(profileSchema, async ({ name, bio, email }) => {
+  await requireUser();
+
   const existing = await getOrCreateProfile();
 
   const [updated] = await db
@@ -302,6 +315,8 @@ export const saveProfile = command(profileSchema, async ({ name, bio, email }) =
 // ============================================================================
 
 export const addLink = form(linkSchema, async ({ url, blockId, category, label }) => {
+  await requireUser();
+
   // If no blockId provided, find or create a links block
   if (!blockId) {
     const [existingBlock] = await db.select().from(blocks).where(eq(blocks.type, 'links')).limit(1);
@@ -368,6 +383,8 @@ export const addLink = form(linkSchema, async ({ url, blockId, category, label }
 });
 
 export const deleteLink = command(idSchema, async (id) => {
+  await requireUser();
+
   const [deleted] = await db.delete(links).where(eq(links.id, id)).returning();
 
   if (!deleted) {
@@ -389,6 +406,8 @@ const createLinkSchema = v.object({
 export const createLink = command(
   createLinkSchema,
   async ({ url, blockId, category, platform, label }) => {
+    await requireUser();
+
     // Auto-detect platform and category from URL if not provided
     let detectedPlatform: string | undefined = platform;
     let detectedCategory = category;
@@ -493,6 +512,8 @@ const updateLinkSchema = v.object({
 });
 
 export const updateLink = command(updateLinkSchema, async ({ id, label, url, embedData }) => {
+  await requireUser();
+
   const updateData: Record<string, unknown> = {};
 
   if (label !== undefined) updateData.label = label;
@@ -513,6 +534,8 @@ export const updateLink = command(updateLinkSchema, async ({ id, label, url, emb
 });
 
 export const reorderLinks = command(reorderSchema, async (items) => {
+  await requireUser();
+
   for (const item of items) {
     await db.update(links).set({ position: item.position }).where(eq(links.id, item.id));
   }
@@ -527,6 +550,8 @@ export const reorderLinks = command(reorderSchema, async (items) => {
 export const addTourDate = form(
   tourDateFormSchema,
   async ({ date, time, title, venueName, venueCity, lineup, ticketUrl, eventUrl, blockId }) => {
+    await requireUser();
+
     // If no blockId provided, find or create a tour_dates block
     if (!blockId) {
       const [existingBlock] = await db
@@ -582,6 +607,8 @@ export const addTourDate = form(
 );
 
 export const deleteTourDate = command(idSchema, async (id) => {
+  await requireUser();
+
   const [deleted] = await db.delete(tourDates).where(eq(tourDates.id, id)).returning();
 
   if (!deleted) {
@@ -604,6 +631,8 @@ const createTourDateSchema = v.object({
 });
 
 export const createTourDate = command(createTourDateSchema, async (data) => {
+  await requireUser();
+
   let blockId = data.blockId;
 
   // If no blockId provided, find or create a tour_dates block
@@ -666,6 +695,8 @@ const updateTourDateSchema = v.object({
 });
 
 export const updateTourDate = command(updateTourDateSchema, async ({ id, ...updates }) => {
+  await requireUser();
+
   const updateData: Record<string, unknown> = {};
 
   if (updates.date !== undefined) updateData.date = updates.date;
@@ -712,6 +743,8 @@ async function getOrCreateSettings() {
 }
 
 export const completeSetup = command(setupSchema, async ({ siteTitle, locale }) => {
+  await requireUser();
+
   const existingSettings = await getOrCreateSettings();
 
   // Update settings
@@ -759,6 +792,8 @@ const toggleCollapsedSchema = v.object({
 });
 
 export const toggleBlockCollapsed = command(toggleCollapsedSchema, async ({ id, collapsed }) => {
+  await requireUser();
+
   await db.update(blocks).set({ collapsed }).where(eq(blocks.id, id));
   return { success: true };
 });

@@ -1,3 +1,4 @@
+import { requireAdmin } from '$lib/server/guards';
 import * as v from 'valibot';
 import { command } from '$app/server';
 import { db } from '$lib/server/db';
@@ -46,6 +47,8 @@ async function getOrCreateSettings() {
 // ============================================================================
 
 export const updateAppearance = command(appearanceSchema, async (data) => {
+  await requireAdmin();
+
   const existing = await getOrCreateSettings();
 
   // Filter out undefined values

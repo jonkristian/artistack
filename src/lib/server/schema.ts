@@ -102,6 +102,11 @@ export const settings = sqliteTable('settings', {
    */
   clipReviewWebhookUrl: text('discord_clips_webhook_url'),
   clipPublishedWebhookUrl: text('clip_published_webhook_url'),
+  /**
+   * How many platforms a release is expected to reach. 0 means "only tell me
+   * when nothing arrived or something failed" — a count is what catches the
+   * third case, where one platform dies before it can report anything at all.
+   */
   discordSchedule: text('discord_schedule').default('weekly'), // 'daily', 'weekly', 'monthly'
   discordScheduleDay: integer('discord_schedule_day').default(1), // 0-6 for weekly (Monday=1), 1-31 for monthly
   discordScheduleTime: text('discord_schedule_time').default('09:00'), // HH:MM
@@ -322,6 +327,8 @@ export const clipProjects = sqliteTable('clip_projects', {
    * clip that goes round again gets a fresh window rather than a dead link.
    */
   previewExpiresAt: integer('preview_expires_at', { mode: 'timestamp' }),
+  /** Set when a coverage alert fired, so it fires once per clip. */
+  publishAlertSentAt: integer('publish_alert_sent_at', { mode: 'timestamp' }),
   reviewNote: text('review_note'), // why it was rejected, or a note on approval
   reviewedAt: integer('reviewed_at', { mode: 'timestamp' }),
 

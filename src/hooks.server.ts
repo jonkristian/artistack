@@ -13,6 +13,7 @@ const SKIP_PATHS = [
   '/logout',
   '/go/', // Link tracking has its own endpoint
   '/preview/', // Internal clip review, not audience traffic
+  '/invite/', // Account setup, not audience traffic
   '/healthz', // Orchestrator probe, not a visitor
   '/_app',
   '/favicon',

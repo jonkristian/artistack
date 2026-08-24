@@ -1,3 +1,4 @@
+import { requireUser } from '$lib/server/guards';
 import * as v from 'valibot';
 import { command } from '$app/server';
 import { db } from '$lib/server/db';
@@ -63,6 +64,8 @@ const deleteMediaSchema = v.number();
 // ============================================================================
 
 export const addMedia = command(addMediaSchema, async (data) => {
+  await requireUser();
+
   const [created] = await db
     .insert(media)
     .values({
@@ -85,6 +88,8 @@ export const addMedia = command(addMediaSchema, async (data) => {
 });
 
 export const updateMedia = command(updateMediaSchema, async ({ id, alt, url }) => {
+  await requireUser();
+
   const updateData: Record<string, unknown> = {};
   if (alt !== undefined) updateData.alt = alt;
   if (url !== undefined) updateData.url = url;
@@ -95,6 +100,8 @@ export const updateMedia = command(updateMediaSchema, async ({ id, alt, url }) =
 });
 
 export const deleteMedia = command(deleteMediaSchema, async (id) => {
+  await requireUser();
+
   // Get the media item first to get the file paths
   const [item] = await db.select().from(media).where(eq(media.id, id)).limit(1);
 
@@ -183,6 +190,8 @@ async function getOrCreateSettings() {
 }
 
 export const addToPressKit = command(v.object({ mediaId: v.number() }), async ({ mediaId }) => {
+  await requireUser();
+
   const s = await getOrCreateSettings();
   const ids = (s.pressKitMediaIds ?? []) as number[];
 
@@ -201,6 +210,8 @@ export const addToPressKit = command(v.object({ mediaId: v.number() }), async ({
 export const removeFromPressKit = command(
   v.object({ mediaId: v.number() }),
   async ({ mediaId }) => {
+    await requireUser();
+
     const s = await getOrCreateSettings();
     const ids = (s.pressKitMediaIds ?? []) as number[];
 
@@ -223,6 +234,8 @@ export const removeFromPressKit = command(
  * designated becomes the default, so marking a logo is enough to start using it.
  */
 export const addToClipGraphics = command(v.object({ mediaId: v.number() }), async ({ mediaId }) => {
+  await requireUser();
+
   const s = await getOrCreateSettings();
   const ids = (s.clipGraphicsMediaIds ?? []) as number[];
 
@@ -244,6 +257,8 @@ export const addToClipGraphics = command(v.object({ mediaId: v.number() }), asyn
 export const removeFromClipGraphics = command(
   v.object({ mediaId: v.number() }),
   async ({ mediaId }) => {
+    await requireUser();
+
     const s = await getOrCreateSettings();
     const ids = ((s.clipGraphicsMediaIds ?? []) as number[]).filter((id) => id !== mediaId);
 
@@ -265,6 +280,8 @@ export const removeFromClipGraphics = command(
 export const setDefaultClipGraphic = command(
   v.object({ mediaId: v.number() }),
   async ({ mediaId }) => {
+    await requireUser();
+
     const s = await getOrCreateSettings();
     await db
       .update(settings)
@@ -278,6 +295,8 @@ export const setDefaultClipGraphic = command(
 export const setMediaTags = command(
   v.object({ id: v.number(), tags: v.array(v.string()) }),
   async ({ id, tags }) => {
+    await requireUser();
+
     await setTags('media', id, tags);
     await pruneOrphanTags();
     return { success: true };

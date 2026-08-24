@@ -1,3 +1,4 @@
+import { requireUser } from '$lib/server/guards';
 import * as v from 'valibot';
 import { command, query } from '$app/server';
 import { db } from '$lib/server/db';
@@ -123,9 +124,14 @@ const configSchema = v.partial(
 );
 
 /** Every known tag, for the tag input's autocomplete. */
-export const getTags = query(async () => listTags());
+export const getTags = query(async () => {
+  await requireUser();
+  return listTags();
+});
 
 export const createProject = command(v.object({ name: v.string() }), async ({ name }) => {
+  await requireUser();
+
   // Seeded with whatever boilerplate was last saved as the default, so the
   // hashtags and call to action every post shares are already there.
   const [siteSettings] = await db.select().from(settings).limit(1);
@@ -158,6 +164,8 @@ export const createProject = command(v.object({ name: v.string() }), async ({ na
  * previous — no history, just the current boilerplate.
  */
 export const saveClipDefaultDescription = command(v.string(), async (value) => {
+  await requireUser();
+
   const stored = value.trim() || null;
   const [existing] = await db.select({ id: settings.id }).from(settings).limit(1);
   if (!existing) return { success: false, message: 'No settings row' };
@@ -172,6 +180,8 @@ export const saveClipDefaultDescription = command(v.string(), async (value) => {
 
 /** Stored as ids so a renamed tag stays the default it was. */
 export const saveClipDefaultTags = command(v.array(v.string()), async (names) => {
+  await requireUser();
+
   const [existing] = await db.select({ id: settings.id }).from(settings).limit(1);
   if (!existing) return { success: false, message: 'No settings row' };
 
@@ -191,6 +201,8 @@ export const updateProject = command(
     config: v.optional(configSchema)
   }),
   async ({ id, config, tags: tagNames, ...fields }) => {
+    await requireUser();
+
     const [existing] = await db.select().from(clipProjects).where(eq(clipProjects.id, id)).limit(1);
     if (!existing) return { success: false, message: 'Project not found' };
 
@@ -230,6 +242,8 @@ export const updateProject = command(
 );
 
 export const deleteProject = command(v.number(), async (id) => {
+  await requireUser();
+
   const [project] = await db
     .select({ outputMediaId: clipProjects.outputMediaId })
     .from(clipProjects)
@@ -285,6 +299,8 @@ async function discardRender(mediaId: number): Promise<void> {
 export const addSource = command(
   v.object({ projectId: v.number(), mediaId: v.number() }),
   async ({ projectId, mediaId }) => {
+    await requireUser();
+
     const existing = await db
       .select()
       .from(clipSources)
@@ -312,6 +328,8 @@ export const updateSource = command(
     watermark: v.optional(v.nullable(v.boolean()))
   }),
   async ({ id, ...fields }) => {
+    await requireUser();
+
     const update: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(fields)) {
       if (value !== undefined) update[key] = value;
@@ -324,6 +342,8 @@ export const updateSource = command(
 );
 
 export const removeSource = command(v.number(), async (id) => {
+  await requireUser();
+
   await db.delete(clipSources).where(eq(clipSources.id, id));
   return { success: true };
 });
@@ -331,6 +351,8 @@ export const removeSource = command(v.number(), async (id) => {
 export const reorderSources = command(
   v.object({ projectId: v.number(), orderedIds: v.array(v.number()) }),
   async ({ projectId, orderedIds }) => {
+    await requireUser();
+
     // Positions are rewritten from the given order, so a partial or stale list
     // can't leave two sources fighting over the same slot.
     for (let i = 0; i < orderedIds.length; i++) {
@@ -349,6 +371,8 @@ export const reorderSources = command(
 );
 
 export const startRender = command(v.number(), async (projectId) => {
+  await requireUser();
+
   const sources = await db
     .select()
     .from(clipSources)
@@ -364,12 +388,16 @@ export const startRender = command(v.number(), async (projectId) => {
 });
 
 export const stopRender = command(v.number(), async (jobId) => {
+  await requireUser();
+
   const cancelled = await cancelRender(jobId);
   return { success: cancelled };
 });
 
 /** Polled by the UI while a render is in flight. */
 export const getRenderStatus = query(v.number(), async (projectId) => {
+  await requireUser();
+
   const [job] = await db
     .select()
     .from(renderJobs)
@@ -383,6 +411,8 @@ export const getRenderStatus = query(v.number(), async (projectId) => {
 export const sendForReview = command(
   v.object({ projectId: v.number(), origin: v.string() }),
   async ({ projectId, origin }) => {
+    await requireUser();
+
     return submitForReview(projectId, origin);
   }
 );
@@ -394,6 +424,8 @@ export const reviewDecision = command(
     note: v.optional(v.nullable(v.string()))
   }),
   async ({ projectId, approved, note }) => {
+    await requireUser();
+
     const project = await setReviewOutcome(projectId, approved, note);
     return { success: true, project };
   }
@@ -402,6 +434,8 @@ export const reviewDecision = command(
 export const createPreviewLink = command(
   v.object({ projectId: v.number(), origin: v.string() }),
   async ({ projectId, origin }) => {
+    await requireUser();
+
     const token = await ensurePreviewToken(projectId);
     return { success: true, url: previewUrl(origin, token) };
   }
@@ -410,16 +444,22 @@ export const createPreviewLink = command(
 export const resetPreviewLink = command(
   v.object({ projectId: v.number(), origin: v.string() }),
   async ({ projectId, origin }) => {
+    await requireUser();
+
     const token = await rotatePreviewToken(projectId);
     return { success: true, url: previewUrl(origin, token) };
   }
 );
 
 export const addToQueue = command(v.number(), async (projectId) => {
+  await requireUser();
+
   return enqueueForRelease(projectId);
 });
 
 export const removeFromQueue = command(v.number(), async (projectId) => {
+  await requireUser();
+
   await dequeue(projectId);
   return { success: true };
 });
@@ -427,6 +467,8 @@ export const removeFromQueue = command(v.number(), async (projectId) => {
 export const setQueueGap = command(
   v.object({ projectId: v.number(), days: v.nullable(v.number()) }),
   async ({ projectId, days }) => {
+    await requireUser();
+
     await db
       .update(clipProjects)
       .set({ queueGapDays: days, updatedAt: new Date() })
@@ -439,6 +481,8 @@ export const setQueueGap = command(
 export const publishNow = command(
   v.object({ projectId: v.number(), origin: v.string() }),
   async ({ projectId, origin }) => {
+    await requireUser();
+
     return publishClip(projectId, origin);
   }
 );
@@ -446,6 +490,8 @@ export const publishNow = command(
 export const getPostSheet = query(
   v.object({ projectId: v.number(), origin: v.string() }),
   async ({ projectId, origin }) => {
+    await requireUser();
+
     return buildPostSheet(projectId, origin);
   }
 );

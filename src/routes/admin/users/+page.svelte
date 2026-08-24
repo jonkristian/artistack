@@ -4,12 +4,12 @@
   import { PasswordFields } from '$lib/components/ui';
   import { invalidateAll } from '$app/navigation';
   import type { PageData } from './$types';
+  import { toast } from '$lib/stores/toast.svelte';
   import {
-    addUser,
+    inviteUser,
+    resendInvite,
     updateUser,
     deleteUser,
-    updateOwnProfile,
-    changePassword,
     resetPassword
   } from './users.remote.js';
 
@@ -19,9 +19,33 @@
   const currentUser = $derived(data.user);
   const isAdmin = $derived(currentUser?.role === 'admin');
 
-  // Add user form
+  // Invite form
   let showAddForm = $state(false);
-  const addForm = addUser.for('add-user');
+  const addForm = inviteUser.for('invite-user');
+
+  const pending = $derived(new Set(data.pendingIds));
+
+  /**
+   * The link only surfaces when mail didn't go out. When it did, showing it
+   * anyway invites the admin to paste a password-setting URL into a chat
+   * window, which is the habit the invite flow exists to break.
+   */
+  let manualLink = $state<{ name: string; url: string; reason?: string } | null>(null);
+
+  async function handleResend(id: string, name: string) {
+    try {
+      const result = await resendInvite({ userId: id, origin: window.location.origin });
+      if (result.emailed) {
+        toast.success(`Invitation resent to ${name}`);
+        manualLink = null;
+      } else {
+        manualLink = { name, url: result.url, reason: result.error };
+      }
+      await invalidateAll();
+    } catch {
+      toast.error('Could not resend the invitation');
+    }
+  }
 
   // Edit user state
   let editingUserId = $state<string | null>(null);
@@ -33,78 +57,6 @@
   let resetNewPassword = $state('');
   let resetConfirmPassword = $state('');
   let resetPasswordError = $state('');
-
-  // Own profile edit
-  let editingOwnProfile = $state(false);
-  let ownName = $state('');
-  let ownEmail = $state('');
-  let ownCurrentPassword = $state('');
-  let ownNewPassword = $state('');
-  let ownConfirmPassword = $state('');
-  let ownProfileError = $state('');
-  let ownProfileSaving = $state(false);
-
-  function startEditOwnProfile() {
-    ownName = currentUser?.name ?? '';
-    ownEmail = currentUser?.email ?? '';
-    ownCurrentPassword = '';
-    ownNewPassword = '';
-    ownConfirmPassword = '';
-    ownProfileError = '';
-    editingOwnProfile = true;
-  }
-
-  function cancelOwnProfileEdit() {
-    editingOwnProfile = false;
-    ownProfileError = '';
-  }
-
-  async function saveOwnProfile() {
-    ownProfileError = '';
-
-    // Validate password if any password field is filled
-    if (ownCurrentPassword || ownNewPassword || ownConfirmPassword) {
-      if (!ownCurrentPassword) {
-        ownProfileError = 'Current password is required to change password';
-        return;
-      }
-      if (ownNewPassword.length < 8) {
-        ownProfileError = 'New password must be at least 8 characters';
-        return;
-      }
-      if (ownNewPassword !== ownConfirmPassword) {
-        ownProfileError = 'New passwords do not match';
-        return;
-      }
-    }
-
-    ownProfileSaving = true;
-    try {
-      // Update profile
-      await updateOwnProfile({
-        userId: currentUser?.id ?? '',
-        name: ownName,
-        email: ownEmail
-      });
-
-      // Change password if provided
-      if (ownCurrentPassword && ownNewPassword) {
-        await changePassword({
-          userId: currentUser?.id ?? '',
-          currentPassword: ownCurrentPassword,
-          newPassword: ownNewPassword,
-          confirmPassword: ownConfirmPassword
-        });
-      }
-
-      editingOwnProfile = false;
-      await invalidateAll();
-    } catch (e) {
-      ownProfileError = e instanceof Error ? e.message : 'Failed to save';
-    } finally {
-      ownProfileSaving = false;
-    }
-  }
 
   function startEditUser(u: (typeof data.users)[0]) {
     editingUserId = u.id;
@@ -148,7 +100,6 @@
       if (resetNewPassword && resetNewPassword === resetConfirmPassword) {
         await resetPassword({
           userId: id,
-          adminId: currentUser?.id ?? '',
           newPassword: resetNewPassword,
           confirmPassword: resetConfirmPassword
         });
@@ -165,7 +116,7 @@
 
   async function handleDeleteUser(id: string, name: string) {
     if (confirm(`Are you sure you want to remove ${name}? This cannot be undone.`)) {
-      await deleteUser({ id, currentUserId: currentUser?.id ?? '' });
+      await deleteUser({ id });
       await invalidateAll();
     }
   }
@@ -186,116 +137,6 @@
   </header>
 
   <div class="max-w-2xl space-y-6">
-    <!-- Your Profile -->
-    <SectionCard title="Your Profile">
-      {#if editingOwnProfile}
-        <div class="space-y-3">
-          <!-- Name and Email row -->
-          <div class="flex items-center gap-2">
-            {#if currentUser?.image}
-              <img
-                src={currentUser.image}
-                alt=""
-                class="h-10 w-10 shrink-0 rounded-full object-cover"
-              />
-            {:else}
-              <div
-                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-700 text-sm font-medium text-gray-300"
-              >
-                {currentUser?.name?.charAt(0).toUpperCase() || '?'}
-              </div>
-            {/if}
-            <input
-              bind:value={ownName}
-              placeholder="Name"
-              class="min-w-0 flex-1 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
-            />
-            <input
-              bind:value={ownEmail}
-              type="email"
-              placeholder="Email"
-              class="min-w-0 flex-[1.5] rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
-            />
-          </div>
-
-          <!-- Password section -->
-          <div class="border-t border-gray-700 pt-3">
-            <span class="mb-2 block text-xs text-gray-500"
-              >Change password (leave empty to keep current)</span
-            >
-            <div class="space-y-2">
-              <input
-                type="password"
-                bind:value={ownCurrentPassword}
-                placeholder="Current Password"
-                class={fieldClass}
-              />
-              <PasswordFields
-                newPassword={ownNewPassword}
-                confirmPassword={ownConfirmPassword}
-                onNewPasswordChange={(v) => (ownNewPassword = v)}
-                onConfirmPasswordChange={(v) => (ownConfirmPassword = v)}
-              />
-            </div>
-          </div>
-
-          {#if ownProfileError}
-            <p class="text-xs text-red-400">{ownProfileError}</p>
-          {/if}
-
-          <!-- Actions -->
-          <div class="flex justify-end gap-2">
-            <button
-              onclick={cancelOwnProfileEdit}
-              class="rounded-lg px-4 py-2 text-sm text-gray-400 hover:text-white"
-            >
-              Cancel
-            </button>
-            <button
-              onclick={saveOwnProfile}
-              disabled={ownProfileSaving}
-              class="rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20 disabled:opacity-50"
-            >
-              {ownProfileSaving ? 'Saving...' : 'Save'}
-            </button>
-          </div>
-        </div>
-      {:else}
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-3">
-            {#if currentUser?.image}
-              <img src={currentUser.image} alt="" class="h-10 w-10 rounded-full object-cover" />
-            {:else}
-              <div
-                class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-700 text-sm font-medium text-gray-300"
-              >
-                {currentUser?.name?.charAt(0).toUpperCase() || '?'}
-              </div>
-            {/if}
-            <div>
-              <div class="flex items-center gap-2">
-                <span class="font-medium text-white">{currentUser?.name}</span>
-                <span
-                  class="rounded px-1.5 py-0.5 text-xs {getRoleBadgeClass(
-                    currentUser?.role ?? null
-                  )}"
-                >
-                  {getRoleLabel(currentUser?.role ?? null)}
-                </span>
-              </div>
-              <span class="text-sm text-gray-400">{currentUser?.email}</span>
-            </div>
-          </div>
-          <button
-            onclick={startEditOwnProfile}
-            class="rounded-lg bg-white/10 px-3 py-1.5 text-sm text-white transition-colors hover:bg-white/20"
-          >
-            Edit
-          </button>
-        </div>
-      {/if}
-    </SectionCard>
-
     <!-- Team Members -->
     <SectionCard>
       <div class="mb-4 flex items-center justify-between">
@@ -315,47 +156,44 @@
           {...addForm.enhance(async ({ submit }) => {
             try {
               await submit();
-              // Only close if no validation errors
               const issues = addForm.fields.allIssues();
-              if (!issues || issues.length === 0) {
-                showAddForm = false;
-                addForm.fields.set({
-                  name: '',
-                  email: '',
-                  password: '',
-                  confirmPassword: '',
-                  role: 'editor'
-                });
-                await invalidateAll();
+              if (issues && issues.length > 0) return;
+
+              const result = addForm.result;
+              if (result && !result.emailed) {
+                manualLink = {
+                  name: addForm.fields.name.value() || 'them',
+                  url: result.url,
+                  reason: result.error
+                };
+              } else {
+                toast.success('Invitation sent');
+                manualLink = null;
               }
+
+              showAddForm = false;
+              addForm.fields.set({ name: '', email: '', role: 'editor', origin: '' });
+              await invalidateAll();
             } catch (e) {
-              console.error('Failed to add user:', e);
+              console.error('Failed to invite user:', e);
             }
           })}
           class="mb-4 space-y-3 rounded-lg border border-gray-700 bg-gray-800/50 p-4"
         >
+          <!-- The origin travels with the form so the link in the email points
+               at the host the admin is actually on, not a stale env var. -->
+          <input
+            {...addForm.fields.origin.as(
+              'hidden',
+              typeof window === 'undefined' ? '' : window.location.origin
+            )}
+          />
           <div class="grid grid-cols-2 gap-3">
             <div>
               <input {...addForm.fields.name.as('text')} placeholder="Name" class={fieldClass} />
             </div>
             <div>
               <input {...addForm.fields.email.as('email')} placeholder="Email" class={fieldClass} />
-            </div>
-          </div>
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <input
-                {...addForm.fields.password.as('password')}
-                placeholder="Password"
-                class={fieldClass}
-              />
-            </div>
-            <div>
-              <input
-                {...addForm.fields.confirmPassword.as('password')}
-                placeholder="Confirm Password"
-                class={fieldClass}
-              />
             </div>
           </div>
           <div>
@@ -372,9 +210,37 @@
             disabled={!!addForm.pending}
             class="w-full rounded-lg bg-white/10 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20 disabled:opacity-50"
           >
-            {addForm.pending ? 'Adding...' : 'Add User'}
+            {addForm.pending ? 'Sending…' : 'Send invitation'}
           </button>
+          <p class="text-xs text-gray-500">
+            They'll get an email with a link to choose their own password.
+          </p>
         </form>
+      {/if}
+
+      {#if manualLink}
+        <div class="mb-4 rounded-lg border border-amber-700/50 bg-amber-950/40 p-4">
+          <p class="text-sm font-medium text-amber-300">Couldn't send the email</p>
+          <p class="mt-1 text-xs text-amber-200/70">
+            {manualLink.reason === 'SMTP not configured'
+              ? 'No SMTP server is set up, so pass this link to ' + manualLink.name + ' yourself.'
+              : `${manualLink.reason ?? 'The mail server refused it'} — pass this link to ${manualLink.name} yourself.`}
+          </p>
+          <div class="mt-3 flex items-center gap-1 rounded-lg bg-gray-950 py-1 pr-1 pl-3">
+            <span class="min-w-0 flex-1 truncate py-1 text-xs text-violet-400"
+              >{manualLink.url}</span
+            >
+            <button
+              onclick={() => {
+                navigator.clipboard.writeText(manualLink!.url);
+                toast.success('Link copied');
+              }}
+              class="shrink-0 rounded-md px-2 py-1 text-xs text-gray-400 hover:bg-gray-800 hover:text-white"
+            >
+              Copy
+            </button>
+          </div>
+        </div>
       {/if}
 
       <div class="space-y-2">
@@ -465,6 +331,14 @@
                       <span class="rounded px-1.5 py-0.5 text-xs {getRoleBadgeClass(u.role)}">
                         {getRoleLabel(u.role)}
                       </span>
+                      {#if pending.has(u.id)}
+                        <span
+                          class="rounded bg-amber-900 px-1.5 py-0.5 text-xs text-amber-300"
+                          title="Invited, but they haven't set a password yet"
+                        >
+                          Invited
+                        </span>
+                      {/if}
                     </div>
                     <span class="text-xs text-gray-500">{u.email}</span>
                   </div>
@@ -473,6 +347,14 @@
                   <div
                     class="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
                   >
+                    {#if pending.has(u.id)}
+                      <button
+                        onclick={() => handleResend(u.id, u.name)}
+                        class="rounded px-2 py-1 text-xs text-gray-400 hover:bg-gray-700 hover:text-white"
+                      >
+                        Resend invite
+                      </button>
+                    {/if}
                     <button
                       onclick={() => startEditUser(u)}
                       class="rounded p-1.5 text-gray-500 hover:bg-gray-700 hover:text-white"

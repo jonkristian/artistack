@@ -1,8 +1,8 @@
 import { redirect } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
-import { user } from '$lib/server/auth-schema';
+import { user, userInvite } from '$lib/server/auth-schema';
 import { auth } from '$lib/server/auth';
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq, gt, isNull } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ request }) => {
@@ -29,7 +29,15 @@ export const load: PageServerLoad = async ({ request }) => {
     .from(user)
     .orderBy(asc(user.name));
 
+  // Who hasn't turned up yet. An outstanding invite, not the absence of a
+  // password, is the signal — someone can be re-invited after they've joined.
+  const pending = await db
+    .select({ userId: userInvite.userId, expiresAt: userInvite.expiresAt })
+    .from(userInvite)
+    .where(and(isNull(userInvite.acceptedAt), gt(userInvite.expiresAt, new Date())));
+
   return {
-    users
+    users,
+    pendingIds: pending.map((p) => p.userId)
   };
 };

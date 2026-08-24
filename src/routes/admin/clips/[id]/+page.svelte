@@ -13,6 +13,8 @@
     ADVANCED_GROUPS,
     CLIP_PRESETS,
     CLIP_STATUS_LABELS,
+    CLIP_STATUS_DOTS,
+    PLATFORM_NAMES,
     type ClipRenderConfig,
     type ClipAdvancedConfig,
     type TimedCaption
@@ -193,17 +195,6 @@
       hint: 'Match the -14 LUFS level every platform normalises to anyway.'
     }
   ];
-
-  /** Dot colour per status, matching the pills on the clips overview. */
-  const STATUS_DOTS: Record<string, string> = {
-    draft: 'bg-gray-500',
-    rendered: 'bg-sky-400',
-    review: 'bg-amber-400',
-    approved: 'bg-emerald-400',
-    rejected: 'bg-red-400',
-    queued: 'bg-violet-400',
-    published: 'bg-gray-400'
-  };
 
   /** Branding elements, shown beside the render rather than under Look. */
   const BRANDING_OPTIONS: { key: keyof ClipRenderConfig; label: string; hint: string }[] = [
@@ -1197,15 +1188,54 @@
          idle clip is already served by the button in the empty state above. -->
     {#if outputMedia || isRendering || job?.status === 'failed'}
       <SectionCard>
-        <!-- Where the clip stands, stated once at the top. The review strip
-             below carries the decision; this just says what it is. -->
+        <!-- Where the clip stands, stated once, at the top. The review strip
+             below carries the decision; this only says what it is. Where it
+             landed belongs with it — a release and its platforms are one fact,
+             not two, so the rows sit here rather than at the far end of the card. -->
         <div class="mb-3 flex items-center gap-2 text-sm">
           <span
-            class="h-2 w-2 shrink-0 rounded-full {STATUS_DOTS[selected.status] ?? 'bg-gray-500'}"
+            class="h-2 w-2 shrink-0 rounded-full {CLIP_STATUS_DOTS[selected.status] ??
+              'bg-gray-500'}"
           ></span>
           <span class="text-gray-300">{CLIP_STATUS_LABELS[selected.status] ?? selected.status}</span
           >
         </div>
+
+        <!-- Reported back by the publishing workflow, so this stays empty
+             until something calls the callback: "published" on its own only
+             means the webhook was accepted. -->
+        {#if data.posts.length > 0}
+          <ul class="mb-4 space-y-1.5">
+            {#each data.posts as post (post.id)}
+              <li class="flex items-center gap-2 text-xs">
+                <span
+                  class="rounded px-1.5 py-0.5 font-medium {post.status === 'live'
+                    ? 'bg-emerald-900 text-emerald-300'
+                    : post.status === 'draft'
+                      ? 'bg-amber-900 text-amber-300'
+                      : 'bg-red-900 text-red-300'}"
+                >
+                  {post.status === 'live' ? 'Live' : post.status === 'draft' ? 'Draft' : 'Failed'}
+                </span>
+                <span class="text-gray-300">{PLATFORM_NAMES[post.platform] ?? post.platform}</span>
+                {#if post.status === 'draft'}
+                  <span class="text-gray-500">uploaded, post it by hand</span>
+                {/if}
+                {#if post.url}
+                  <a
+                    href={post.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    class="truncate text-violet-400 hover:text-violet-300">View post</a
+                  >
+                {/if}
+                {#if post.error}
+                  <span class="truncate text-red-400/80" title={post.error}>{post.error}</span>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {/if}
 
         {#if job?.status === 'failed'}
           <div class="mb-4 rounded-lg border border-red-800/50 bg-red-950/40 p-3">
@@ -1374,48 +1404,6 @@
               Publish now
             </button>
           </div>
-        {/if}
-
-        {#if selected.status === 'published' && selected.publishedAt}
-          <p class="text-xs text-gray-500">
-            Published {new Date(selected.publishedAt).toLocaleString()}
-          </p>
-        {/if}
-
-        <!-- Where it actually landed. Reported back by the publishing workflow,
-             so this is empty until something calls the callback — "published"
-             on its own only means the webhook was accepted. -->
-        {#if data.posts.length > 0}
-          <ul class="mt-3 space-y-1.5 border-t border-gray-800 pt-3">
-            {#each data.posts as post (post.id)}
-              <li class="flex items-center gap-2 text-xs">
-                <span
-                  class="rounded px-1.5 py-0.5 font-medium {post.status === 'live'
-                    ? 'bg-emerald-900 text-emerald-300'
-                    : post.status === 'draft'
-                      ? 'bg-amber-900 text-amber-300'
-                      : 'bg-red-900 text-red-300'}"
-                >
-                  {post.status === 'live' ? 'Live' : post.status === 'draft' ? 'Draft' : 'Failed'}
-                </span>
-                {#if post.status === 'draft'}
-                  <span class="text-gray-500">uploaded, post it by hand</span>
-                {/if}
-                <span class="text-gray-300 capitalize">{post.platform}</span>
-                {#if post.url}
-                  <a
-                    href={post.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    class="truncate text-violet-400 hover:text-violet-300">View post</a
-                  >
-                {/if}
-                {#if post.error}
-                  <span class="truncate text-red-400/80" title={post.error}>{post.error}</span>
-                {/if}
-              </li>
-            {/each}
-          </ul>
         {/if}
       </SectionCard>
     {/if}

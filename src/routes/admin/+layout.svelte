@@ -48,19 +48,27 @@
   const artistName = $derived(data.profile?.name ?? 'Artist');
   const pageTitle = $derived(`Artistack - ${artistName}`);
 
-  // Clips is opt-in, so the nav entry only appears once the feature is on.
-  const navItems = $derived([
-    { href: '/admin', label: 'Dashboard', icon: 'home' },
-    { href: '/admin/stats', label: 'Stats', icon: 'chart' },
-    { href: '/admin/media', label: 'Media', icon: 'image' },
-    ...(data.settings?.clipsEnabled
-      ? [{ href: '/admin/clips', label: 'Clips', icon: 'film' }]
-      : []),
-    { href: '/admin/appearance', label: 'Appearance', icon: 'palette' },
-    { href: '/admin/integrations', label: 'Integrations', icon: 'plug' },
-    { href: '/admin/users', label: 'Users', icon: 'users' },
-    { href: '/admin/settings', label: 'Settings', icon: 'settings' }
-  ]);
+  /**
+   * `adminOnly` mirrors the redirect in each page's load function. Editors are
+   * bounced back to the dashboard from these, so listing them is a dead end —
+   * and the nav is the only place they'd learn the page exists at all.
+   *
+   * Clips is separate: it's opt-in for everyone, not a matter of role.
+   */
+  const navItems = $derived(
+    [
+      { href: '/admin', label: 'Dashboard', icon: 'home' },
+      { href: '/admin/stats', label: 'Stats', icon: 'chart' },
+      { href: '/admin/media', label: 'Media', icon: 'image' },
+      ...(data.settings?.clipsEnabled
+        ? [{ href: '/admin/clips', label: 'Clips', icon: 'film' }]
+        : []),
+      { href: '/admin/appearance', label: 'Appearance', icon: 'palette', adminOnly: true },
+      { href: '/admin/integrations', label: 'Integrations', icon: 'plug', adminOnly: true },
+      { href: '/admin/users', label: 'Users', icon: 'users', adminOnly: true },
+      { href: '/admin/settings', label: 'Settings', icon: 'settings', adminOnly: true }
+    ].filter((item) => !item.adminOnly || data.user.role === 'admin')
+  );
 
   // Map nav hrefs to their dirty state
   function isNavDirty(href: string): boolean {
@@ -122,9 +130,27 @@
   <aside
     class="fixed top-0 left-0 flex h-screen w-56 flex-col border-r border-gray-800 bg-gray-900"
   >
-    <!-- Artist Name -->
-    <div class="flex h-14 items-center gap-3 border-b border-gray-800 px-4">
-      <span class="truncate font-semibold text-white">{artistName}</span>
+    <!-- Artist Name. The link out sits with the name because that's what it
+         opens — the site this admin belongs to. -->
+    <div class="flex h-14 items-center gap-2 border-b border-gray-800 px-4">
+      <span class="min-w-0 flex-1 truncate font-semibold text-white">{artistName}</span>
+      <a
+        href="/"
+        target="_blank"
+        rel="noreferrer"
+        title="View site"
+        aria-label="View site"
+        class="shrink-0 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-800 hover:text-white"
+      >
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="1.5"
+            d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+          />
+        </svg>
+      </a>
     </div>
 
     <!-- Navigation -->
@@ -283,19 +309,26 @@
 
     <!-- Bottom Actions -->
     <div class="border-t border-gray-800 p-3">
+      <!-- Who you're signed in as, doubling as the way to change it. The name
+           is the label because that's what identifies the row; "Your profile"
+           would say less in the same space. -->
       <a
-        href="/"
-        class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-400 transition-colors hover:bg-gray-800/50 hover:text-white"
+        href="/admin/profile"
+        class="mb-1 flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-gray-800/50 {currentPath ===
+        '/admin/profile'
+          ? 'bg-gray-800 text-white'
+          : 'text-gray-400 hover:text-white'}"
       >
-        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="1.5"
-            d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-          />
-        </svg>
-        View Site
+        {#if data.user.image}
+          <img src={data.user.image} alt="" class="h-5 w-5 shrink-0 rounded-full object-cover" />
+        {:else}
+          <span
+            class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-700 text-[10px] font-medium text-gray-300"
+          >
+            {(data.user.name ?? '?').charAt(0).toUpperCase()}
+          </span>
+        {/if}
+        <span class="truncate">{data.user.name}</span>
       </a>
       <button
         onclick={signOut}

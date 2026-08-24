@@ -1,3 +1,16 @@
+# 1.2.0 (24-08-2026)
+
+- Invite team members by name and email; they set their own password from a link
+- Everyone gets their own profile page for their name, email and password
+- Editors can now use Media and Clip Studio; appearance, integrations, settings and users stay admin-only
+- The admin menu only lists pages your role can actually open
+- Every admin action now checks your role when it runs, not just when the page loads
+- Discord alert when a release doesn't reach every platform within half an hour
+- Fixed YouTube stats never refreshing on their own
+- Fixed media already in the press kit not being draggable into Clip Graphics
+- Clip status colours run the pipeline from grey to green, with published in green
+- View site moved to an icon beside the artist name
+
 # 1.1.0 (23-08-2026)
 
 - Clip Studio: turn raw footage into branded, post-ready vertical video

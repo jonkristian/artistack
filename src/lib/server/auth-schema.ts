@@ -89,6 +89,30 @@ export const verification = sqliteTable(
   (table) => [index('verification_identifier_idx').on(table.identifier)]
 );
 
+/**
+ * Pending invitations. An invited person exists as a `user` row from the moment
+ * they're invited — with a role and a name, but no credential account — so the
+ * team list shows who's been asked, not just who has turned up. The invite is
+ * what lets them set a password and turn that row into an account they own.
+ */
+export const userInvite = sqliteTable(
+  'user_invite',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    token: text('token').notNull().unique(),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+    acceptedAt: integer('accepted_at', { mode: 'timestamp_ms' }),
+    invitedBy: text('invited_by'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull()
+  },
+  (table) => [index('user_invite_userId_idx').on(table.userId)]
+);
+
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account)

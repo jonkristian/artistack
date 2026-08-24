@@ -2,13 +2,17 @@
   import { authClient } from '$lib/auth-client';
   import { goto } from '$app/navigation';
   import { enhance } from '$app/forms';
+  import { page } from '$app/state';
   import PasswordFields from '$lib/components/ui/PasswordFields.svelte';
   import EmailField from '$lib/components/ui/EmailField.svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
 
-  let email = $state('');
+  // Arriving from an accepted invite: the address is already known, so the only
+  // thing left to type is the password they just chose.
+  let email = $state(page.url.searchParams.get('email') ?? '');
+  const justInvited = page.url.searchParams.get('welcome') === '1';
   let password = $state('');
   let confirmPassword = $state('');
   let name = $state('');
@@ -326,6 +330,12 @@
       {:else}
         <!-- Sign in form -->
         <form onsubmit={handleSignIn} class="space-y-4">
+          {#if justInvited}
+            <div class="rounded-lg bg-emerald-900/50 p-3 text-sm text-emerald-300">
+              Your password is set. Sign in to get started.
+            </div>
+          {/if}
+
           <EmailField value={email} onchange={(v) => (email = v)} required />
 
           <div>

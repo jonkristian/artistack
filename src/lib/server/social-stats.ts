@@ -412,25 +412,15 @@ export async function refreshAllSocialStats(): Promise<SocialStats> {
     }
   }
 
-  // Fetch YouTube stats if configured
-  const youtubeConfig = (await getIntegrationConfig('youtube')) as YouTubeConfig | null;
-  if (youtubeConfig?.apiKey) {
-    // Auto-detect channel ID from links if not configured
-    let channelId = youtubeConfig.channelId;
-    if (!channelId) {
-      channelId = (await detectYouTubeChannelFromLinks(youtubeConfig.apiKey)) ?? undefined;
-    }
-
-    if (channelId) {
-      const youtubeStats = await fetchYouTubeChannelStats({
-        ...youtubeConfig,
-        channelId
-      });
-      if (youtubeStats) {
-        stats.youtube = youtubeStats;
-        await updateIntegrationCache('youtube', youtubeStats);
-      }
-    }
+  // YouTube's key and channel live under the `google` integration, not a
+  // `youtube` one — one API key covers Places and YouTube, so they're stored
+  // together. This used to read provider 'youtube', which has never held a
+  // config, so the branch silently did nothing and the cache only ever moved
+  // when someone saved the Google settings by hand.
+  const youtubeStats = await fetchYouTubeStatsFromGoogleConfig();
+  if (youtubeStats) {
+    stats.youtube = youtubeStats;
+    await updateIntegrationCache('youtube', youtubeStats);
   }
 
   return stats;

@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from 'crypto';
-import { eq, asc, desc, and, isNotNull } from 'drizzle-orm';
+import { eq, asc, desc, and, isNotNull, isNull, lt, gt } from 'drizzle-orm';
 import { db } from './db';
-import { clipProjects, media, settings, type ClipProject, type Media } from './schema';
+import { clipProjects, clipPosts, media, settings, type ClipProject, type Media } from './schema';
 import { buildPostSheet } from './post-sheet';
 import { ensurePreviewToken, previewUrl } from './clip-review';
 import { tagsFor } from './tags';
@@ -332,5 +332,100 @@ export async function runReleaseTick(baseUrl: string): Promise<void> {
   const result = await publishClip(next.id, baseUrl);
   if (!result.success) {
     console.error('[ClipQueue] Release failed:', result.error);
+  }
+}
+
+/** How long a release gets to report in before silence counts as a fault. */
+const COVERAGE_GRACE_MINUTES = 30;
+
+/**
+ * How many platforms a release is expected to reach. A constant rather than a
+ * setting: it changes when the band adds a platform to the posting workflow,
+ * which is a code change anyway, not something to tune from the admin.
+ */
+const EXPECTED_PLATFORMS = 4;
+
+/**
+ * Alerts when a published clip didn't reach the platforms it should have.
+ *
+ * The alarm lives here rather than in the publishing workflow because Artistack
+ * knows what was *supposed* to happen; the workflow only knows what it tried.
+ * If that workflow is down, or never receives the dispatch, it cannot raise a
+ * hand about it — this can.
+ *
+ * Three shapes, all caught by comparing rows against the expected count:
+ *   - nothing arrived at all (workflow down, or every dispatch died)
+ *   - a platform reported failure
+ *   - a platform died before reporting, so no row ever comes
+ *
+ * The grace period matters: Instagram's container polling routinely runs for
+ * minutes on a perfectly good post, and an alarm that cries during normal
+ * processing is one people stop reading.
+ */
+export async function checkPublishCoverage(baseUrl: string): Promise<void> {
+  const [config] = await db.select().from(settings).limit(1);
+  const webhook = config?.clipReviewWebhookUrl || config?.discordWebhookUrl;
+  if (!webhook) return;
+
+  const now = Date.now();
+  const graceCutoff = new Date(now - COVERAGE_GRACE_MINUTES * 60_000);
+  // Bounded window so enabling this doesn't alert about the back catalogue.
+  const windowStart = new Date(now - 24 * 60 * 60_000);
+
+  const candidates = await db
+    .select()
+    .from(clipProjects)
+    .where(
+      and(
+        eq(clipProjects.status, 'published'),
+        isNull(clipProjects.publishAlertSentAt),
+        isNotNull(clipProjects.publishedAt),
+        lt(clipProjects.publishedAt, graceCutoff),
+        gt(clipProjects.publishedAt, windowStart)
+      )
+    );
+
+  for (const project of candidates) {
+    const posts = await db
+      .select({ platform: clipPosts.platform, status: clipPosts.status })
+      .from(clipPosts)
+      .where(eq(clipPosts.projectId, project.id));
+
+    const failed = posts.filter((p) => p.status === 'failed');
+    const reached = posts.filter((p) => p.status !== 'failed');
+    const short = reached.length < EXPECTED_PLATFORMS;
+
+    if (posts.length > 0 && failed.length === 0 && !short) continue;
+
+    const detail = posts.length
+      ? posts.map((p) => `${p.platform}: ${p.status}`).join(', ')
+      : 'no platform reported back at all';
+
+    await fetch(webhook, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: 'Artistack Clips',
+        embeds: [
+          {
+            title: `Publish may have failed: ${project.name}`,
+            description: [
+              `Released ${COVERAGE_GRACE_MINUTES}+ minutes ago and only ${reached.length}/${EXPECTED_PLATFORMS} platforms reported success.`,
+              '',
+              detail,
+              '',
+              `[Open in admin](${baseUrl.replace(/\/$/, '')}/admin/clips/${project.id})`
+            ].join('\n'),
+            color: 0xdc2626,
+            timestamp: new Date().toISOString()
+          }
+        ]
+      })
+    }).catch((e) => console.error('[ClipQueue] Coverage alert failed:', e));
+
+    await db
+      .update(clipProjects)
+      .set({ publishAlertSentAt: new Date() })
+      .where(eq(clipProjects.id, project.id));
   }
 }

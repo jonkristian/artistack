@@ -14,11 +14,6 @@ export const load: PageServerLoad = async ({ request }) => {
     throw redirect(302, '/login');
   }
 
-  const [currentUser] = await db.select().from(user).where(eq(user.id, session.user.id)).limit(1);
-  if (currentUser?.role !== 'admin') {
-    throw redirect(302, '/admin');
-  }
-
   const [siteSettings] = await db.select().from(settings).limit(1);
   // Hiding the nav entry isn't enough on its own — the URL still resolves.
   if (!siteSettings?.clipsEnabled) {

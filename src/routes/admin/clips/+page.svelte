@@ -2,7 +2,7 @@
   import { goto, invalidateAll } from '$app/navigation';
   import { toast } from '$lib/stores/toast.svelte';
   import { formatDuration } from '$lib/utils/upload';
-  import { CLIP_STATUS_LABELS, type ClipStatus } from '$lib/clips/types';
+  import { CLIP_STATUS_LABELS, CLIP_STATUS_STYLES, type ClipStatus } from '$lib/clips/types';
   import { SelectCheckbox, SelectionToolbar } from '$lib/components/ui';
   import { Selection } from '$lib/utils/selection.svelte';
   import type { PageData } from './$types';
@@ -69,16 +69,6 @@
     toast.success(`Deleted ${count} clip${count > 1 ? 's' : ''}`);
     selection.clear();
   }
-
-  const STATUS_STYLES: Record<ClipStatus, string> = {
-    draft: 'bg-gray-700 text-gray-300',
-    rendered: 'bg-sky-900 text-sky-300',
-    review: 'bg-amber-900 text-amber-300',
-    approved: 'bg-emerald-900 text-emerald-300',
-    rejected: 'bg-red-900 text-red-300',
-    queued: 'bg-violet-900 text-violet-300',
-    published: 'bg-gray-800 text-gray-400'
-  };
 
   const mediaById = $derived(new Map(data.media.map((m) => [m.id, m])));
 
@@ -238,7 +228,7 @@
               <p class="truncate text-sm text-white group-hover:text-violet-300">{project.name}</p>
               <div class="mt-1.5 flex items-center gap-2">
                 <span
-                  class="rounded px-1.5 py-0.5 text-[10px] font-medium {STATUS_STYLES[
+                  class="rounded px-1.5 py-0.5 text-[10px] font-medium {CLIP_STATUS_STYLES[
                     project.status as ClipStatus
                   ] ?? 'bg-gray-700 text-gray-300'}"
                 >

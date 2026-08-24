@@ -180,6 +180,14 @@
     toast.success('Deleted');
   }
 
+  /**
+   * A tile is draggable whenever there's somewhere to drop it. Being in one set
+   * says nothing about the other — a logo in the press kit is exactly the file
+   * you'd also want on your clips — so membership doesn't come into it. The
+   * drop handlers ignore a file that's already in the set they're dropped on.
+   */
+  const hasDropZone = $derived(showPressKit || data.clipsEnabled);
+
   // Dragging a tile out of the grid; the drop zones handle the rest.
   function handleDragStart(e: DragEvent, mediaId: number) {
     draggedMediaId = mediaId;
@@ -525,15 +533,12 @@
           aria-label={showPressKit && pressKitMediaIds.has(item.id)
             ? `${item.alt || item.filename} - in press kit`
             : item.alt || item.filename}
-          draggable={showPressKit && !pressKitMediaIds.has(item.id)}
+          draggable={hasDropZone}
           ondragstart={(e) => handleDragStart(e, item.id)}
           ondragend={handleDragEnd}
-          class="group relative overflow-hidden rounded-xl bg-gray-800 {showPressKit &&
-          pressKitMediaIds.has(item.id)
-            ? 'cursor-default'
-            : showPressKit
-              ? 'cursor-grab'
-              : ''} {draggedMediaId === item.id ? 'opacity-50' : ''} {selection.has(item.id)
+          class="group relative overflow-hidden rounded-xl bg-gray-800 {hasDropZone
+            ? 'cursor-grab'
+            : ''} {draggedMediaId === item.id ? 'opacity-50' : ''} {selection.has(item.id)
             ? 'ring-2 ring-violet-500'
             : ''}"
         >

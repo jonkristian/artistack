@@ -1,3 +1,4 @@
+import { requireAdmin } from '$lib/server/guards';
 import * as v from 'valibot';
 import { command } from '$app/server';
 import { db } from '$lib/server/db';
@@ -108,6 +109,8 @@ function createIco(images: { size: number; buffer: Buffer }[]): Buffer {
 // ============================================================================
 
 export const updateSettings = command(settingsSchema, async (data) => {
+  await requireAdmin();
+
   const existing = await getOrCreateSettings();
 
   // Filter out undefined values
@@ -132,6 +135,8 @@ export const updateSettings = command(settingsSchema, async (data) => {
 // ============================================================================
 
 export const generateFavicon = command(generateFaviconSchema, async ({ sourceUrl }) => {
+  await requireAdmin();
+
   const existing = await getOrCreateSettings();
 
   const sourcePath = mediaPath(sourceUrl);
@@ -196,6 +201,8 @@ export const generateFaviconFromInitials = command(
     length: v.optional(v.number())
   }),
   async ({ name, rounded = false, length = 2 }) => {
+    await requireAdmin();
+
     const existing = await getOrCreateSettings();
     const [artistProfile] = await db.select().from(profile).limit(1);
 
@@ -258,6 +265,8 @@ export const generateFaviconFromInitials = command(
 // ============================================================================
 
 export const updateSmtpSettings = command(smtpSettingsSchema, async (data) => {
+  await requireAdmin();
+
   const existing = await getOrCreateSettings();
 
   const updates: Record<string, unknown> = {};
@@ -277,6 +286,8 @@ export const updateSmtpSettings = command(smtpSettingsSchema, async (data) => {
 });
 
 export const testSmtp = command(v.object({}), async () => {
+  await requireAdmin();
+
   const result = await testSmtpConnection();
   return result;
 });

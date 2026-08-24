@@ -1,0 +1,1 @@
+ALTER TABLE `settings` DROP COLUMN `clip_expected_platforms`;

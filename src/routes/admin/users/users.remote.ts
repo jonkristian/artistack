@@ -3,29 +3,25 @@ import { form, command } from '$app/server';
 import { db } from '$lib/server/db';
 import { user, account } from '$lib/server/auth-schema';
 import { eq, ne, and } from 'drizzle-orm';
-import { hashPassword, verifyPassword } from 'better-auth/crypto';
+import { hashPassword } from 'better-auth/crypto';
+import { createInvite, inviteUrl, sendInviteEmail } from '$lib/server/invites';
+import { requireAdmin } from '$lib/server/guards';
 
 // ============================================================================
 // Validation Schemas
 // ============================================================================
 
-const addUserSchema = v.pipe(
-  v.object({
-    name: v.pipe(v.string(), v.nonEmpty('Name is required')),
-    email: v.pipe(v.string(), v.email('Please enter a valid email')),
-    password: v.pipe(v.string(), v.minLength(8, 'Password must be at least 8 characters')),
-    confirmPassword: v.pipe(v.string(), v.nonEmpty('Please confirm the password')),
-    role: v.optional(v.picklist(['admin', 'editor']))
-  }),
-  v.forward(
-    v.partialCheck(
-      [['password'], ['confirmPassword']],
-      (input) => input.password === input.confirmPassword,
-      'Passwords do not match'
-    ),
-    ['confirmPassword']
-  )
-);
+const inviteUserSchema = v.object({
+  name: v.pipe(v.string(), v.nonEmpty('Name is required')),
+  email: v.pipe(v.string(), v.email('Please enter a valid email')),
+  role: v.optional(v.picklist(['admin', 'editor'])),
+  origin: v.optional(v.string())
+});
+
+const resendInviteSchema = v.object({
+  userId: v.string(),
+  origin: v.optional(v.string())
+});
 
 const updateUserSchema = v.object({
   id: v.string(),
@@ -34,38 +30,13 @@ const updateUserSchema = v.object({
   role: v.optional(v.picklist(['admin', 'editor']))
 });
 
-const updateOwnProfileSchema = v.object({
-  userId: v.string(),
-  name: v.pipe(v.string(), v.nonEmpty('Name is required')),
-  email: v.pipe(v.string(), v.email('Please enter a valid email'))
-});
-
 const deleteUserSchema = v.object({
-  id: v.string(),
-  currentUserId: v.string()
+  id: v.string()
 });
-
-const changePasswordSchema = v.pipe(
-  v.object({
-    userId: v.string(),
-    currentPassword: v.pipe(v.string(), v.nonEmpty('Current password is required')),
-    newPassword: v.pipe(v.string(), v.minLength(8, 'New password must be at least 8 characters')),
-    confirmPassword: v.pipe(v.string(), v.nonEmpty('Please confirm your password'))
-  }),
-  v.forward(
-    v.partialCheck(
-      [['newPassword'], ['confirmPassword']],
-      (input) => input.newPassword === input.confirmPassword,
-      'Passwords do not match'
-    ),
-    ['confirmPassword']
-  )
-);
 
 const resetPasswordSchema = v.pipe(
   v.object({
     userId: v.string(),
-    adminId: v.string(),
     newPassword: v.pipe(v.string(), v.minLength(8, 'Password must be at least 8 characters')),
     confirmPassword: v.pipe(v.string(), v.nonEmpty('Please confirm the password'))
   }),
@@ -81,48 +52,68 @@ const resetPasswordSchema = v.pipe(
 
 // ============================================================================
 // User Management Commands
-// Note: These commands are protected at the page level - only admins can access
-// the /admin/users page. The page load function verifies admin role before
-// rendering the UI that uses these commands.
+//
+// Every one of these checks for itself. The page guard on /admin/users doesn't
+// run when the browser calls a command directly, so it protects the page and
+// nothing else.
 // ============================================================================
 
-export const addUser = form(addUserSchema, async ({ name, email, password, role }) => {
-  // Check if email already exists
+/**
+ * Invites someone instead of setting a password on their behalf. An admin
+ * choosing another person's password means it travels over whatever channel
+ * they use to pass it on, and it's a password the owner didn't choose — so the
+ * row is created without a credential account and the invite link is what
+ * turns it into an account.
+ */
+export const inviteUser = form(inviteUserSchema, async ({ name, email, role, origin }) => {
+  const admin = await requireAdmin();
+
   const existing = await db.select().from(user).where(eq(user.email, email)).limit(1);
   if (existing.length > 0) {
     throw new Error('A user with this email already exists');
   }
 
-  // Generate user ID and hash password
   const userId = crypto.randomUUID();
-  const hashedPassword = await hashPassword(password);
-
-  // Create user directly in database (uses defaults for timestamps)
   const [newUser] = await db
     .insert(user)
     .values({
       id: userId,
       name,
       email,
+      // The invite link is itself proof they read the address it was sent to.
       emailVerified: true,
       role: role || 'editor'
     })
     .returning();
 
-  // Create credential account (must provide updatedAt as it has no default)
-  await db.insert(account).values({
-    id: crypto.randomUUID(),
-    accountId: userId,
-    providerId: 'credential',
-    userId: userId,
-    password: hashedPassword,
-    updatedAt: new Date()
-  });
+  const token = await createInvite(userId, admin.id);
+  const url = inviteUrl(token, origin);
+  const sent = await sendInviteEmail(email, name, url);
 
-  return { success: true, user: newUser };
+  // Hand back the link when mail fails: the invite is valid either way, and an
+  // admin who can copy it is better off than one staring at an error.
+  return { success: true, user: newUser, emailed: sent.success, error: sent.error, url };
+});
+
+/** Issues a fresh link, invalidating the old one. */
+export const resendInvite = command(resendInviteSchema, async ({ userId, origin }) => {
+  const admin = await requireAdmin();
+
+  const [target] = await db.select().from(user).where(eq(user.id, userId)).limit(1);
+  if (!target) {
+    throw new Error('User not found');
+  }
+
+  const token = await createInvite(userId, admin.id);
+  const url = inviteUrl(token, origin);
+  const sent = await sendInviteEmail(target.email, target.name, url);
+
+  return { success: true, emailed: sent.success, error: sent.error, url };
 });
 
 export const updateUser = command(updateUserSchema, async ({ id, name, email, role }) => {
+  await requireAdmin();
+
   const updateData: Record<string, unknown> = {};
 
   if (name !== undefined) updateData.name = name;
@@ -154,49 +145,11 @@ export const updateUser = command(updateUserSchema, async ({ id, name, email, ro
   return { success: true, user: updated };
 });
 
-export const updateOwnProfile = command(updateOwnProfileSchema, async ({ userId, name, email }) => {
-  // Get current user's email to check if it's changing
-  const [currentUser] = await db.select().from(user).where(eq(user.id, userId)).limit(1);
+export const deleteUser = command(deleteUserSchema, async ({ id }) => {
+  const admin = await requireAdmin();
 
-  if (!currentUser) {
-    throw new Error('User not found');
-  }
-
-  // Check if email is being changed and if it's already taken
-  if (email !== currentUser.email) {
-    const existing = await db
-      .select()
-      .from(user)
-      .where(and(eq(user.email, email), ne(user.id, userId)))
-      .limit(1);
-    if (existing.length > 0) {
-      throw new Error('A user with this email already exists');
-    }
-  }
-
-  const [updated] = await db
-    .update(user)
-    .set({ name, email })
-    .where(eq(user.id, userId))
-    .returning();
-
-  if (!updated) {
-    throw new Error('Failed to update profile');
-  }
-
-  return { success: true, user: updated };
-});
-
-export const deleteUser = command(deleteUserSchema, async ({ id, currentUserId }) => {
-  // Prevent deleting yourself
-  if (id === currentUserId) {
+  if (id === admin.id) {
     throw new Error('You cannot delete your own account');
-  }
-
-  // Check if the current user is an admin
-  const [currentUser] = await db.select().from(user).where(eq(user.id, currentUserId)).limit(1);
-  if (currentUser?.role !== 'admin') {
-    throw new Error('Only admins can delete users');
   }
 
   // Delete user (sessions and accounts will cascade)
@@ -209,64 +162,23 @@ export const deleteUser = command(deleteUserSchema, async ({ id, currentUserId }
   return { success: true };
 });
 
-export const changePassword = command(
-  changePasswordSchema,
-  async ({ userId, currentPassword, newPassword }) => {
-    // Get the credential account for this user
-    const [userAccount] = await db
-      .select()
-      .from(account)
-      .where(and(eq(account.userId, userId), eq(account.providerId, 'credential')))
-      .limit(1);
+export const resetPassword = command(resetPasswordSchema, async ({ userId, newPassword }) => {
+  await requireAdmin();
 
-    if (!userAccount?.password) {
-      throw new Error('No password set for this account');
-    }
+  // Get the credential account for the target user
+  const [userAccount] = await db
+    .select()
+    .from(account)
+    .where(and(eq(account.userId, userId), eq(account.providerId, 'credential')))
+    .limit(1);
 
-    // Verify current password
-    const isValid = await verifyPassword({ hash: userAccount.password, password: currentPassword });
-    if (!isValid) {
-      throw new Error('Current password is incorrect');
-    }
-
-    // Hash and update new password
-    const hashedPassword = await hashPassword(newPassword);
-    await db
-      .update(account)
-      .set({ password: hashedPassword })
-      .where(eq(account.id, userAccount.id));
-
-    return { success: true };
+  if (!userAccount) {
+    throw new Error('User account not found');
   }
-);
 
-export const resetPassword = command(
-  resetPasswordSchema,
-  async ({ userId, adminId, newPassword }) => {
-    // Verify the requester is an admin
-    const [admin] = await db.select().from(user).where(eq(user.id, adminId)).limit(1);
-    if (admin?.role !== 'admin') {
-      throw new Error('Only admins can reset passwords');
-    }
+  // Hash and update new password
+  const hashedPassword = await hashPassword(newPassword);
+  await db.update(account).set({ password: hashedPassword }).where(eq(account.id, userAccount.id));
 
-    // Get the credential account for the target user
-    const [userAccount] = await db
-      .select()
-      .from(account)
-      .where(and(eq(account.userId, userId), eq(account.providerId, 'credential')))
-      .limit(1);
-
-    if (!userAccount) {
-      throw new Error('User account not found');
-    }
-
-    // Hash and update new password
-    const hashedPassword = await hashPassword(newPassword);
-    await db
-      .update(account)
-      .set({ password: hashedPassword })
-      .where(eq(account.id, userAccount.id));
-
-    return { success: true };
-  }
-);
+  return { success: true };
+});

@@ -1,3 +1,4 @@
+import { requireAdmin } from '$lib/server/guards';
 import * as v from 'valibot';
 import { command } from '$app/server';
 import { db } from '$lib/server/db';
@@ -77,6 +78,8 @@ async function getOrCreateSettings() {
 // ============================================================================
 
 export const updateSpotifyConfig = command(spotifyConfigSchema, async (data) => {
+  await requireAdmin();
+
   // Auto-detect artist ID from links
   const artistId = await detectSpotifyArtistFromLinks();
   if (!artistId) {
@@ -110,6 +113,8 @@ export const updateSpotifyConfig = command(spotifyConfigSchema, async (data) => 
 });
 
 export const saveGoogleConfig = command(googleConfigSchema, async (data) => {
+  await requireAdmin();
+
   const config: GoogleConfig = {
     apiKey: data.apiKey,
     placesEnabled: data.placesEnabled,
@@ -146,6 +151,8 @@ export const saveGoogleConfig = command(googleConfigSchema, async (data) => {
 });
 
 export const updateDiscordSettings = command(discordSettingsSchema, async (data) => {
+  await requireAdmin();
+
   const existing = await getOrCreateSettings();
 
   const [updated] = await db
@@ -164,6 +171,8 @@ export const updateDiscordSettings = command(discordSettingsSchema, async (data)
 });
 
 export const updatePublishSettings = command(publishSettingsSchema, async (data) => {
+  await requireAdmin();
+
   const existing = await getOrCreateSettings();
 
   const [updated] = await db
@@ -184,6 +193,8 @@ export const updatePublishSettings = command(publishSettingsSchema, async (data)
 });
 
 export const testDiscordWebhook = command(testWebhookSchema, async (data) => {
+  await requireAdmin();
+
   try {
     const [overview, pageViews, linkClicks, socialStats] = await Promise.all([
       getOverviewStats(),
