@@ -31,6 +31,8 @@
 
   let fileInput: HTMLInputElement;
   let uploading = $state(false);
+  /** 0–1 while a chunked upload is in flight; null when the file went in one request. */
+  let uploadProgress = $state<number | null>(null);
   let generating = $state(false);
   let draggedMediaId = $state<number | null>(null);
 
@@ -146,7 +148,7 @@
     uploading = true;
 
     try {
-      const result = await uploadToServer(file);
+      const result = await uploadToServer(file, 'media', (f) => (uploadProgress = f));
 
       await addMedia({
         filename: file.name,
@@ -167,6 +169,7 @@
       toast.error(e instanceof Error ? e.message : 'Upload failed');
     } finally {
       uploading = false;
+      uploadProgress = null;
     }
   }
 
@@ -297,7 +300,9 @@
           <div
             class="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"
           ></div>
-          Uploading...
+          {uploadProgress === null
+            ? 'Uploading...'
+            : `Uploading ${Math.round(uploadProgress * 100)}%`}
         {:else}
           <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
@@ -699,7 +704,7 @@
     accept={`${ACCEPT_IMAGE},${ACCEPT_VIDEO},${ACCEPT_AUDIO}`}
     multiple
     onchange={handleFileSelect}
-    class="hidden"
+    class="sr-only"
   />
 </div>
 

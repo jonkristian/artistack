@@ -69,6 +69,8 @@
   let pendingFile = $state<File | null>(null);
   let originalFile = $state<File | null>(null);
   let uploading = $state(false);
+  /** 0–1 while a chunked upload is in flight; null when the size didn't need chunking. */
+  let uploadProgress = $state<number | null>(null);
   let isDragging = $state(false);
   let fileInput: HTMLInputElement;
 
@@ -139,7 +141,7 @@
    */
   async function uploadToLibrary(file: File): Promise<{ url: string; id: number } | null> {
     try {
-      const result = await uploadToServer(file);
+      const result = await uploadToServer(file, 'media', (f) => (uploadProgress = f));
       const added = await addMedia({
         filename: file.name,
         url: result.url,
@@ -195,6 +197,7 @@
       }
     } finally {
       uploading = false;
+      uploadProgress = null;
     }
   }
 
@@ -210,6 +213,7 @@
         if (added && onselect) onselect(added.url);
       } finally {
         uploading = false;
+        uploadProgress = null;
       }
       return;
     }
@@ -299,6 +303,7 @@
       toast.error(e instanceof Error ? e.message : 'Upload failed');
     } finally {
       uploading = false;
+      uploadProgress = null;
     }
   }
 
@@ -329,7 +334,7 @@
   type="file"
   accept={acceptAttr}
   {multiple}
-  class="hidden"
+  class="sr-only"
   bind:this={fileInput}
   onchange={handleInputChange}
 />
@@ -361,9 +366,16 @@
           class="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity hover:opacity-100"
         >
           {#if uploading}
-            <div
-              class="h-6 w-6 animate-spin rounded-full border-2 border-white/30 border-t-white"
-            ></div>
+            <div class="flex flex-col items-center gap-1.5">
+              <div
+                class="h-6 w-6 animate-spin rounded-full border-2 border-white/30 border-t-white"
+              ></div>
+              {#if uploadProgress !== null}
+                <span class="text-xs text-white tabular-nums"
+                  >{Math.round(uploadProgress * 100)}%</span
+                >
+              {/if}
+            </div>
           {:else}
             <div class="flex gap-2">
               <button
@@ -407,6 +419,11 @@
             <div
               class="h-8 w-8 animate-spin rounded-full border-2 border-gray-400 border-t-white"
             ></div>
+            {#if uploadProgress !== null}
+              <span class="mt-2 text-xs text-gray-300 tabular-nums"
+                >{Math.round(uploadProgress * 100)}%</span
+              >
+            {/if}
           {:else if isDragging}
             <svg
               class="mb-2 h-10 w-10 text-violet-400"

@@ -186,12 +186,14 @@
       </button>
     </div>
 
+    <!-- sr-only, not hidden: iOS Safari refuses to open the picker for an input
+         with display:none, so these must stay in the layout. -->
     <input
       bind:this={cameraInput}
       type="file"
       accept="video/*"
       capture="environment"
-      class="hidden"
+      class="sr-only"
       onchange={(e) => {
         handleFiles(e.currentTarget.files);
         e.currentTarget.value = '';
@@ -202,7 +204,7 @@
       type="file"
       accept="video/*,image/*,audio/*"
       multiple
-      class="hidden"
+      class="sr-only"
       onchange={(e) => {
         handleFiles(e.currentTarget.files);
         e.currentTarget.value = '';
