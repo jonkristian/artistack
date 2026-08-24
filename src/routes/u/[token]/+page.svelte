@@ -186,8 +186,10 @@
       </button>
     </div>
 
-    <!-- sr-only, not hidden: iOS Safari refuses to open the picker for an input
-         with display:none, so these must stay in the layout. -->
+    <!-- sr-only, not hidden. A display:none input ignores .click() in several
+         browsers — confirmed in Brave on Android, and long-standing in WebKit.
+         The page renders fine and the buttons simply do nothing, so this looks
+         like a dead page rather than a CSS problem. Keep them in the layout. -->
     <input
       bind:this={cameraInput}
       type="file"

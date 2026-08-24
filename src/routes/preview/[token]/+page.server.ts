@@ -58,7 +58,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
     postSheet: sheet.markdown,
     // Token-scoped rather than the permanent /uploads path, so what gets
     // unfurled into Discord expires with the link.
-    videoUrl: `${url.origin}/preview/${params.token}/video`,
+    videoUrl: `${url.origin}/preview/${params.token}/video.mp4`,
     posterUrl: clip.thumbnailUrl ? `${url.origin}${clip.thumbnailUrl}` : null,
     pageUrl: `${url.origin}/preview/${params.token}`,
     artistName: profileData?.name ?? settingsData?.siteTitle ?? 'Artist',

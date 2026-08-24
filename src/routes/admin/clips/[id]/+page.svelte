@@ -12,6 +12,7 @@
     DEFAULT_ADVANCED_CONFIG,
     ADVANCED_GROUPS,
     CLIP_PRESETS,
+    CLIP_STATUS_LABELS,
     type ClipRenderConfig,
     type ClipAdvancedConfig,
     type TimedCaption
@@ -193,6 +194,17 @@
     }
   ];
 
+  /** Dot colour per status, matching the pills on the clips overview. */
+  const STATUS_DOTS: Record<string, string> = {
+    draft: 'bg-gray-500',
+    rendered: 'bg-sky-400',
+    review: 'bg-amber-400',
+    approved: 'bg-emerald-400',
+    rejected: 'bg-red-400',
+    queued: 'bg-violet-400',
+    published: 'bg-gray-400'
+  };
+
   /** Branding elements, shown beside the render rather than under Look. */
   const BRANDING_OPTIONS: { key: keyof ClipRenderConfig; label: string; hint: string }[] = [
     { key: 'intro', label: 'Intro', hint: 'The graphic animates in over the opening.' },
@@ -299,8 +311,6 @@
 
   // --- review & release --------------------------------------------------
 
-  let previewLink = $state<string | null>(null);
-
   async function handleSendForReview() {
     const result = await sendForReview({
       projectId: selected.id,
@@ -310,7 +320,6 @@
       toast.error(result.error ?? 'Could not send for review');
       return;
     }
-    previewLink = result.previewUrl;
     await invalidateAll();
     // A webhook failure still leaves a usable preview link, so surface it as a
     // warning rather than swallowing it or calling the whole thing a failure.
@@ -328,7 +337,6 @@
   async function handlePreviewLink(rotate = false) {
     const fn = rotate ? resetPreviewLink : createPreviewLink;
     const result = await fn({ projectId: selected.id, origin: window.location.origin });
-    previewLink = result.url;
     navigator.clipboard.writeText(result.url);
     await invalidateAll();
     toast.success(rotate ? 'New link created and copied' : 'Preview link copied');
@@ -420,6 +428,20 @@
       />
     </svg>
     Save as default
+  </button>
+{/snippet}
+
+{#snippet linkAction(onclick: () => void, label: string, path: string)}
+  <button
+    type="button"
+    {onclick}
+    title={label}
+    aria-label={label}
+    class="shrink-0 rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
+  >
+    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={path} />
+    </svg>
   </button>
 {/snippet}
 
@@ -1175,6 +1197,16 @@
          idle clip is already served by the button in the empty state above. -->
     {#if outputMedia || isRendering || job?.status === 'failed'}
       <SectionCard>
+        <!-- Where the clip stands, stated once at the top. The review strip
+             below carries the decision; this just says what it is. -->
+        <div class="mb-3 flex items-center gap-2 text-sm">
+          <span
+            class="h-2 w-2 shrink-0 rounded-full {STATUS_DOTS[selected.status] ?? 'bg-gray-500'}"
+          ></span>
+          <span class="text-gray-300">{CLIP_STATUS_LABELS[selected.status] ?? selected.status}</span
+          >
+        </div>
+
         {#if job?.status === 'failed'}
           <div class="mb-4 rounded-lg border border-red-800/50 bg-red-950/40 p-3">
             <p class="text-sm font-medium text-red-300">Render failed</p>
@@ -1183,6 +1215,45 @@
           </div>
         {/if}
 
+        <!-- Rendering is the one thing you come here to do, so it gets the full
+             width; the rest are follow-ups and sit under it at normal weight. -->
+        <div class="space-y-2">
+          {#if isRendering}
+            <button
+              onclick={handleStop}
+              class="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-base text-gray-300 hover:bg-gray-700"
+            >
+              Cancel render
+            </button>
+          {:else}
+            <button
+              onclick={handleRender}
+              disabled={!data.renderingAvailable || sources.length === 0}
+              class="w-full rounded-lg bg-violet-600 px-4 py-3 text-base font-medium text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {outputMedia ? 'Render again' : 'Render clip'}
+            </button>
+          {/if}
+
+          {#if outputMedia}
+            <div class="flex gap-2">
+              <button
+                onclick={handleSendForReview}
+                class="flex-1 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700"
+              >
+                {selected.status === 'review' ? 'Re-send for review' : 'Send for review'}
+              </button>
+              <button
+                onclick={handlePostSheet}
+                title="The caption, tags and link to paste when posting"
+                class="flex-1 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700"
+              >
+                View post sheet
+              </button>
+            </div>
+          {/if}
+        </div>
+
         {#if selected.reviewNote}
           <p class="mb-4 rounded-lg border border-gray-800 bg-gray-950 p-3 text-sm text-gray-400">
             <span class="text-gray-500">Note:</span>
@@ -1190,108 +1261,56 @@
           </p>
         {/if}
 
-        <div class="flex flex-wrap items-center gap-2">
-          {#if isRendering}
-            <button
-              onclick={handleStop}
-              class="rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm text-gray-300 hover:bg-gray-700"
+        <!-- Shown whenever a token exists rather than revealed by a menu: the
+             link is a property of the clip, and copying it is the common act.
+             The actions sit inside the field so the whole thing reads as one
+             object — this is the share, and these are the things you do to it. -->
+        {#if selected.previewToken}
+          <div class="mt-3 flex items-center gap-1 rounded-lg bg-gray-950 py-1 pr-1 pl-3">
+            <a
+              href="/preview/{selected.previewToken}"
+              target="_blank"
+              rel="noreferrer"
+              class="min-w-0 flex-1 truncate py-1 text-xs text-violet-400 hover:text-violet-300"
             >
-              Cancel
-            </button>
-          {:else}
-            <button
-              onclick={handleRender}
-              disabled={!data.renderingAvailable || sources.length === 0}
-              class="rounded-lg bg-violet-600 px-5 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Render clip
-            </button>
-          {/if}
-
-          {#if outputMedia}
-            <button
-              onclick={handleSendForReview}
-              class="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700"
-            >
-              {selected.status === 'review' ? 'Re-send for review' : 'Send for review'}
-            </button>
-
-            <!-- A <details> rather than a component: no open state to track, no
-             window listener, and Escape/click-away come from the platform. -->
-            <details class="group relative ml-auto">
-              <summary
-                class="flex cursor-pointer list-none items-center gap-1.5 rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700"
+              /preview/{selected.previewToken}
+            </a>
+            {@render linkAction(
+              () => handlePreviewLink(false),
+              'Copy preview link',
+              'M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z'
+            )}
+            {@render linkAction(
+              () => handlePreviewLink(true),
+              'Invalidate this link and create a new one',
+              'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15'
+            )}
+            {#if outputMedia}
+              <a
+                href={outputMedia.url}
+                download
+                title="Download video"
+                aria-label="Download video"
+                class="shrink-0 rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
               >
-                Tools
-                <svg
-                  class="h-3 w-3 transition-transform group-open:rotate-180"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
                     stroke-width="2"
-                    d="M19 9l-7 7-7-7"
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
                   />
                 </svg>
-              </summary>
-              <div
-                class="absolute right-0 z-20 mt-1 w-48 rounded-lg border border-gray-700 bg-gray-900 p-1 shadow-xl"
-              >
-                <a
-                  href={outputMedia.url}
-                  download
-                  class="block rounded-md px-2 py-1.5 text-xs text-gray-300 hover:bg-gray-800 hover:text-white"
-                >
-                  Download video
-                </a>
-                <button
-                  onclick={handlePostSheet}
-                  class="block w-full rounded-md px-2 py-1.5 text-left text-xs text-gray-300 hover:bg-gray-800 hover:text-white"
-                >
-                  Post sheet
-                </button>
-                <button
-                  onclick={() => handlePreviewLink(false)}
-                  class="block w-full rounded-md px-2 py-1.5 text-left text-xs text-gray-300 hover:bg-gray-800 hover:text-white"
-                >
-                  Copy preview link
-                </button>
-                {#if selected.previewToken}
-                  <button
-                    onclick={() => handlePreviewLink(true)}
-                    title="Invalidate the old link and create a new one"
-                    class="block w-full rounded-md px-2 py-1.5 text-left text-xs text-gray-400 hover:bg-gray-800 hover:text-white"
-                  >
-                    New link
-                  </button>
-                {/if}
-              </div>
-            </details>
-          {/if}
-        </div>
-
-        {#if previewLink}
-          <p class="mb-4 truncate rounded-lg bg-gray-950 px-3 py-2 text-xs text-violet-400">
-            <a href={previewLink} target="_blank" rel="noreferrer">{previewLink}</a>
-          </p>
+              </a>
+            {/if}
+          </div>
         {/if}
 
         <!-- Its own strip rather than more buttons in the action row: this is a
              decision about the clip, not another thing you can do to it. -->
         {#if selected.status === 'review'}
           <div class="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-800 pt-4">
-            <span class="mr-1 flex items-center gap-2 text-sm text-amber-300">
-              <span class="relative flex h-2 w-2">
-                <span
-                  class="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-60"
-                ></span>
-                <span class="relative inline-flex h-2 w-2 rounded-full bg-amber-400"></span>
-              </span>
-              In review
-            </span>
+            <span class="mr-1 text-sm text-gray-400">Approve or reject:</span>
             <button
               onclick={() => handleDecision(true)}
               class="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-600"

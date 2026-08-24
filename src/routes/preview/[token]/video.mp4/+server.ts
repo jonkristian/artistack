@@ -50,8 +50,10 @@ export const GET: RequestHandler = async ({ params, request }) => {
     headers: {
       // Unlisted, like the preview page it belongs to.
       'X-Robots-Tag': 'noindex, nofollow',
-      // Private: it expires, so it must not be held by a shared cache.
-      'Cache-Control': 'private, max-age=600'
+      // Public so Discord's media proxy will fetch and embed it; short max-age
+      // because the link expires. The URL is unguessable, and the token check
+      // above is what actually gates access.
+      'Cache-Control': 'public, max-age=600'
     }
   });
 };

@@ -129,7 +129,7 @@ export async function submitForReview(
   // embed and a link as two separate blocks — so the clip goes in the message
   // itself and the detail stays in the embed. This is what the old n8n post did
   // with Seafile's `?raw=1`, minus the permanent share link.
-  const videoUrl = `${baseUrl.replace(/\/$/, '')}/preview/${token}/video`;
+  const videoUrl = `${baseUrl.replace(/\/$/, '')}/preview/${token}/video.mp4`;
 
   const payload: DiscordWebhookPayload = {
     username: 'Artistack Clips',
