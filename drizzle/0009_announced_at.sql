@@ -1,0 +1,1 @@
+ALTER TABLE `clip_projects` ADD `announced_at` integer;

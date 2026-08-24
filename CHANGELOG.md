@@ -5,6 +5,7 @@
 - Editors can now use Media and Clip Studio; appearance, integrations, settings and users stay admin-only
 - The admin menu only lists pages your role can actually open
 - Every admin action now checks your role when it runs, not just when the page loads
+- Release announcement to Discord once the platforms report, with a link to each post
 - Discord alert when a release doesn't reach every platform within half an hour
 - Fixed YouTube stats never refreshing on their own
 - Fixed media already in the press kit not being draggable into Clip Graphics

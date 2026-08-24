@@ -1,7 +1,11 @@
 import { json, error } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import { clipPosts, clipProjects } from '$lib/server/schema';
-import { verifyPublishSignature } from '$lib/server/clip-queue';
+import {
+  verifyPublishSignature,
+  announceRelease,
+  EXPECTED_PLATFORMS
+} from '$lib/server/clip-queue';
 import { eq, and } from 'drizzle-orm';
 import type { RequestHandler } from './$types';
 
@@ -20,7 +24,7 @@ import type { RequestHandler } from './$types';
  * One row per platform per clip — calling twice for the same platform updates
  * rather than accumulating, so a retry after a failure reads as fixed.
  */
-export const POST: RequestHandler = async ({ request, params }) => {
+export const POST: RequestHandler = async ({ request, params, url: requestUrl }) => {
   // Read the body as text: the signature covers the raw bytes, and parsing
   // first would verify a re-serialised string that may not match.
   const raw = await request.text();
@@ -66,6 +70,18 @@ export const POST: RequestHandler = async ({ request, params }) => {
     await db.update(clipPosts).set(values).where(eq(clipPosts.id, existing[0].id));
   } else {
     await db.insert(clipPosts).values({ projectId, platform, ...values });
+  }
+
+  // Announce as soon as the last platform reports, rather than on a timer — the
+  // channel gets one message with every link in it. announceRelease is a no-op
+  // until the full set has landed and after it has been announced once.
+  const landed = await db
+    .select({ status: clipPosts.status })
+    .from(clipPosts)
+    .where(eq(clipPosts.projectId, projectId));
+
+  if (landed.filter((p) => p.status !== 'failed').length >= EXPECTED_PLATFORMS) {
+    await announceRelease(projectId, requestUrl.origin);
   }
 
   return json({ success: true });

@@ -5,6 +5,7 @@ import { clipProjects, clipPosts, media, settings, type ClipProject, type Media 
 import { buildPostSheet } from './post-sheet';
 import { ensurePreviewToken, previewUrl } from './clip-review';
 import { tagsFor } from './tags';
+import { PLATFORM_NAMES } from '../clips/types';
 
 /**
  * Drip-release queue for approved clips.
@@ -263,30 +264,8 @@ export async function publishClip(
 
   await db.update(settings).set({ publishLastSent: new Date() }).where(eq(settings.id, config.id));
 
-  // Announced only after the webhook accepted it, so the channel never claims a
-  // release that didn't happen. Best-effort: a Discord outage must not fail a
-  // publish that already went through.
-  if (config.clipPublishedWebhookUrl) {
-    const announcement = {
-      username: 'Artistack Clips',
-      content: `**${project.name}** is out — ${sheet.ctaUrl}`,
-      embeds: [
-        {
-          title: project.name,
-          description: project.description?.trim() || undefined,
-          color: 0x22c55e,
-          image: output.thumbnailUrl ? { url: `${origin}${output.thumbnailUrl}` } : undefined,
-          footer: { text: 'Released from Artistack' },
-          timestamp: new Date().toISOString()
-        }
-      ]
-    };
-    await fetch(config.clipPublishedWebhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(announcement)
-    }).catch((e) => console.error('[ClipQueue] Published announcement failed:', e));
-  }
+  // The announcement waits for announceRelease(): at this point the webhook has
+  // only been accepted, so there are no platform links to put in it yet.
 
   return { success: true };
 }
@@ -343,7 +322,72 @@ const COVERAGE_GRACE_MINUTES = 30;
  * setting: it changes when the band adds a platform to the posting workflow,
  * which is a code change anyway, not something to tune from the admin.
  */
-const EXPECTED_PLATFORMS = 4;
+export const EXPECTED_PLATFORMS = 4;
+
+/**
+ * Announces a release to Discord, once, with the links it actually reached.
+ *
+ * Held until the platforms report rather than fired when the publish webhook is
+ * accepted: at that moment nothing has posted yet, so there is nothing to link
+ * to. Called from the callback the moment the last platform lands, and again
+ * from the coverage check after the grace period so a release that only made it
+ * to three platforms still gets announced with the three it has.
+ *
+ * A `draft` row is a file uploaded but not posted — TikTok, today — so it has no
+ * URL and reads as something for a human to finish, the same as in the editor.
+ */
+export async function announceRelease(projectId: number, baseUrl: string): Promise<void> {
+  const [config] = await db.select().from(settings).limit(1);
+  if (!config?.clipPublishedWebhookUrl) return;
+
+  const [project] = await db
+    .select()
+    .from(clipProjects)
+    .where(and(eq(clipProjects.id, projectId), isNull(clipProjects.announcedAt)))
+    .limit(1);
+  if (!project) return;
+
+  const posts = await db.select().from(clipPosts).where(eq(clipPosts.projectId, projectId));
+  const landed = posts.filter((p) => p.status !== 'failed');
+  if (landed.length === 0) return;
+
+  // Claim it before posting: the callback and the coverage tick can both arrive
+  // here, and a double announcement is worse than a missed one.
+  await db
+    .update(clipProjects)
+    .set({ announcedAt: new Date() })
+    .where(eq(clipProjects.id, projectId));
+
+  const origin = baseUrl.replace(/\/$/, '');
+  const [output] = project.outputMediaId
+    ? await db.select().from(media).where(eq(media.id, project.outputMediaId)).limit(1)
+    : [];
+
+  const lines = landed.map((p) => {
+    const name = PLATFORM_NAMES[p.platform] ?? p.platform;
+    if (p.status === 'draft') return `**${name}** — uploaded, post it by hand`;
+    return p.url ? `**${name}** — ${p.url}` : `**${name}** — live`;
+  });
+
+  await fetch(config.clipPublishedWebhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      username: 'Artistack Clips',
+      content: `**${project.name}** is out`,
+      embeds: [
+        {
+          title: project.name,
+          description: [project.description?.trim(), lines.join('\n')].filter(Boolean).join('\n\n'),
+          color: 0x22c55e,
+          image: output?.thumbnailUrl ? { url: `${origin}${output.thumbnailUrl}` } : undefined,
+          footer: { text: 'Released from Artistack' },
+          timestamp: new Date().toISOString()
+        }
+      ]
+    })
+  }).catch((e) => console.error('[ClipQueue] Release announcement failed:', e));
+}
 
 /**
  * Alerts when a published clip didn't reach the platforms it should have.
@@ -390,6 +434,10 @@ export async function checkPublishCoverage(baseUrl: string): Promise<void> {
       .select({ platform: clipPosts.platform, status: clipPosts.status })
       .from(clipPosts)
       .where(eq(clipPosts.projectId, project.id));
+
+    // Past the grace period, so this is as complete as the release is going to
+    // get. Announce what did land before deciding whether to raise the alarm.
+    await announceRelease(project.id, baseUrl);
 
     const failed = posts.filter((p) => p.status === 'failed');
     const reached = posts.filter((p) => p.status !== 'failed');

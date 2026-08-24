@@ -329,6 +329,8 @@ export const clipProjects = sqliteTable('clip_projects', {
   previewExpiresAt: integer('preview_expires_at', { mode: 'timestamp' }),
   /** Set when a coverage alert fired, so it fires once per clip. */
   publishAlertSentAt: integer('publish_alert_sent_at', { mode: 'timestamp' }),
+  /** Set when the release has been announced, so it's announced exactly once. */
+  announcedAt: integer('announced_at', { mode: 'timestamp' }),
   reviewNote: text('review_note'), // why it was rejected, or a note on approval
   reviewedAt: integer('reviewed_at', { mode: 'timestamp' }),
 

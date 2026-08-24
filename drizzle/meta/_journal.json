@@ -64,6 +64,13 @@
       "when": 1787585236710,
       "tag": "0008_drop_expected_platforms",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1787585912735,
+      "tag": "0009_announced_at",
+      "breakpoints": true
     }
   ]
 }
