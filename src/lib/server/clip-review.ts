@@ -23,6 +23,15 @@ const EMBED_COLOR = 0x8b5cf6;
  * Generated lazily so a clip that has never been shared has no reachable URL —
  * there's nothing to guess and nothing to leak.
  */
+/** How long a preview link stays valid after it's issued or refreshed. */
+export const PREVIEW_TTL_DAYS = 7;
+
+function previewExpiry(): Date {
+  const d = new Date();
+  d.setDate(d.getDate() + PREVIEW_TTL_DAYS);
+  return d;
+}
+
 export async function ensurePreviewToken(projectId: number): Promise<string> {
   const [project] = await db
     .select({ previewToken: clipProjects.previewToken })
@@ -31,14 +40,23 @@ export async function ensurePreviewToken(projectId: number): Promise<string> {
     .limit(1);
 
   if (!project) throw new Error('Clip project not found');
-  if (project.previewToken) return project.previewToken;
+
+  // An existing token gets its window extended rather than replaced — the link
+  // already in Discord keeps working, it just doesn't expire mid-review.
+  if (project.previewToken) {
+    await db
+      .update(clipProjects)
+      .set({ previewExpiresAt: previewExpiry() })
+      .where(eq(clipProjects.id, projectId));
+    return project.previewToken;
+  }
 
   // 24 bytes of CSPRNG output, url-safe. Long enough that guessing is hopeless.
   const token = randomBytes(24).toString('base64url');
 
   await db
     .update(clipProjects)
-    .set({ previewToken: token, updatedAt: new Date() })
+    .set({ previewToken: token, previewExpiresAt: previewExpiry(), updatedAt: new Date() })
     .where(eq(clipProjects.id, projectId));
 
   return token;
@@ -49,7 +67,7 @@ export async function rotatePreviewToken(projectId: number): Promise<string> {
   const token = randomBytes(24).toString('base64url');
   await db
     .update(clipProjects)
-    .set({ previewToken: token, updatedAt: new Date() })
+    .set({ previewToken: token, previewExpiresAt: previewExpiry(), updatedAt: new Date() })
     .where(eq(clipProjects.id, projectId));
   return token;
 }
@@ -91,9 +109,11 @@ export async function submitForReview(
 
   const [settingsData] = await db.select().from(settings).limit(1);
 
-  // Discord is optional: the preview link is the deliverable, and a site with
-  // no webhook configured should still be able to share one.
-  if (!settingsData?.discordEnabled || !settingsData.discordWebhookUrl) {
+  // Reviews go to their own channel when one is configured, falling back to the
+  // general webhook. Discord is optional either way: the preview link is the
+  // deliverable, and a site with no webhook should still be able to share one.
+  const webhookUrl = settingsData?.discordClipsWebhookUrl || settingsData?.discordWebhookUrl;
+  if (!settingsData?.discordEnabled || !webhookUrl) {
     return { success: true, previewUrl: url };
   }
 
@@ -105,8 +125,15 @@ export async function submitForReview(
 
   const sheet = await buildPostSheet(projectId, baseUrl);
 
+  // Discord renders a player from a bare video URL in `content`, but shows an
+  // embed and a link as two separate blocks — so the clip goes in the message
+  // itself and the detail stays in the embed. This is what the old n8n post did
+  // with Seafile's `?raw=1`, minus the permanent share link.
+  const videoUrl = `${baseUrl.replace(/\/$/, '')}/preview/${token}/video`;
+
   const payload: DiscordWebhookPayload = {
     username: 'Artistack Clips',
+    content: videoUrl,
     embeds: [
       {
         title: `Review: ${project.name}`,
@@ -141,7 +168,7 @@ export async function submitForReview(
   };
 
   try {
-    const response = await fetch(settingsData.discordWebhookUrl, {
+    const response = await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)

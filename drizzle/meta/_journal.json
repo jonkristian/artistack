@@ -15,6 +15,27 @@
       "when": 1787476370921,
       "tag": "0001_clips_and_tags",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1787566934714,
+      "tag": "0002_clips_discord_webhook",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1787567690186,
+      "tag": "0003_clip_posts",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1787570396597,
+      "tag": "0004_preview_expiry",
+      "breakpoints": true
     }
   ]
 }

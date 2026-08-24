@@ -3,6 +3,7 @@
   import { ImageModal, type Shape } from '$lib/components/dialogs';
   import { addMedia } from '../../../routes/admin/media/data.remote';
   import { invalidateAll } from '$app/navigation';
+  import { toast } from '$lib/stores/toast.svelte';
   import {
     uploadFile as uploadToServer,
     isVideoFile,
@@ -154,7 +155,7 @@
       await invalidateAll();
       return { url: result.url, id: added.media.id };
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Upload failed');
+      toast.error(e instanceof Error ? e.message : 'Upload failed');
       return null;
     }
   }
@@ -173,7 +174,7 @@
     const skipped = files.length - accepted.length;
 
     if (skipped > 0) {
-      alert(
+      toast.error(
         `${skipped} file${skipped > 1 ? 's were' : ' was'} skipped — this picker only takes ${kindLabel} files.`
       );
     }
@@ -295,7 +296,7 @@
       const { url } = await uploadToServer(croppedFile, 'cropped');
       if (onselect) onselect(url, selectedShape);
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Upload failed');
+      toast.error(e instanceof Error ? e.message : 'Upload failed');
     } finally {
       uploading = false;
     }

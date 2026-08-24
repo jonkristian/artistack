@@ -1,0 +1,1 @@
+ALTER TABLE `settings` ADD `discord_clips_webhook_url` text;

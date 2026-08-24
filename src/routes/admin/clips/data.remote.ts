@@ -7,6 +7,7 @@ import { resolveTags, setTags, clearTags, pruneOrphanTags, listTags } from '$lib
 import {
   clipProjects,
   clipSources,
+  clipPosts,
   renderJobs,
   uploadSessions,
   media,
@@ -241,6 +242,7 @@ export const deleteProject = command(v.number(), async (id) => {
   // expired, and finalizeSessionUpload would keep filing sources against a
   // project that no longer exists.
   await db.delete(uploadSessions).where(eq(uploadSessions.projectId, id));
+  await db.delete(clipPosts).where(eq(clipPosts.projectId, id));
   await clearTags('clip', id);
   await db.delete(clipProjects).where(eq(clipProjects.id, id));
   await pruneOrphanTags();

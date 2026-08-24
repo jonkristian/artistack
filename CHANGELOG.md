@@ -7,7 +7,11 @@
 - Look presets with preview stills rendered from your own footage
 - Clip graphics: designate logos in Media, then pick or randomise one per clip
 - Review flow with shareable preview links and Discord notifications
+- Clip reviews can post to their own Discord channel, apart from the stats reports
 - Release queue with scheduled publishing over a signed webhook
+- Published clips report back where they landed, per platform, with links to the posts
+- Clip reviews posted to Discord play the video inline instead of linking to it
+- Preview links expire after a week, refreshed each time a clip is sent for review
 - Post sheet generated per clip for posting, as markdown with frontmatter
 - Campaign links (`/c/<slug>`) so Stats attributes traffic to the clip that drove it
 - Global tags shared between clips and media, with autocomplete
@@ -15,10 +19,17 @@
 - Re-rendering a clip replaces the previous render instead of accumulating files
 - Default tags and description saved once and applied to every new clip
 - Fixed tour date and link dialogs locking the page on save
+- Fixed intro, outro and watermark toggles being hidden when no clip graphic was designated
 - Fixed Norwegian characters being dropped from slugs (Tromsø, Blåbær)
+- Fixed the build failing when `data/` doesn't exist yet
+- Clips no longer fall back to the site favicon when no graphic is designated
+- Uploads rejected for size now say so, instead of failing with no explanation
+- Browser alerts replaced with toasts
 - Database migrations replace `drizzle-kit push`, which hung TTY-less deploys
 - SQLite runs in WAL mode, tuned for network-attached storage
 - `nixpacks.toml` installs ffmpeg, fontconfig and fonts so renders work in production
+- Health endpoint at `/healthz` for container orchestration
+- Signing secret can be generated in place rather than pasted in
 - Shared admin components for toggles, selection, tag input and media drop zones
 
 # 1.0.0 (15-03-2026)

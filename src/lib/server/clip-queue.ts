@@ -1,4 +1,4 @@
-import { createHmac } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { eq, asc, desc, and, isNotNull } from 'drizzle-orm';
 import { db } from './db';
 import { clipProjects, media, settings, type ClipProject, type Media } from './schema';
@@ -18,6 +18,28 @@ import { tagsFor } from './tags';
  * consumer (n8n today) does, because app review with Meta and TikTok is
  * required either way and doesn't get cheaper by moving the code in here.
  */
+
+/**
+ * Checks an inbound callback really came from the workflow we sent the clip to.
+ *
+ * Sits beside the signing above deliberately: both sides use `publish_secret`
+ * and the same `sha256=<hex>` shape over the raw body, and splitting them is
+ * how they drift apart. Returns false when no secret is configured — an
+ * unauthenticated write path is worse than a missing feature.
+ */
+export async function verifyPublishSignature(
+  rawBody: string,
+  header: string | null
+): Promise<boolean> {
+  const [config] = await db.select().from(settings).limit(1);
+  if (!config?.publishSecret || !header) return false;
+
+  const expected =
+    'sha256=' + createHmac('sha256', config.publishSecret).update(rawBody).digest('hex');
+  const a = Buffer.from(header);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 export interface QueueEntry {
   project: ClipProject;

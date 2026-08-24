@@ -26,6 +26,13 @@ export const load: PageServerLoad = async ({ params, url }) => {
     throw error(404, 'Not found');
   }
 
+  // Expired links stop working on their own. 410 rather than 404 because the
+  // holder already knows the clip existed — telling them it has lapsed is more
+  // useful than pretending it never was.
+  if (project.previewExpiresAt && project.previewExpiresAt.getTime() < Date.now()) {
+    throw error(410, 'This preview link has expired');
+  }
+
   const [clip] = await db.select().from(media).where(eq(media.id, project.outputMediaId)).limit(1);
 
   if (!clip) throw error(404, 'Not found');
@@ -49,6 +56,11 @@ export const load: PageServerLoad = async ({ params, url }) => {
       status: project.status
     },
     postSheet: sheet.markdown,
+    // Token-scoped rather than the permanent /uploads path, so what gets
+    // unfurled into Discord expires with the link.
+    videoUrl: `${url.origin}/preview/${params.token}/video`,
+    posterUrl: clip.thumbnailUrl ? `${url.origin}${clip.thumbnailUrl}` : null,
+    pageUrl: `${url.origin}/preview/${params.token}`,
     artistName: profileData?.name ?? settingsData?.siteTitle ?? 'Artist',
     accentColor: settingsData?.colorAccent ?? '#8b5cf6'
   };

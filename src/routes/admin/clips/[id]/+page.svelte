@@ -768,10 +768,6 @@
 
       <!-- Look -->
       <SectionCard title="Look">
-        <p class="mb-3 text-xs text-gray-500">
-          A preset sets the creative options below. Sources, text and music are left alone, so you
-          can try one without losing your setup.
-        </p>
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {#each CLIP_PRESETS as preset (preset.id)}
             <button
@@ -1134,17 +1130,12 @@
         </span>
       {/snippet}
 
-      {#if data.graphics.length === 0}
-        <p class="text-sm text-gray-500">
-          No clip graphics yet — designate some in
-          <a href="/admin/media" class="text-violet-400 hover:text-violet-300">Media</a>. Until then
-          clips fall back to the site favicon, which is square and sized for 16px, so it won't look
-          right as an intro graphic.
-        </p>
-      {:else}
-        <!-- Graphic and placements on one row: which mark, and where it lands,
-             is a single decision in practice. -->
-        <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
+      <!-- Graphic and placements on one row: which mark, and where it lands,
+           is a single decision in practice. The toggles stay available with no
+           graphic designated — they're what says whether these stages run at
+           all, so hiding them made the setting unreachable. -->
+      <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
+        {#if data.graphics.length > 0}
           <div class="w-48 shrink-0">
             <ImageSelect
               value={config.randomGraphics ? 'random' : String(config.graphicMediaId ?? '')}
@@ -1157,19 +1148,26 @@
                 )}
             />
           </div>
+        {/if}
 
-          {#each BRANDING_OPTIONS as option (option.key)}
-            <label class="flex items-center gap-2 text-sm text-gray-300" title={option.hint}>
-              <input
-                type="checkbox"
-                checked={config[option.key] as boolean}
-                onchange={(e) => patchConfig({ [option.key]: e.currentTarget.checked } as never)}
-                class="rounded border-gray-600 bg-gray-700 text-violet-500"
-              />
-              {option.label}
-            </label>
-          {/each}
-        </div>
+        {#each BRANDING_OPTIONS as option (option.key)}
+          <label class="flex items-center gap-2 text-sm text-gray-300" title={option.hint}>
+            <input
+              type="checkbox"
+              checked={config[option.key] as boolean}
+              onchange={(e) => patchConfig({ [option.key]: e.currentTarget.checked } as never)}
+              class="rounded border-gray-600 bg-gray-700 text-violet-500"
+            />
+            {option.label}
+          </label>
+        {/each}
+      </div>
+
+      {#if data.graphics.length === 0}
+        <p class="mt-3 text-sm text-gray-500">
+          No clip graphics designated, so these render without a mark. Add some in
+          <a href="/admin/media" class="text-violet-400 hover:text-violet-300">Media</a>.
+        </p>
       {/if}
     </SectionCard>
 
@@ -1352,6 +1350,37 @@
           <p class="text-xs text-gray-500">
             Published {new Date(selected.publishedAt).toLocaleString()}
           </p>
+        {/if}
+
+        <!-- Where it actually landed. Reported back by the publishing workflow,
+             so this is empty until something calls the callback — "published"
+             on its own only means the webhook was accepted. -->
+        {#if data.posts.length > 0}
+          <ul class="mt-3 space-y-1.5 border-t border-gray-800 pt-3">
+            {#each data.posts as post (post.id)}
+              <li class="flex items-center gap-2 text-xs">
+                <span
+                  class="rounded px-1.5 py-0.5 font-medium {post.status === 'live'
+                    ? 'bg-emerald-900 text-emerald-300'
+                    : 'bg-red-900 text-red-300'}"
+                >
+                  {post.status === 'live' ? 'Live' : 'Failed'}
+                </span>
+                <span class="text-gray-300 capitalize">{post.platform}</span>
+                {#if post.url}
+                  <a
+                    href={post.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    class="truncate text-violet-400 hover:text-violet-300">View post</a
+                  >
+                {/if}
+                {#if post.error}
+                  <span class="truncate text-red-400/80" title={post.error}>{post.error}</span>
+                {/if}
+              </li>
+            {/each}
+          </ul>
         {/if}
       </SectionCard>
     {/if}

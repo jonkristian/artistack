@@ -1,0 +1,1 @@
+ALTER TABLE `clip_projects` ADD `preview_expires_at` integer;

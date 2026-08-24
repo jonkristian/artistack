@@ -38,6 +38,7 @@ const googleConfigSchema = v.object({
 // Discord settings
 const discordSettingsSchema = v.object({
   discordWebhookUrl: v.nullable(v.pipe(v.string(), v.url('Invalid webhook URL'))),
+  discordClipsWebhookUrl: v.optional(v.nullable(v.pipe(v.string(), v.url('Invalid webhook URL')))),
   discordEnabled: v.boolean(),
   discordSchedule: v.picklist(['daily', 'weekly', 'monthly']),
   discordScheduleDay: v.pipe(v.number(), v.minValue(0), v.maxValue(31)),
@@ -149,6 +150,7 @@ export const updateDiscordSettings = command(discordSettingsSchema, async (data)
     .update(settings)
     .set({
       discordWebhookUrl: data.discordWebhookUrl,
+      discordClipsWebhookUrl: data.discordClipsWebhookUrl ?? null,
       discordEnabled: data.discordEnabled,
       discordSchedule: data.discordSchedule,
       discordScheduleDay: data.discordScheduleDay,

@@ -265,7 +265,6 @@ async function buildRenderInput(projectId: number) {
   // Resolve every referenced media row in one query.
   const referencedIds = [
     ...sourceRows.map((s) => s.mediaId),
-    ...(config.logoMediaId ? [config.logoMediaId] : []),
     ...(config.musicMediaId ? [config.musicMediaId] : [])
   ];
   const mediaRows = await db.select().from(media).where(inArray(media.id, referencedIds));
@@ -292,21 +291,15 @@ async function buildRenderInput(projectId: number) {
     siteSettings?.defaultClipGraphicMediaId ?? null
   );
 
-  // One graphic serves all three placements, rasterised at each size. Falling
-  // back to the site favicon is a poor last resort — it's square and sized to
-  // read at 16px — but better than rendering an unbranded clip.
+  // One graphic serves all three placements, rasterised at each size. No
+  // designated graphic means no intro, watermark or outro — the renderer skips
+  // each placement whose path is null. There is deliberately no fallback: a
+  // favicon is sized to read at 16px, and silently blowing it up to 650px
+  // produced branding nobody asked for and couldn't turn off.
   let graphicPath: string | null = null;
   if (graphicId) {
     const [item] = await db.select().from(media).where(eq(media.id, graphicId)).limit(1);
     if (item) graphicPath = mediaPath(item.url);
-  }
-  if (!graphicPath) {
-    const legacy = config.logoMediaId ? byId.get(config.logoMediaId) : undefined;
-    graphicPath = legacy
-      ? mediaPath(legacy.url)
-      : siteSettings?.faviconUrl
-        ? mediaPath(siteSettings.faviconUrl)
-        : null;
   }
 
   const musicItem = config.musicMediaId ? byId.get(config.musicMediaId) : undefined;

@@ -1,6 +1,13 @@
 import { error, redirect } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
-import { clipProjects, clipSources, renderJobs, media, settings } from '$lib/server/schema';
+import {
+  clipProjects,
+  clipSources,
+  clipPosts,
+  renderJobs,
+  media,
+  settings
+} from '$lib/server/schema';
 import { user } from '$lib/server/auth-schema';
 import { auth } from '$lib/server/auth';
 import { desc, eq, asc } from 'drizzle-orm';
@@ -50,8 +57,15 @@ export const load: PageServerLoad = async ({ request, params }) => {
   const designatedIds = (siteSettings.clipGraphicsMediaIds ?? []) as number[];
   const designatedGraphics = allMedia.filter((m) => designatedIds.includes(m.id));
 
+  const posts = await db
+    .select()
+    .from(clipPosts)
+    .where(eq(clipPosts.projectId, id))
+    .orderBy(asc(clipPosts.platform));
+
   return {
     project,
+    posts,
     tags: (await tagsFor('clip', project.id)).map((t) => t.name),
     // The whole vocabulary, for the tag input's autocomplete.
     allTags: (await listTags()).map((t) => t.name),

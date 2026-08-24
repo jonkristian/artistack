@@ -88,6 +88,25 @@ export function formatDuration(ms: number | null | undefined): string {
  * Uploads a file and returns its stored URLs and metadata.
  * Throws with the server's message when the upload is rejected.
  */
+/**
+ * Turns a failed upload response into something worth showing.
+ *
+ * A 413 comes from adapter-node's BODY_SIZE_LIMIT and carries no body at all,
+ * so the old `body.message || 'Upload failed'` produced a bare string with
+ * nothing to act on — and it looks identical to every other failure. The server
+ * limit is the one an operator has to fix, so it says so.
+ */
+async function uploadError(res: Response): Promise<Error> {
+  const body = await res.json().catch(() => ({}) as { message?: string });
+  if (body.message) return new Error(body.message);
+  if (res.status === 413) {
+    return new Error(
+      'File is larger than the server accepts. Raise BODY_SIZE_LIMIT on the deployment.'
+    );
+  }
+  return new Error(`Upload failed (HTTP ${res.status})`);
+}
+
 export async function uploadFile(file: File, type = 'media'): Promise<UploadResult> {
   if (isStreamedFile(file)) {
     // Raw body, so the server can stream it to disk without buffering.
@@ -96,7 +115,7 @@ export async function uploadFile(file: File, type = 'media'): Promise<UploadResu
       headers: { 'Content-Type': file.type || 'application/octet-stream' },
       body: file
     });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message || 'Upload failed');
+    if (!res.ok) throw await uploadError(res);
     return res.json();
   }
 
@@ -105,6 +124,6 @@ export async function uploadFile(file: File, type = 'media'): Promise<UploadResu
   formData.append('type', type);
 
   const res = await fetch('/api/upload', { method: 'POST', body: formData });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message || 'Upload failed');
+  if (!res.ok) throw await uploadError(res);
   return res.json();
 }

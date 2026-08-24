@@ -95,6 +95,13 @@ export const settings = sqliteTable('settings', {
   // Discord Integration
   discordWebhookUrl: text('discord_webhook_url'),
   discordEnabled: integer('discord_enabled', { mode: 'boolean' }).default(false),
+  /**
+   * Where clip review requests go. Falls back to discordWebhookUrl when unset,
+   * so an existing setup keeps working — but the two want separating in
+   * practice: stats reports are a monthly skim, a review needs someone to act
+   * on it today, and they belong in different channels.
+   */
+  discordClipsWebhookUrl: text('discord_clips_webhook_url'),
   discordSchedule: text('discord_schedule').default('weekly'), // 'daily', 'weekly', 'monthly'
   discordScheduleDay: integer('discord_schedule_day').default(1), // 0-6 for weekly (Monday=1), 1-31 for monthly
   discordScheduleTime: text('discord_schedule_time').default('09:00'), // HH:MM
@@ -257,6 +264,36 @@ export const taggings = sqliteTable(
   ]
 );
 
+/**
+ * Where a published clip actually landed, one row per platform.
+ *
+ * Written by the publishing workflow calling back after it posts, not by
+ * Artistack — it never holds a platform credential. Without this, "published"
+ * only ever meant "the webhook returned 200", and nothing here could answer
+ * where a clip went or whether a platform rejected it.
+ *
+ * `platform` is free text rather than an enum so a new target can be reported
+ * without a migration.
+ */
+export const clipPosts = sqliteTable(
+  'clip_posts',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    projectId: integer('project_id').notNull(),
+    platform: text('platform').notNull(),
+    status: text('status').$type<'live' | 'failed'>().notNull(),
+    /** Public URL of the post, when the platform gives one back. */
+    url: text('url'),
+    error: text('error'),
+    postedAt: integer('posted_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
+  },
+  (table) => [
+    // One row per platform per clip; a retry updates rather than accumulates.
+    uniqueIndex('clip_posts_unique_idx').on(table.projectId, table.platform),
+    index('clip_posts_project_idx').on(table.projectId)
+  ]
+);
+
 // A clip project: the render recipe. Sources live in clipSources, and each
 // render attempt is a row in renderJobs, so a project keeps its history.
 export const clipProjects = sqliteTable('clip_projects', {
@@ -279,6 +316,11 @@ export const clipProjects = sqliteTable('clip_projects', {
    * a clip that's never been sent out has no reachable URL at all.
    */
   previewToken: text('preview_token').unique(),
+  /**
+   * When the preview link stops working. Set on every send-for-review, so a
+   * clip that goes round again gets a fresh window rather than a dead link.
+   */
+  previewExpiresAt: integer('preview_expires_at', { mode: 'timestamp' }),
   reviewNote: text('review_note'), // why it was rejected, or a note on approval
   reviewedAt: integer('reviewed_at', { mode: 'timestamp' }),
 

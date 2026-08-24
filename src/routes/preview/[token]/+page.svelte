@@ -26,6 +26,30 @@
   <title>{data.project.name} — {data.artistName}</title>
   <!-- Unlisted: keep it out of search results even if the link gets shared on. -->
   <meta name="robots" content="noindex, nofollow" />
+
+  <!--
+    Discord, Slack and iMessage render a playable video from these rather than a
+    bare link. og:video must point at the file itself, not the page, and the
+    dimensions are what stop the player being letterboxed into a 16:9 box.
+  -->
+  <meta property="og:type" content="video.other" />
+  <meta property="og:site_name" content={data.artistName} />
+  <meta property="og:title" content={data.project.name} />
+  <meta property="og:url" content={data.pageUrl} />
+  {#if data.project.description}
+    <meta property="og:description" content={data.project.description} />
+  {/if}
+  {#if data.posterUrl}
+    <meta property="og:image" content={data.posterUrl} />
+  {/if}
+  <meta property="og:video" content={data.videoUrl} />
+  <meta property="og:video:secure_url" content={data.videoUrl} />
+  <meta property="og:video:type" content="video/mp4" />
+  {#if data.clip.width && data.clip.height}
+    <meta property="og:video:width" content={String(data.clip.width)} />
+    <meta property="og:video:height" content={String(data.clip.height)} />
+  {/if}
+  <meta name="twitter:card" content="player" />
 </svelte:head>
 
 <div class="min-h-screen bg-gray-950 px-4 py-10 text-gray-100">

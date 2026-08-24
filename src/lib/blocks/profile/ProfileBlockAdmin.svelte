@@ -4,6 +4,7 @@
   import { getTempId } from '$lib/stores/pageDraft.svelte';
   import { socialIcons } from '$lib/blocks/utils';
   import RichTextEditor from '$lib/components/ui/RichTextEditor.svelte';
+  import { toast } from '$lib/stores/toast.svelte';
 
   let {
     block,
@@ -65,7 +66,7 @@
     if (!newSocialUrl.trim()) return;
     const platform = detectSocialPlatform(newSocialUrl);
     if (!platform) {
-      alert('Please enter a valid URL');
+      toast.error('Please enter a valid URL');
       return;
     }
 

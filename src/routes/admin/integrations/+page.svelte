@@ -30,6 +30,7 @@
 
   // Discord settings state
   let discordWebhookUrl = $state('');
+  let discordClipsWebhookUrl = $state('');
   let discordEnabled = $state(false);
   let discordSchedule = $state<'daily' | 'weekly' | 'monthly'>('weekly');
   let discordScheduleDay = $state(1);
@@ -41,6 +42,20 @@
   let publishIntervalDays = $state(3);
   let publishHour = $state(10);
   let publishSecret = $state('');
+
+  /**
+   * Shown rather than masked once generated: it has to be copied into whatever
+   * receives the webhook, and a secret you can't read is a secret you'll
+   * regenerate. 32 bytes of CSPRNG output, url-safe so it survives being pasted
+   * into a header or an env var.
+   */
+  function generatePublishSecret() {
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    publishSecret = btoa(String.fromCharCode(...bytes))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+  }
   let savingPublish = $state(false);
   let publishResult = $state<{ success: boolean; message: string } | null>(null);
 
@@ -68,6 +83,7 @@
     if (data.settings && data.settings.id !== syncedSettingsId) {
       syncedSettingsId = data.settings.id;
       discordWebhookUrl = data.settings.discordWebhookUrl ?? '';
+      discordClipsWebhookUrl = data.settings.discordClipsWebhookUrl ?? '';
       discordEnabled = data.settings.discordEnabled ?? false;
       discordSchedule =
         (data.settings.discordSchedule as 'daily' | 'weekly' | 'monthly') ?? 'weekly';
@@ -156,6 +172,7 @@
     try {
       await updateDiscordSettings({
         discordWebhookUrl: discordWebhookUrl || null,
+        discordClipsWebhookUrl: discordClipsWebhookUrl || null,
         discordEnabled,
         discordSchedule,
         discordScheduleDay,
@@ -388,6 +405,24 @@
             placeholder="https://discord.com/api/webhooks/..."
             class={fieldClass}
           />
+          <p class="mt-1 text-xs text-gray-600">Scheduled stats reports go here.</p>
+        </div>
+
+        <div>
+          <label for="discordClipsWebhook" class="mb-1 block text-xs text-gray-500">
+            Clip review webhook URL
+          </label>
+          <input
+            id="discordClipsWebhook"
+            type="url"
+            bind:value={discordClipsWebhookUrl}
+            placeholder="Leave empty to use the webhook above"
+            class={fieldClass}
+          />
+          <p class="mt-1 text-xs text-gray-600">
+            A review needs someone to act on it today; a stats report is a monthly skim. Point them
+            at different channels.
+          </p>
         </div>
 
         <label class="flex items-center justify-between">
@@ -770,12 +805,21 @@
                 />
               </div>
               <div>
-                <label class={labelClass} for="publish-secret"> Signing secret </label>
+                <div class="mb-1 flex items-center justify-between gap-2">
+                  <label class="text-sm text-gray-400" for="publish-secret">Signing secret</label>
+                  <button
+                    type="button"
+                    onclick={generatePublishSecret}
+                    class="text-xs text-violet-400 hover:text-violet-300"
+                  >
+                    Generate
+                  </button>
+                </div>
                 <input
                   id="publish-secret"
-                  type="password"
+                  type={publishSecret ? 'text' : 'password'}
                   bind:value={publishSecret}
-                  placeholder="optional"
+                  placeholder="recommended"
                   class={fieldClass}
                 />
               </div>
@@ -805,7 +849,9 @@
             <p class="text-xs text-gray-600">
               A signing secret is sent as an
               <code class="text-gray-500">X-Artistack-Signature</code>
-              header (HMAC-SHA256 of the body), so the receiver can verify the call came from here.
+              header (HMAC-SHA256 of the body), so the receiver can verify the call came from here. It
+              also authenticates the callback the receiver makes to report where a clip was published
+              — without a secret set, that callback is rejected.
             </p>
           </div>
         {/if}
