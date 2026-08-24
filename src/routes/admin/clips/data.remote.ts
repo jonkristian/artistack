@@ -477,6 +477,35 @@ export const setQueueGap = command(
   }
 );
 
+/**
+ * Pins a queued clip to a date, or clears the pin and hands it back to the drip.
+ *
+ * Arrives as a `datetime-local` string, which carries no zone — it means the
+ * wall clock the admin was looking at, so it's parsed as local time, which is
+ * also the zone the release tick runs in.
+ */
+export const setScheduledDate = command(
+  v.object({ projectId: v.number(), when: v.nullable(v.string()) }),
+  async ({ projectId, when }) => {
+    await requireUser();
+
+    let scheduledFor: Date | null = null;
+    if (when) {
+      scheduledFor = new Date(when);
+      if (Number.isNaN(scheduledFor.getTime())) {
+        return { success: false, error: 'That date could not be read' };
+      }
+    }
+
+    await db
+      .update(clipProjects)
+      .set({ scheduledFor, updatedAt: new Date() })
+      .where(eq(clipProjects.id, projectId));
+
+    return { success: true };
+  }
+);
+
 /** Releases a clip immediately, ahead of its slot. */
 export const publishNow = command(
   v.object({ projectId: v.number(), origin: v.string() }),

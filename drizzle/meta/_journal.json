@@ -71,6 +71,13 @@
       "when": 1787585912735,
       "tag": "0009_announced_at",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1787595437230,
+      "tag": "0010_scheduled_release",
+      "breakpoints": true
     }
   ]
 }

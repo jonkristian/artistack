@@ -4,7 +4,7 @@
   import MediaPicker from '$lib/components/ui/MediaPicker.svelte';
   import { ImageSelect, SortableList, TagInput, ToggleSwitch } from '$lib/components/ui';
   import { SectionCard } from '$lib/components/cards';
-  import { PhoneUploadDialog } from '$lib/components/dialogs';
+  import { PhoneUploadDialog, QueueClipDialog } from '$lib/components/dialogs';
   import { formatDuration } from '$lib/utils/upload';
   import { fieldClass, labelClass, numberClass } from '$lib/utils/classes';
   import {
@@ -40,6 +40,7 @@
     addToQueue,
     removeFromQueue,
     setQueueGap,
+    setScheduledDate,
     publishNow
   } from '../data.remote';
 
@@ -76,6 +77,14 @@
   }
 
   const isRendering = $derived(job?.status === 'queued' || job?.status === 'rendering');
+
+  /**
+   * One forward action per stage. Review is only meaningful before a clip is
+   * approved — offering it on something already queued or published invited
+   * sending a released clip back for approval, which means nothing.
+   */
+  const canSendForReview = $derived(!['approved', 'queued', 'published'].includes(selected.status));
+  const canSchedule = $derived(selected.status === 'approved');
   const outputMedia = $derived(
     selected.outputMediaId ? mediaById.get(selected.outputMediaId) : undefined
   );
@@ -164,8 +173,6 @@
   /**
    * The Look grid. Labels say what you'd see rather than what the field is
    * called: "Caption box" described the ASS border style, not the effect.
-   * Branding (intro/outro/end card/watermark) deliberately isn't here — those
-   * add things to the video rather than treat what's already in it.
    */
   const LOOK_OPTIONS: { key: keyof ClipRenderConfig; label: string; hint: string }[] = [
     {
@@ -196,7 +203,7 @@
     }
   ];
 
-  /** Branding elements, shown beside the render rather than under Look. */
+  /** Branding elements, shown under Look — they're part of the clip's look. */
   const BRANDING_OPTIONS: { key: keyof ClipRenderConfig; label: string; hint: string }[] = [
     { key: 'intro', label: 'Intro', hint: 'The graphic animates in over the opening.' },
     { key: 'watermark', label: 'Watermark', hint: 'A small corner mark for the whole clip.' },
@@ -333,14 +340,35 @@
     toast.success(rotate ? 'New link created and copied' : 'Preview link copied');
   }
 
-  async function handleQueue() {
-    const result = await addToQueue(selected.id);
-    if (!result.success) {
-      toast.error(result.message ?? 'Could not queue');
+  let queueDialogOpen = $state(false);
+
+  async function handleQueueChoice(mode: 'drip' | 'date' | 'now', when: string | null) {
+    if (mode === 'now') {
+      await handlePublishNow();
       return;
     }
+
+    const alreadyQueued = selected.status === 'queued';
+
+    if (!alreadyQueued) {
+      const result = await addToQueue(selected.id);
+      if (!result.success) {
+        toast.error(result.message ?? 'Could not queue');
+        return;
+      }
+    }
+
+    // Sent even when null, so switching back to the drip clears an old pin.
+    await setScheduledDate({ projectId: selected.id, when });
     await invalidateAll();
-    toast.success('Added to the release queue');
+
+    toast.success(
+      alreadyQueued
+        ? 'Release date updated'
+        : when
+          ? 'Queued for the date you picked'
+          : 'Added to the release queue'
+    );
   }
 
   async function handleUnqueue() {
@@ -349,8 +377,19 @@
     toast.success('Removed from the queue');
   }
 
+  /**
+   * A `datetime-local` input needs `YYYY-MM-DDTHH:mm` in local time, and
+   * toISOString would hand it UTC — an hour or two off, silently.
+   */
+  function toLocalInput(value: Date | string | null | undefined): string {
+    if (!value) return '';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
   async function handlePublishNow() {
-    if (!confirm('Fire the publish webhook for this clip now?')) return;
     const result = await publishNow({ projectId: selected.id, origin: window.location.origin });
     if (!result.success) {
       toast.error(result.error ?? 'Publish failed');
@@ -940,6 +979,61 @@
             </div>
           </div>
         {/if}
+
+        <!-- Branding. Under Look because it is a look decision: which mark the
+             clip wears and where. It sat in its own card beside the render for
+             a while, which put a styling choice next to a publishing one. -->
+        <div class="mt-6 border-t border-gray-800 pt-5">
+          <div class="mb-3 flex items-center justify-between">
+            <h3 class="text-sm font-medium tracking-wider text-gray-400 uppercase">Branding</h3>
+            <span class="text-xs text-gray-500">
+              {#if config.randomGraphics}
+                Random of {data.graphics.length}
+              {:else if activeGraphic}
+                {activeGraphic.filename}
+              {/if}
+            </span>
+          </div>
+          <!-- Graphic and placements on one row: which mark, and where it lands,
+             is a single decision in practice. The toggles stay available with no
+             graphic designated — they're what says whether these stages run at
+             all, so hiding them made the setting unreachable. -->
+          <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
+            {#if data.graphics.length > 0}
+              <div class="w-48 shrink-0">
+                <ImageSelect
+                  value={config.randomGraphics ? 'random' : String(config.graphicMediaId ?? '')}
+                  options={graphicOptions}
+                  onchange={(v) =>
+                    patchConfig(
+                      v === 'random'
+                        ? { randomGraphics: true }
+                        : { randomGraphics: false, graphicMediaId: v === '' ? null : Number(v) }
+                    )}
+                />
+              </div>
+            {/if}
+
+            {#each BRANDING_OPTIONS as option (option.key)}
+              <label class="flex items-center gap-2 text-sm text-gray-300" title={option.hint}>
+                <input
+                  type="checkbox"
+                  checked={config[option.key] as boolean}
+                  onchange={(e) => patchConfig({ [option.key]: e.currentTarget.checked } as never)}
+                  class="rounded border-gray-600 bg-gray-700 text-violet-500"
+                />
+                {option.label}
+              </label>
+            {/each}
+          </div>
+
+          {#if data.graphics.length === 0}
+            <p class="mt-3 text-sm text-gray-500">
+              No clip graphics designated, so these render without a mark. Add some in
+              <a href="/admin/media" class="text-violet-400 hover:text-violet-300">Media</a>.
+            </p>
+          {/if}
+        </div>
       </SectionCard>
 
       <!-- Advanced: the renderer's internals, collapsed by default -->
@@ -1106,9 +1200,9 @@
         {@render renderProgress()}
       {/if}
     {:else}
-      <!-- Nothing rendered yet, so the box is the invitation: same dashed
-           treatment as the media drop zones. The button only lives here while
-           the Render box below is hidden, so there is never a second one. -->
+      <!-- Nothing rendered yet, so the box says so, in the same dashed
+           treatment as the media drop zones. The button lives below it with
+           every other render control. -->
       <div
         class="flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-gray-700 px-8 py-16"
       >
@@ -1116,77 +1210,40 @@
           {@render renderProgress()}
         {:else}
           <p class="text-sm text-gray-500">Not rendered yet</p>
-          {#if job?.status !== 'failed'}
-            <button
-              onclick={handleRender}
-              disabled={!data.renderingAvailable || sources.length === 0}
-              class="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Render clip
-            </button>
-            {#if sources.length === 0}
-              <p class="text-xs text-gray-600">Add a source clip first</p>
-            {/if}
-          {/if}
         {/if}
       </div>
     {/if}
 
-    <SectionCard title="Branding">
-      {#snippet actions()}
-        <span class="text-xs text-gray-500">
-          {#if config.randomGraphics}
-            Random of {data.graphics.length}
-          {:else if activeGraphic}
-            {activeGraphic.filename}
-          {/if}
-        </span>
-      {/snippet}
-
-      <!-- Graphic and placements on one row: which mark, and where it lands,
-           is a single decision in practice. The toggles stay available with no
-           graphic designated — they're what says whether these stages run at
-           all, so hiding them made the setting unreachable. -->
-      <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
-        {#if data.graphics.length > 0}
-          <div class="w-48 shrink-0">
-            <ImageSelect
-              value={config.randomGraphics ? 'random' : String(config.graphicMediaId ?? '')}
-              options={graphicOptions}
-              onchange={(v) =>
-                patchConfig(
-                  v === 'random'
-                    ? { randomGraphics: true }
-                    : { randomGraphics: false, graphicMediaId: v === '' ? null : Number(v) }
-                )}
-            />
-          </div>
-        {/if}
-
-        {#each BRANDING_OPTIONS as option (option.key)}
-          <label class="flex items-center gap-2 text-sm text-gray-300" title={option.hint}>
-            <input
-              type="checkbox"
-              checked={config[option.key] as boolean}
-              onchange={(e) => patchConfig({ [option.key]: e.currentTarget.checked } as never)}
-              class="rounded border-gray-600 bg-gray-700 text-violet-500"
-            />
-            {option.label}
-          </label>
-        {/each}
+    <!-- Render, on its own directly under the preview: it acts on the video
+         above it, and nothing else in this column does. -->
+    {#if job?.status === 'failed'}
+      <div class="rounded-lg border border-red-800/50 bg-red-950/40 p-3">
+        <p class="text-sm font-medium text-red-300">Render failed</p>
+        <pre
+          class="mt-2 max-h-40 overflow-auto text-xs whitespace-pre-wrap text-red-200/70">{job.error}</pre>
       </div>
+    {/if}
 
-      {#if data.graphics.length === 0}
-        <p class="mt-3 text-sm text-gray-500">
-          No clip graphics designated, so these render without a mark. Add some in
-          <a href="/admin/media" class="text-violet-400 hover:text-violet-300">Media</a>.
-        </p>
-      {/if}
-    </SectionCard>
+    {#if isRendering}
+      <button
+        onclick={handleStop}
+        class="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-base text-gray-300 hover:bg-gray-700"
+      >
+        Cancel render
+      </button>
+    {:else}
+      <button
+        onclick={handleRender}
+        disabled={!data.renderingAvailable || sources.length === 0}
+        class="w-full rounded-lg bg-sky-700 px-4 py-3 text-base font-medium text-white transition-colors hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {outputMedia ? 'Render again' : 'Render clip'}
+      </button>
+    {/if}
 
-    <!-- Render. Hidden until there is something to act on: an unrendered,
-         idle clip is already served by the button in the empty state above. -->
-    {#if outputMedia || isRendering || job?.status === 'failed'}
+    <!-- What happens to the finished clip: where it stands, and the two ways
+         it moves on. Nothing here exists until there is a render to act on. -->
+    {#if outputMedia}
       <SectionCard>
         <!-- Where the clip stands, stated once, at the top. The review strip
              below carries the decision; this only says what it is. Where it
@@ -1199,6 +1256,25 @@
           ></span>
           <span class="text-gray-300">{CLIP_STATUS_LABELS[selected.status] ?? selected.status}</span
           >
+          {#if outputMedia}
+            <!-- A reference, not a step: you open it when you need to paste
+                 something by hand, which is rare and never part of releasing. -->
+            <button
+              onclick={handlePostSheet}
+              title="Post sheet — the caption, tags and link to paste when posting"
+              aria-label="View post sheet"
+              class="ml-auto shrink-0 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-800 hover:text-white"
+            >
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.5"
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
+            </button>
+          {/if}
         </div>
 
         <!-- Reported back by the publishing workflow, so this stays empty
@@ -1237,52 +1313,29 @@
           </ul>
         {/if}
 
-        {#if job?.status === 'failed'}
-          <div class="mb-4 rounded-lg border border-red-800/50 bg-red-950/40 p-3">
-            <p class="text-sm font-medium text-red-300">Render failed</p>
-            <pre
-              class="mt-2 max-h-40 overflow-auto text-xs whitespace-pre-wrap text-red-200/70">{job.error}</pre>
-          </div>
-        {/if}
-
-        <!-- Rendering is the one thing you come here to do, so it gets the full
-             width; the rest are follow-ups and sit under it at normal weight. -->
-        <div class="space-y-2">
-          {#if isRendering}
-            <button
-              onclick={handleStop}
-              class="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-base text-gray-300 hover:bg-gray-700"
-            >
-              Cancel render
-            </button>
-          {:else}
-            <button
-              onclick={handleRender}
-              disabled={!data.renderingAvailable || sources.length === 0}
-              class="w-full rounded-lg bg-violet-600 px-4 py-3 text-base font-medium text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {outputMedia ? 'Render again' : 'Render clip'}
-            </button>
-          {/if}
-
-          {#if outputMedia}
-            <div class="flex gap-2">
+        <!-- The ways a finished clip moves on, in colours from the status
+             ladder: teal for the approval review leads to, violet for the queue
+             release puts it in. Only what's possible at this stage is shown. -->
+        {#if canSendForReview || canSchedule}
+          <div class="flex gap-2">
+            {#if canSendForReview}
               <button
                 onclick={handleSendForReview}
-                class="flex-1 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700"
+                class="flex-1 rounded-lg border border-teal-700/60 bg-teal-900/30 px-3 py-2.5 text-sm font-medium text-teal-200 transition-colors hover:bg-teal-900/50"
               >
                 {selected.status === 'review' ? 'Re-send for review' : 'Send for review'}
               </button>
+            {/if}
+            {#if canSchedule}
               <button
-                onclick={handlePostSheet}
-                title="The caption, tags and link to paste when posting"
-                class="flex-1 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700"
+                onclick={() => (queueDialogOpen = true)}
+                class="flex-1 rounded-lg bg-violet-600 px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-violet-500"
               >
-                View post sheet
+                Schedule release
               </button>
-            </div>
-          {/if}
-        </div>
+            {/if}
+          </div>
+        {/if}
 
         {#if selected.reviewNote}
           <p class="mb-4 rounded-lg border border-gray-800 bg-gray-950 p-3 text-sm text-gray-400">
@@ -1356,16 +1409,30 @@
           </div>
         {/if}
 
-        {#if selected.status === 'approved' || selected.status === 'queued'}
+        {#if selected.status === 'queued'}
           <div class="flex flex-wrap items-end gap-3 border-t border-gray-800 pt-4">
-            {#if selected.status === 'approved'}
-              <button
-                onclick={handleQueue}
-                class="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500"
-              >
-                Add to release queue
-              </button>
-            {:else}
+            <!-- Reads as a statement, not a control. Changing it reopens the
+                   same dialog that set it, so there's one place that answers
+                   "when does this go out" rather than a field to hunt for. -->
+            <div>
+              <span class={labelClass}>Release</span>
+              <p class="flex items-center gap-2 py-1.5 text-xs text-gray-300">
+                {selected.scheduledFor
+                  ? new Intl.DateTimeFormat(data.settings?.locale ?? 'nb-NO', {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                      hour12: false
+                    }).format(new Date(selected.scheduledFor))
+                  : 'Next available slot'}
+                <button
+                  onclick={() => (queueDialogOpen = true)}
+                  class="text-violet-400 hover:text-violet-300"
+                >
+                  Change
+                </button>
+              </p>
+            </div>
+            {#if !selected.scheduledFor}
               <div>
                 <label class={labelClass} for="gap">Gap before next (days)</label>
                 <input
@@ -1386,22 +1453,12 @@
                   }}
                 />
               </div>
-              <button
-                onclick={handleUnqueue}
-                class="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700"
-              >
-                Remove from queue
-              </button>
             {/if}
             <button
-              onclick={handlePublishNow}
-              disabled={!data.publishConfigured}
-              title={data.publishConfigured
-                ? 'Fire the publish webhook now'
-                : 'Set a publish webhook in Settings first'}
-              class="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+              onclick={handleUnqueue}
+              class="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700"
             >
-              Publish now
+              Remove from queue
             </button>
           </div>
         {/if}
@@ -1411,6 +1468,18 @@
 </div>
 
 <!-- Pickers live outside the editor so their modals aren't clipped -->
+{#if queueDialogOpen}
+  <QueueClipDialog
+    nextSlot={data.nextSlot ? new Date(data.nextSlot) : null}
+    scheduledFor={toLocalInput(selected.scheduledFor)}
+    queued={selected.status === 'queued'}
+    locale={data.settings?.locale ?? 'nb-NO'}
+    publishConfigured={data.publishConfigured}
+    onchoose={handleQueueChoice}
+    onclose={() => (queueDialogOpen = false)}
+  />
+{/if}
+
 {#if selected}
   <PhoneUploadDialog
     bind:open={phoneUploadOpen}

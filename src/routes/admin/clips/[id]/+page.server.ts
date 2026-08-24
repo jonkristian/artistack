@@ -13,6 +13,7 @@ import { auth } from '$lib/server/auth';
 import { desc, eq, asc } from 'drizzle-orm';
 import { videoSupported } from '$lib/server/ffmpeg';
 import { tagsFor, listTags } from '$lib/server/tags';
+import { projectedNextSlot } from '$lib/server/clip-queue';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ request, params }) => {
@@ -75,6 +76,8 @@ export const load: PageServerLoad = async ({ request, params }) => {
     renderingAvailable: await videoSupported(),
     // Publishing needs a webhook target; without one the release controls are
     // shown but disabled rather than hidden, so the gap is discoverable.
-    publishConfigured: Boolean(siteSettings.publishWebhookUrl)
+    publishConfigured: Boolean(siteSettings.publishWebhookUrl),
+    // Where this clip would land if queued now, for the queue dialog.
+    nextSlot: await projectedNextSlot()
   };
 };

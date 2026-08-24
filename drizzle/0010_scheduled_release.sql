@@ -1,0 +1,1 @@
+ALTER TABLE `clip_projects` ADD `scheduled_for` integer;

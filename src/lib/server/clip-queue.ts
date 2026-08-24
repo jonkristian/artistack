@@ -69,15 +69,48 @@ export async function getQueue(): Promise<QueueEntry[]> {
   // has gone out yet); each subsequent slot adds that clip's own gap.
   let cursor = nextSlot(lastSent, intervalDays, hour);
 
-  return queued.map((project) => {
-    const eta = config?.publishEnabled ? new Date(cursor) : null;
-    cursor = addDays(cursor, project.queueGapDays ?? intervalDays);
+  const entries = queued.map((project) => {
+    // A pinned clip keeps its own date and doesn't advance the cursor — it isn't
+    // taking a drip slot, so the clips around it shouldn't shuffle because of it.
+    const eta = !config?.publishEnabled
+      ? null
+      : project.scheduledFor
+        ? new Date(project.scheduledFor)
+        : new Date(cursor);
+
+    if (!project.scheduledFor) {
+      cursor = addDays(cursor, project.queueGapDays ?? intervalDays);
+    }
+
     return {
       project,
       output: project.outputMediaId ? byId.get(project.outputMediaId) : undefined,
       eta
     };
   });
+
+  // Listed in the order they'll actually go out, which is the only order that
+  // means anything once dates and drip slots are mixed together.
+  return entries.sort((a, b) => (a.eta?.getTime() ?? Infinity) - (b.eta?.getTime() ?? Infinity));
+}
+
+/**
+ * Where a clip added to the back of the queue would land, so the queue dialog
+ * can say "Friday 28 August, 10:00" instead of "the next available slot".
+ */
+export async function projectedNextSlot(): Promise<Date | null> {
+  const [config] = await db.select().from(settings).limit(1);
+  if (!config?.publishEnabled) return null;
+
+  const intervalDays = config.publishIntervalDays ?? 3;
+  const queue = await getQueue();
+  const last = queue.at(-1);
+
+  if (!last?.eta) {
+    return nextSlot(config.publishLastSent ?? null, intervalDays, config.publishHour ?? 10);
+  }
+
+  return addDays(last.eta, last.project.queueGapDays ?? intervalDays);
 }
 
 function addDays(date: Date, days: number): Date {
@@ -279,6 +312,31 @@ export async function runReleaseTick(baseUrl: string): Promise<void> {
   if (!config?.publishEnabled || !config.publishWebhookUrl) return;
 
   const now = new Date();
+
+  // A pinned date is a decision about this clip, so it outranks both the cadence
+  // and the release hour — you picked a time because something happens then.
+  // Checked before the hour gate for that reason. Oldest due first, so a backlog
+  // after downtime goes out in the order it was meant to.
+  const [pinned] = await db
+    .select()
+    .from(clipProjects)
+    .where(
+      and(
+        eq(clipProjects.status, 'queued'),
+        isNotNull(clipProjects.scheduledFor),
+        lt(clipProjects.scheduledFor, now)
+      )
+    )
+    .orderBy(asc(clipProjects.scheduledFor))
+    .limit(1);
+
+  if (pinned) {
+    console.log(`[ClipQueue] Releasing "${pinned.name}" on its scheduled date`);
+    const result = await publishClip(pinned.id, baseUrl);
+    if (!result.success) console.error('[ClipQueue] Scheduled release failed:', result.error);
+    return;
+  }
+
   if (now.getHours() !== (config.publishHour ?? 10)) return;
 
   const intervalDays = config.publishIntervalDays ?? 3;
@@ -298,10 +356,18 @@ export async function runReleaseTick(baseUrl: string): Promise<void> {
     if (now < due) return;
   }
 
+  // Pinned clips are skipped here: they're waiting for their own date, not for
+  // their turn, and letting the drip grab one early defeats the point of pinning.
   const [next] = await db
     .select()
     .from(clipProjects)
-    .where(and(eq(clipProjects.status, 'queued'), isNotNull(clipProjects.queuePosition)))
+    .where(
+      and(
+        eq(clipProjects.status, 'queued'),
+        isNotNull(clipProjects.queuePosition),
+        isNull(clipProjects.scheduledFor)
+      )
+    )
     .orderBy(asc(clipProjects.queuePosition))
     .limit(1);
 
