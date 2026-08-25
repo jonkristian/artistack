@@ -198,15 +198,10 @@
   }
 </script>
 
-<div class="min-h-screen bg-gray-950 p-6">
-  <header class="mb-6">
-    <h1 class="text-2xl font-semibold text-white">Stats</h1>
-    <p class="text-sm text-gray-500">Analytics and insights for your site</p>
-  </header>
-
+<div class="min-h-screen bg-gray-950 p-[clamp(1rem,4vw,1.5rem)]">
   <div class="space-y-6">
     <!-- Overview Cards -->
-    <div class="grid grid-cols-4 gap-4">
+    <div class="grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,10rem),1fr))] gap-4">
       <!-- Page Views -->
       <div class="rounded-xl border border-gray-800 bg-gray-900 p-5">
         <div class="text-sm text-gray-400">Page Views (30d)</div>
@@ -300,7 +295,13 @@
 
     <!-- Page Views Chart -->
     <SectionCard title="Page Views (Last 30 Days)">
-      <div bind:this={chartContainer} class="w-full"></div>
+      <!-- Thirty days squeezed into a phone's width is a smear, so the chart
+           keeps a readable day spacing and the card scrolls to it instead.
+           uPlot sizes itself from this element, so the floor is set here and
+           the ResizeObserver picks it up. -->
+      <div class="-mx-1 overflow-x-auto px-1">
+        <div bind:this={chartContainer} class="w-full min-w-[34rem]"></div>
+      </div>
       <div class="mt-3 flex items-center gap-6 text-xs text-gray-400">
         <div class="flex items-center gap-2">
           <span class="h-0.5 w-4 bg-purple-500"></span>
@@ -314,7 +315,7 @@
     </SectionCard>
 
     <!-- Two column layout for referrers and geography -->
-    <div class="grid grid-cols-2 gap-6">
+    <div class="grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr))] gap-6">
       <!-- Top Referrers -->
       <SectionCard title="Top Referrers">
         {#if data.pageViews.viewsByReferrer.length > 0}
@@ -434,7 +435,9 @@
             {refreshing ? 'Refreshing...' : 'Refresh'}
           </button>
         {/snippet}
-        <div class="grid grid-cols-2 gap-4">
+        <div
+          class="grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-4"
+        >
           <!-- Spotify Stats -->
           {#if data.socialStats.spotify}
             <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4">

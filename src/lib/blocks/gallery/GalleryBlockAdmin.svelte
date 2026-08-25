@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Block, Media, GalleryBlockConfig } from '$lib/server/schema';
   import { MediaPicker } from '$lib/components/ui';
+  import { suppressContextMenu } from '$lib/utils/drag';
 
   let {
     block,
@@ -33,40 +34,69 @@
     block.config = { ...config, mediaIds: selectedIds.filter((i) => i !== id) };
   }
 
-  function handleDragStart(e: DragEvent, index: number) {
-    dragIndex = index;
-    if (e.dataTransfer) {
-      e.dataTransfer.effectAllowed = 'move';
-    }
-  }
+  /**
+   * Reordering by pointer rather than HTML5 drag, so it works on a phone.
+   *
+   * Not SortableList: that one drags rows by a handle and drops between them,
+   * while this is a wrapping grid of thumbnails dragged whole and dropped onto
+   * a position. Sharing it would mean two layout modes in a component three
+   * other places depend on.
+   */
+  const DRAG_THRESHOLD = 6;
 
-  function handleDragOver(e: DragEvent, index: number) {
-    e.preventDefault();
-    if (e.dataTransfer) {
-      e.dataTransfer.dropEffect = 'move';
-    }
-    dropTarget = index;
-  }
+  function handlePointerDown(e: PointerEvent, index: number) {
+    if (e.button !== 0) return;
 
-  function handleDragLeave() {
-    dropTarget = null;
-  }
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const target = e.currentTarget as HTMLElement;
+    let armed = false;
+    const releaseContextMenu = suppressContextMenu();
 
-  function handleDrop(e: DragEvent, index: number) {
-    e.preventDefault();
-    if (dragIndex !== null && dragIndex !== index) {
-      const newIds = [...selectedIds];
-      const [moved] = newIds.splice(dragIndex, 1);
-      newIds.splice(index, 0, moved);
-      block.config = { ...config, mediaIds: newIds };
-    }
-    dragIndex = null;
-    dropTarget = null;
-  }
+    const move = (ev: PointerEvent) => {
+      if (!armed) {
+        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_THRESHOLD) return;
+        armed = true;
+        dragIndex = index;
+        try {
+          target.setPointerCapture(ev.pointerId);
+        } catch {
+          // Best-effort; the listeners still track the gesture.
+        }
+      }
 
-  function handleDragEnd() {
-    dragIndex = null;
-    dropTarget = null;
+      // Capture sends every move here, so the tile under the pointer has to be
+      // found by hit-testing.
+      const under = document.elementFromPoint(ev.clientX, ev.clientY);
+      const tile = under?.closest<HTMLElement>('[data-gallery-index]');
+      dropTarget = tile ? Number(tile.dataset.galleryIndex) : null;
+    };
+
+    const finish = (ev: PointerEvent) => {
+      releaseContextMenu();
+      target.removeEventListener('pointermove', move);
+      target.removeEventListener('pointerup', finish);
+      target.removeEventListener('pointercancel', finish);
+      try {
+        target.releasePointerCapture(ev.pointerId);
+      } catch {
+        // Never captured, or already released.
+      }
+
+      if (armed && dragIndex !== null && dropTarget !== null && dragIndex !== dropTarget) {
+        const newIds = [...selectedIds];
+        const [moved] = newIds.splice(dragIndex, 1);
+        newIds.splice(dropTarget, 0, moved);
+        block.config = { ...config, mediaIds: newIds };
+      }
+
+      dragIndex = null;
+      dropTarget = null;
+    };
+
+    target.addEventListener('pointermove', move);
+    target.addEventListener('pointerup', finish);
+    target.addEventListener('pointercancel', finish);
   }
 </script>
 
@@ -76,16 +106,12 @@
     <div class="flex flex-wrap gap-2">
       {#each selectedMedia as item, i (item.id)}
         <div
-          class="group relative h-16 w-16 shrink-0 overflow-hidden rounded-lg transition-opacity {dragIndex ===
+          class="group relative h-16 w-16 shrink-0 cursor-grab touch-none overflow-hidden rounded-lg transition-opacity {dragIndex ===
           i
             ? 'opacity-40'
             : ''} {dropTarget === i && dragIndex !== i ? 'ring-2 ring-violet-500' : ''}"
-          draggable="true"
-          ondragstart={(e) => handleDragStart(e, i)}
-          ondragover={(e) => handleDragOver(e, i)}
-          ondragleave={handleDragLeave}
-          ondrop={(e) => handleDrop(e, i)}
-          ondragend={handleDragEnd}
+          data-gallery-index={i}
+          onpointerdown={(e) => handlePointerDown(e, i)}
           role="listitem"
         >
           <img

@@ -117,7 +117,7 @@
       {/if}
 
       <label
-        class="flex items-start gap-3 rounded-lg border p-3 transition-colors {publishConfigured
+        class="flex items-start gap-3 rounded-lg border p-3 whitespace-nowrap transition-colors {publishConfigured
           ? 'cursor-pointer'
           : 'cursor-not-allowed opacity-40'} {mode === 'now'
           ? 'border-violet-500 bg-violet-500/10'
@@ -151,7 +151,7 @@
       <button
         onclick={confirm}
         disabled={!ready}
-        class="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
+        class="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium whitespace-nowrap text-white transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
       >
         {mode === 'now' ? 'Publish now' : queued ? 'Save' : 'Add to queue'}
       </button>

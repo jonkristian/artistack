@@ -1,3 +1,19 @@
+# 1.2.0 (25-08-2026)
+
+- Implemented responsive layouts across the admin: navigation slides in from a hamburger, and pages reflow instead of scrolling sideways
+- Editor and live preview swap with a toggle on narrow screens, on the dashboard, appearance and the clip editor
+- Drag and drop works on touch — reordering blocks, links, clip sources and gallery images, and dragging media into the press kit
+- Update and undo float within thumb reach while you have unsaved changes
+- Upload a bio, rider or one-sheet: media now takes PDF, Word, txt and markdown
+- Press kit ships the documents you put in it, instead of generating a bio.txt from the profile block
+- Filter media and clips by several types at once, from one menu instead of a row of tabs
+- Clip source rows collapse to a single line, with trim and mute behind a tap
+- Page titles dropped from the admin; on a phone the top bar says where you are
+- Page views chart keeps a readable day spacing and scrolls, rather than squeezing 30 days into a phone
+- Fixed the browser's context menu interrupting a drag on long press
+- Fixed the drop indicator showing two positions for the same gap
+- Fixed favicon previews overlapping their filenames on a narrow screen
+
 # 1.1.0 (24-08-2026)
 
 - Invite team members by name and email; they set their own password from a link

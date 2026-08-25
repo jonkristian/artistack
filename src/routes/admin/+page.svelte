@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SortableBlockList, LayoutPreview } from '$lib/components/ui';
+  import { SortableList, LayoutPreview, EditorPreview } from '$lib/components/ui';
   import { LinkEditDialog, TourDateEditDialog } from '$lib/components/dialogs';
   import type { TourDateValues } from '$lib/components/dialogs/TourDateEditDialog.svelte';
   import type { LinkValues } from '$lib/components/dialogs/LinkEditDialog.svelte';
@@ -175,9 +175,8 @@
   }
 </script>
 
-<div class="flex h-screen">
-  <!-- Left Column: Edit Controls -->
-  <div class="w-1/2 overflow-y-auto bg-gray-950 p-6">
+<EditorPreview previewStyle="background-color: {draftData.appearance.colorBg}">
+  {#snippet editor()}
     <!-- Setup Card (shown on first visit) -->
     {#if needsSetup}
       <SetupCard settings={data.settings} oncomplete={handleSetupComplete} />
@@ -185,7 +184,7 @@
 
     <div class="space-y-4">
       {#if draftData.blocks?.length > 0}
-        <SortableBlockList items={draftData.blocks} onreorder={handleReorderBlocks}>
+        <SortableList gap="0.5rem" items={draftData.blocks} onreorder={handleReorderBlocks}>
           {#snippet children(block: Block)}
             {@const def = blockRegistry[block.type]}
             {#if def?.adminSettingsComponent}
@@ -232,7 +231,7 @@
               </BlockAdminWrapper>
             {/if}
           {/snippet}
-        </SortableBlockList>
+        </SortableList>
       {:else}
         <div class="rounded-xl border border-dashed border-gray-700 py-12 text-center">
           <p class="mb-2 text-sm text-gray-400">No blocks yet</p>
@@ -255,13 +254,9 @@
         {/each}
       </div>
     </div>
-  </div>
+  {/snippet}
 
-  <!-- Right Column: Live Preview -->
-  <div
-    class="w-1/2 overflow-y-auto border-l border-gray-800"
-    style="background-color: {draftData.appearance.colorBg}"
-  >
+  {#snippet preview()}
     <LayoutPreview
       layout={activeLayout}
       profile={draftData.profile}
@@ -271,8 +266,8 @@
       blocks={draftData.blocks}
       media={data.media}
     />
-  </div>
-</div>
+  {/snippet}
+</EditorPreview>
 
 <!-- Link Edit Dialog. Mounted only while open, same as the tour date dialog. -->
 {#if editingLink}

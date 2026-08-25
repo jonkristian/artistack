@@ -27,6 +27,49 @@ const MAGIC_BYTES: Record<string, { bytes: number[]; offset?: number }[]> = {
 };
 
 /**
+ * Documents a press kit might carry: a bio, a rider, a one-sheet.
+ *
+ * Plain text has no magic bytes to check, so it's identified by extension and
+ * a scan for NUL bytes — binary masquerading as .txt fails that, and a real
+ * text file never contains one.
+ */
+const DOCUMENT_MAGIC_BYTES: Record<string, number[]> = {
+  'application/pdf': [0x25, 0x50, 0x44, 0x46], // %PDF
+  'application/msword': [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1], // legacy .doc
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': [
+    0x50,
+    0x4b,
+    0x03,
+    0x04 // .docx is a zip
+  ]
+};
+
+const TEXT_EXTENSIONS: Record<string, string> = {
+  txt: 'text/plain',
+  md: 'text/markdown',
+  rtf: 'application/rtf'
+};
+
+function detectDocumentType(buffer: Buffer, filename: string): string | null {
+  for (const [mimeType, bytes] of Object.entries(DOCUMENT_MAGIC_BYTES)) {
+    if (bytes.every((b, i) => buffer[i] === b)) {
+      // A zip could be anything; only call it a Word file if the name agrees.
+      if (mimeType.includes('wordprocessingml') && !filename.toLowerCase().endsWith('.docx')) {
+        continue;
+      }
+      return mimeType;
+    }
+  }
+
+  const ext = filename.toLowerCase().split('.').pop() ?? '';
+  if (TEXT_EXTENSIONS[ext] && !buffer.subarray(0, 8192).includes(0)) {
+    return TEXT_EXTENSIONS[ext];
+  }
+
+  return null;
+}
+
+/**
  * Check if content looks like SVG (starts with XML declaration or <svg tag)
  */
 function isSvgContent(buffer: Buffer): boolean {
@@ -108,11 +151,16 @@ export const POST: RequestHandler = async ({ request, url: requestUrl }) => {
 
   // Detect actual MIME type from file content (not trusting the reported type)
   const isSvg = isSvgContent(buffer);
-  const detectedMimeType = isSvg ? 'image/svg+xml' : detectMimeType(buffer);
+  const detectedMimeType =
+    (isSvg ? 'image/svg+xml' : detectMimeType(buffer)) ??
+    detectDocumentType(buffer, file.name ?? '');
   console.log('[Upload] Detected MIME:', detectedMimeType, { isSvg });
   if (!detectedMimeType) {
     console.log('[Upload] Rejected: unrecognized content type');
-    throw error(400, 'Invalid file content. Allowed: JPEG, PNG, WebP, GIF, SVG');
+    throw error(
+      400,
+      'Invalid file content. Allowed: JPEG, PNG, WebP, GIF, SVG, PDF, Word, txt, markdown'
+    );
   }
 
   // Only warn for truly suspicious mismatches (non-image claiming to be image)
@@ -138,27 +186,39 @@ export const POST: RequestHandler = async ({ request, url: requestUrl }) => {
     'image/png': 'png',
     'image/gif': 'gif',
     'image/webp': 'webp',
-    'image/svg+xml': 'svg'
+    'image/svg+xml': 'svg',
+    'application/pdf': 'pdf',
+    'application/msword': 'doc',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+    'application/rtf': 'rtf',
+    'text/plain': 'txt',
+    'text/markdown': 'md'
   };
   const originalExt = originalExtMap[detectedMimeType] || 'bin';
   const originalFilename = `${baseFilename}-original.${originalExt}`;
 
-  // Handle SVG files separately (no Sharp processing)
-  if (detectedMimeType === 'image/svg+xml') {
+  // Documents are stored as uploaded — there is nothing to resize, and the
+  // point of a press kit PDF is that it arrives exactly as the artist made it.
+  const isDocument =
+    detectedMimeType in DOCUMENT_MAGIC_BYTES ||
+    Object.values(TEXT_EXTENSIONS).includes(detectedMimeType);
+
+  // Handle SVG and documents separately (no Sharp processing)
+  if (detectedMimeType === 'image/svg+xml' || isDocument) {
     await writeFile(join(UPLOAD_DIR, originalFilename), buffer);
 
-    const svgResult = {
+    const storedResult = {
       filename: file.name,
       url: `/uploads/${originalFilename}`,
       originalUrl: `/uploads/${originalFilename}`,
       size: buffer.length,
       originalSize: buffer.length,
-      mimeType: 'image/svg+xml'
+      mimeType: detectedMimeType
     };
 
-    if (uploadSession) await finalizeSessionUpload(uploadSession, svgResult);
+    if (uploadSession) await finalizeSessionUpload(uploadSession, storedResult);
 
-    return json(svgResult);
+    return json(storedResult);
   }
 
   // Get original dimensions

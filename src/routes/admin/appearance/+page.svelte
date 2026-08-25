@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ColorWheel, LayoutPreview, ToggleSwitch } from '$lib/components/ui';
+  import { ColorWheel, EditorPreview, LayoutPreview, ToggleSwitch } from '$lib/components/ui';
   import { SectionCard } from '$lib/components/cards';
   import Default from '$lib/themes/Default.svelte';
   import Simple from '$lib/themes/Simple.svelte';
@@ -38,14 +38,8 @@
   });
 </script>
 
-<div class="flex h-screen">
-  <!-- Left Column: Settings -->
-  <div class="w-1/2 overflow-y-auto bg-gray-950 p-6">
-    <header class="mb-6">
-      <h1 class="text-2xl font-semibold text-white">Appearance</h1>
-      <p class="text-sm text-gray-500">Customize colors and layout for your page</p>
-    </header>
-
+<EditorPreview previewStyle="background-color: {draftData.appearance.colorBg}">
+  {#snippet editor()}
     <div class="space-y-6">
       <!-- Colors -->
       <SectionCard title="Colors">
@@ -151,13 +145,9 @@
         </label>
       </SectionCard>
     </div>
-  </div>
+  {/snippet}
 
-  <!-- Right Column: Live Preview -->
-  <div
-    class="w-1/2 overflow-y-auto border-l border-gray-800"
-    style="background-color: {draftData.appearance.colorBg}"
-  >
+  {#snippet preview()}
     <LayoutPreview
       layout={activeLayout}
       profile={draftData.profile}
@@ -167,5 +157,5 @@
       blocks={draftData.blocks}
       media={data.media}
     />
-  </div>
-</div>
+  {/snippet}
+</EditorPreview>

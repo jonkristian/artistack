@@ -130,12 +130,7 @@
   }
 </script>
 
-<div class="min-h-screen bg-gray-950 p-6">
-  <header class="mb-6">
-    <h1 class="text-2xl font-semibold text-white">Users</h1>
-    <p class="text-sm text-gray-500">Manage collaborators who can edit your content</p>
-  </header>
-
+<div class="min-h-screen bg-gray-950 p-[clamp(1rem,4vw,1.5rem)]">
   <div class="max-w-2xl space-y-6">
     <!-- Team Members -->
     <SectionCard>
@@ -188,7 +183,9 @@
               typeof window === 'undefined' ? '' : window.location.origin
             )}
           />
-          <div class="grid grid-cols-2 gap-3">
+          <div
+            class="grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr))] gap-3"
+          >
             <div>
               <input {...addForm.fields.name.as('text')} placeholder="Name" class={fieldClass} />
             </div>

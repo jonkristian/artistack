@@ -1,7 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import { tagsForMany, listTags } from '$lib/server/tags';
-import { media, profile, settings } from '$lib/server/schema';
+import { media, settings } from '$lib/server/schema';
 import { user } from '$lib/server/auth-schema';
 import { auth } from '$lib/server/auth';
 import { desc, eq } from 'drizzle-orm';
@@ -26,9 +26,6 @@ export const load: PageServerLoad = async ({ request }) => {
   const pressKitZipPath = join(process.cwd(), 'data', 'uploads', 'press-kit.zip');
   const pressKitZipExists = existsSync(pressKitZipPath);
 
-  // Get profile for bio
-  const [profileData] = await db.select().from(profile).limit(1);
-
   // One query for the grid rather than a lookup per tile.
   const tagsByMedia = await tagsForMany(
     'media',
@@ -44,8 +41,6 @@ export const load: PageServerLoad = async ({ request }) => {
     pressKitMediaIds,
     clipGraphicsMediaIds,
     pressKitZipExists,
-    bio: profileData?.bio || null,
-    artistName: profileData?.name || 'Artist',
     pressKitEnabled: settingsData?.pressKitEnabled ?? false,
     clipsEnabled: settingsData?.clipsEnabled ?? false,
     defaultClipGraphicMediaId: settingsData?.defaultClipGraphicMediaId ?? null

@@ -3,7 +3,7 @@
   import { toast } from '$lib/stores/toast.svelte';
   import { formatDuration } from '$lib/utils/upload';
   import { CLIP_STATUS_LABELS, CLIP_STATUS_STYLES, type ClipStatus } from '$lib/clips/types';
-  import { SelectCheckbox, SelectionToolbar } from '$lib/components/ui';
+  import { FilterSelect, SelectCheckbox, SelectionToolbar } from '$lib/components/ui';
   import { Selection } from '$lib/utils/selection.svelte';
   import type { PageData } from './$types';
   import { createProject, deleteProject } from './data.remote';
@@ -23,7 +23,8 @@
     'published'
   ];
 
-  let statusFilter = $state<ClipStatus | 'all'>('all');
+  /** Empty means every status; there's no separate "all" value to keep in sync. */
+  let statusFilter = $state<string[]>([]);
 
   const statusCounts = $derived(
     data.projects.reduce<Record<string, number>>((acc, p) => {
@@ -33,21 +34,22 @@
   );
 
   /**
-   * Only statuses that currently have clips get a tab. Media can show all its
-   * roles and grey out the empty ones because there are four of them; seven
-   * mostly-empty tabs would be a longer row than the grid they filter.
+   * Every status is listed, empty ones included and disabled. As a row of tabs
+   * that would have been seven mostly-empty pills; in a menu the full pipeline
+   * is the useful thing to see.
    */
-  const statusTabs = $derived<{ key: ClipStatus | 'all'; label: string; count: number }[]>([
-    { key: 'all', label: 'All', count: data.projects.length },
-    ...STATUS_ORDER.filter((status) => (statusCounts[status] ?? 0) > 0).map((status) => ({
+  const statusOptions = $derived(
+    STATUS_ORDER.map((status) => ({
       key: status,
       label: CLIP_STATUS_LABELS[status],
-      count: statusCounts[status]
+      count: statusCounts[status] ?? 0
     }))
-  ]);
+  );
 
   const shownProjects = $derived(
-    statusFilter === 'all' ? data.projects : data.projects.filter((p) => p.status === statusFilter)
+    statusFilter.length === 0
+      ? data.projects
+      : data.projects.filter((p) => statusFilter.includes(p.status))
   );
 
   // No pagination here, so whatever the filter shows is the selection scope.
@@ -99,16 +101,12 @@
   }
 </script>
 
-<div class="min-h-screen bg-gray-950 p-6">
-  <header class="mb-6 flex items-center justify-between">
-    <div>
-      <h1 class="text-2xl font-semibold text-white">Clips</h1>
-      <p class="text-sm text-gray-500">Turn raw footage into branded, post-ready vertical video</p>
-    </div>
+<div class="min-h-screen bg-gray-950 p-[clamp(1rem,4vw,1.5rem)]">
+  <header class="mb-6 flex flex-wrap items-center justify-end gap-3">
     <button
       onclick={handleCreate}
       disabled={creating}
-      class="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
+      class="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium whitespace-nowrap text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
     >
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -143,22 +141,12 @@
   {:else}
     <!-- Same row as the media library: filters left, bulk actions right. -->
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <div class="flex flex-wrap gap-1.5">
-        {#each statusTabs as tab (tab.key)}
-          <button
-            onclick={() => {
-              statusFilter = tab.key;
-              selection.clear();
-            }}
-            class="rounded-lg px-3 py-1.5 text-sm transition-colors {statusFilter === tab.key
-              ? 'bg-violet-600 text-white'
-              : 'border border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white'}"
-          >
-            {tab.label}
-            <span class="ml-1 tabular-nums opacity-60">{tab.count}</span>
-          </button>
-        {/each}
-      </div>
+      <FilterSelect
+        options={statusOptions}
+        bind:selected={statusFilter}
+        total={data.projects.length}
+        onchange={() => selection.clear()}
+      />
 
       <SelectionToolbar
         count={selection.size}
@@ -171,7 +159,7 @@
 
     <!-- One step denser than the media library at each width: these cards are
          3:4 rather than square, so the same column count reads much taller. -->
-    <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+    <div class="grid [grid-template-columns:repeat(auto-fill,minmax(min(100%,9rem),1fr))] gap-4">
       {#each shownProjects as project (project.id)}
         {@const output = project.outputMediaId ? mediaById.get(project.outputMediaId) : undefined}
         <!-- The checkbox sits beside the link rather than inside it: a button

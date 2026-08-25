@@ -1,8 +1,9 @@
 export { default as SortableList } from './SortableList.svelte';
-export { default as SortableBlockList } from './SortableBlockList.svelte';
 export { default as ToggleSwitch } from './ToggleSwitch.svelte';
 export { default as EditableText } from './EditableText.svelte';
 export { default as ColorWheel } from './ColorWheel.svelte';
+export { default as FilterSelect } from './FilterSelect.svelte';
+export { default as EditorPreview } from './EditorPreview.svelte';
 export { default as DateTimePicker } from './DateTimePicker.svelte';
 export { default as ImageSelect } from './ImageSelect.svelte';
 export { default as MediaPicker } from './MediaPicker.svelte';

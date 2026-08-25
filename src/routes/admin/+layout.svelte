@@ -8,6 +8,7 @@
   import * as draft from '$lib/stores/pageDraft.svelte';
   import { registerPublishHandler } from '$lib/stores/pendingChanges.svelte';
   import { toast } from '$lib/stores/toast.svelte';
+  import { editorPreview } from '$lib/stores/editorPreview.svelte';
   import { publishAllChanges, buildDraftFromServerData } from './publishDraft';
   import type { UnifiedDraftData } from './publishDraft';
   import type { LayoutData } from './$types';
@@ -44,7 +45,22 @@
   // Local updating state for minimum spinner duration
   let isUpdating = $state(false);
 
+  /**
+   * The nav is a permanent rail on a wide screen and a drawer on a narrow one.
+   * This is the one place a breakpoint is honest: those are different
+   * behaviours, not a different size, and no amount of clamp() gets you from
+   * one to the other. Everything else in the admin is fluid.
+   */
+  let navOpen = $state(false);
+
   const currentPath = $derived($page.url.pathname);
+
+  // Navigating is the end of the drawer's job, so it closes itself rather than
+  // making every link remember to.
+  $effect(() => {
+    currentPath;
+    navOpen = false;
+  });
   const artistName = $derived(data.profile?.name ?? 'Artist');
   const pageTitle = $derived(`Artistack - ${artistName}`);
 
@@ -69,6 +85,22 @@
       { href: '/admin/settings', label: 'Settings', icon: 'settings', adminOnly: true }
     ].filter((item) => !item.adminOnly || data.user.role === 'admin')
   );
+
+  /**
+   * Where you are, for the narrow top bar. The nav carries this on a wide
+   * screen, which is why the pages no longer print their own title — but with
+   * the nav behind a hamburger, something has to say it.
+   *
+   * Nested routes report their section: a clip editor is still "Clips".
+   */
+  const pageLabel = $derived.by(() => {
+    if (currentPath === '/admin') return null;
+    if (currentPath.startsWith('/admin/profile')) return 'Profile';
+    return (
+      navItems.find((item) => item.href !== '/admin' && currentPath.startsWith(item.href))?.label ??
+      null
+    );
+  });
 
   // Map nav hrefs to their dirty state
   function isNavDirty(href: string): boolean {
@@ -126,9 +158,123 @@
 </svelte:head>
 
 <div class="flex min-h-screen">
+  <!-- Narrow-screen top bar: the way into the nav, where you are, and — on the
+       two-pane pages — which pane you're looking at. One row, because a second
+       bar holding two buttons costs a tenth of a phone screen. The title yields
+       first, since the toggle is the only thing here you actually press. -->
+  <header
+    class="fixed inset-x-0 top-0 z-30 flex h-14 items-center gap-2 border-b border-gray-800 bg-gray-900 px-3 lg:hidden"
+  >
+    <button
+      onclick={() => (navOpen = true)}
+      aria-label="Open menu"
+      aria-expanded={navOpen}
+      class="shrink-0 rounded-lg p-2 text-gray-400 hover:bg-gray-800 hover:text-white"
+    >
+      <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M4 6h16M4 12h16M4 18h16"
+        />
+      </svg>
+    </button>
+    <span class="flex min-w-0 flex-1 items-baseline gap-1.5 font-semibold text-white">
+      <span class="truncate">{artistName}</span>
+      {#if pageLabel}
+        <span class="shrink-0 font-normal text-gray-500">/ {pageLabel}</span>
+      {/if}
+    </span>
+
+    {#if editorPreview.active}
+      <div class="flex shrink-0 gap-0.5 rounded-lg bg-gray-800 p-0.5">
+        {#each ['editor', 'preview'] as const as pane (pane)}
+          <button
+            onclick={() => editorPreview.show(pane)}
+            class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors {editorPreview.showing ===
+            pane
+              ? 'bg-violet-600 text-white'
+              : 'text-gray-400 hover:text-white'}"
+          >
+            {pane === 'editor' ? 'Edit' : 'Preview'}
+          </button>
+        {/each}
+      </div>
+    {/if}
+  </header>
+
+  <!-- Publishing lives in the drawer on a wide screen, where the drawer is
+       always open. On a phone that put it behind the hamburger: not only out of
+       reach, but out of sight, so nothing told you there was anything to save.
+       Down here rather than in the top bar because there's room for Undo beside
+       it, and because it's where a thumb already is. Shown only when there is
+       something to save, so it doubles as the unsaved-changes indicator. -->
+  {#if isDirty}
+    <div
+      class="fixed bottom-4 left-4 z-40 flex items-center gap-1 rounded-xl border border-gray-700 bg-gray-900/95 p-1 shadow-2xl backdrop-blur-sm lg:hidden"
+    >
+      <button
+        onclick={draft.undo}
+        disabled={isUpdating}
+        aria-label="Undo changes"
+        title="Undo changes"
+        class="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white disabled:opacity-40"
+      >
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M4 7h11a4 4 0 1 1 0 8h-1M4 7l3-3M4 7l3 3"
+          />
+        </svg>
+      </button>
+      <button
+        onclick={handlePublish}
+        disabled={isUpdating}
+        class="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium whitespace-nowrap text-white transition-colors hover:bg-violet-500 disabled:opacity-60"
+      >
+        {#if isUpdating}
+          <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
+            ></circle>
+            <path
+              class="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
+          </svg>
+        {:else}
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M5 13l4 4L19 7"
+            />
+          </svg>
+        {/if}
+        Update
+      </button>
+    </div>
+  {/if}
+
+  {#if navOpen}
+    <!-- Scrim. Only mounted while open, so it can't swallow clicks the rest of
+         the time — the mistake the date picker's backdrop made. -->
+    <button
+      aria-label="Close menu"
+      class="fixed inset-0 z-40 bg-black/60 lg:hidden"
+      onclick={() => (navOpen = false)}
+    ></button>
+  {/if}
+
   <!-- Sidebar -->
   <aside
-    class="fixed top-0 left-0 flex h-screen w-56 flex-col border-r border-gray-800 bg-gray-900"
+    class="fixed top-0 left-0 z-50 flex h-screen w-56 flex-col border-r border-gray-800 bg-gray-900 transition-transform duration-200 lg:translate-x-0 {navOpen
+      ? 'translate-x-0'
+      : '-translate-x-full'}"
   >
     <!-- Artist Name. The link out sits with the name because that's what it
          opens — the site this admin belongs to. -->
@@ -347,8 +493,9 @@
     </div>
   </aside>
 
-  <!-- Main Content -->
-  <main class="ml-56 flex-1">
+  <!-- Main Content. Padded past the top bar on narrow screens, past the rail
+       on wide ones — never both, because only one exists at a time. -->
+  <main class="min-w-0 flex-1 pt-14 lg:ml-56 lg:pt-0">
     {@render children()}
   </main>
 </div>

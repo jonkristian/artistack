@@ -4,7 +4,8 @@
   import MediaPicker from '$lib/components/ui/MediaPicker.svelte';
   import { ImageSelect, SortableList, TagInput, ToggleSwitch } from '$lib/components/ui';
   import { SectionCard } from '$lib/components/cards';
-  import { PhoneUploadDialog, QueueClipDialog } from '$lib/components/dialogs';
+  import { EditorPreview } from '$lib/components/ui';
+  import { PhoneUploadDialog, QueueClipDialog, SourceClipDialog } from '$lib/components/dialogs';
   import { formatDuration } from '$lib/utils/upload';
   import { fieldClass, labelClass, numberClass } from '$lib/utils/classes';
   import {
@@ -47,6 +48,8 @@
   let { data }: { data: PageData } = $props();
 
   let sourcePickerOpen = $state(false);
+  /** The source clip whose trim and mute are open, or null. */
+  let editingSource = $state<(typeof data.sources)[number] | null>(null);
   let musicPickerOpen = $state(false);
   let phoneUploadOpen = $state(false);
   let postSheet = $state<{ markdown: string } | null>(null);
@@ -484,9 +487,8 @@
   >
 {/snippet}
 
-<div class="flex h-screen">
-  <!-- Left column: everything that shapes the clip -->
-  <div class="flex-1 overflow-y-auto bg-gray-950 p-6">
+<EditorPreview editorClass="lg:flex-1" previewClass="lg:w-2/5 lg:max-w-2xl lg:flex-none" padPreview>
+  {#snippet editor()}
     {#if !data.renderingAvailable}
       <div class="mb-6 rounded-lg border border-amber-700/50 bg-amber-950/40 p-4 text-sm">
         <p class="font-medium text-amber-300">Rendering is unavailable</p>
@@ -500,7 +502,9 @@
       <!-- Post details. No heading: the Name field is the clip's title, so a
            label above it would just say the same thing twice. -->
       <SectionCard>
-        <div class="grid gap-4 sm:grid-cols-2">
+        <div
+          class="grid [grid-template-columns:repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-4"
+        >
           <div>
             <label class={labelClass} for="clip-name">Name</label>
             <input
@@ -550,7 +554,7 @@
             <button
               onclick={() => (phoneUploadOpen = true)}
               title="Show a QR to upload footage straight from a phone"
-              class="flex items-center gap-1.5 rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700"
+              class="flex items-center gap-1.5 rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs whitespace-nowrap text-gray-300 hover:bg-gray-700"
             >
               <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -564,7 +568,7 @@
             </button>
             <button
               onclick={() => (sourcePickerOpen = true)}
-              class="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500"
+              class="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium whitespace-nowrap text-white hover:bg-violet-500"
             >
               Add clips
             </button>
@@ -580,80 +584,55 @@
               <div
                 class="group flex items-center gap-3 rounded-lg bg-gray-800/50 px-3 py-2 transition-colors hover:bg-gray-800"
               >
-                <div data-drag-handle class="text-gray-600 hover:text-gray-400">
-                  <svg
-                    class="h-4 w-4 shrink-0"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M4 8h16M4 16h16"
-                    />
-                  </svg>
-                </div>
+                <!-- The handle rides on the thumbnail rather than beside it.
+                     A drag affordance needs somewhere to grab, not a column of
+                     its own — and on a narrow row that column was the trim
+                     fields' space.
 
-                <div class="h-14 w-10 shrink-0 overflow-hidden rounded bg-gray-800">
+                     Always visible, never revealed on hover: a phone has no
+                     hover, so a handle that waits for one can't be found at all
+                     on the screen where the saved space actually matters. -->
+                <div class="relative h-14 w-10 shrink-0 overflow-hidden rounded bg-gray-800">
                   {#if item?.thumbnailUrl}
                     <img src={item.thumbnailUrl} alt="" class="h-full w-full object-cover" />
                   {/if}
+                  <div
+                    data-drag-handle
+                    aria-label="Drag to reorder"
+                    class="absolute inset-x-0 bottom-0 flex items-center justify-center bg-black/60 py-1 text-white/80 transition-colors group-hover:bg-black/80 group-hover:text-white"
+                  >
+                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M4 8h16M4 16h16"
+                      />
+                    </svg>
+                  </div>
                 </div>
 
-                <div class="min-w-0 flex-1">
+                <button
+                  onclick={() => (editingSource = source)}
+                  class="min-w-0 flex-1 text-left"
+                  title="Trim and mute"
+                >
                   <p class="truncate text-sm text-white">{item?.filename ?? 'Missing file'}</p>
-                  <p class="text-xs text-gray-500">{formatDuration(item?.durationMs)}</p>
-                </div>
+                  <p class="text-xs text-gray-500">
+                    {formatDuration(item?.durationMs)}
+                    {#if source.trimStart != null || source.trimEnd != null}
+                      · trimmed
+                    {/if}
+                    {#if source.muted}
+                      · muted
+                    {/if}
+                  </p>
+                </button>
 
-                <div class="flex items-center gap-2">
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    placeholder="from"
-                    value={source.trimStart ?? ''}
-                    onblur={async (e) => {
-                      const raw = e.currentTarget.value;
-                      await updateSource({
-                        id: source.id,
-                        trimStart: raw === '' ? null : Number(raw)
-                      });
-                      await invalidateAll();
-                    }}
-                    class={numberClass + ' w-16'}
-                  />
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    placeholder="to"
-                    value={source.trimEnd ?? ''}
-                    onblur={async (e) => {
-                      const raw = e.currentTarget.value;
-                      await updateSource({
-                        id: source.id,
-                        trimEnd: raw === '' ? null : Number(raw)
-                      });
-                      await invalidateAll();
-                    }}
-                    class={numberClass + ' w-16'}
-                  />
-                  <ToggleSwitch
-                    label="Mute"
-                    size="md"
-                    checked={source.muted ?? false}
-                    onchange={async (muted) => {
-                      await updateSource({ id: source.id, muted });
-                      await invalidateAll();
-                    }}
-                  />
-                  {@render removeButton(async () => {
-                    await removeSource(source.id);
-                    await invalidateAll();
-                  }, 'Remove source clip')}
-                </div>
+                {@render removeButton(async () => {
+                  await removeSource(source.id);
+                  await invalidateAll();
+                }, 'Remove source clip')}
               </div>
             {/snippet}
           </SortableList>
@@ -665,7 +644,7 @@
         {#snippet actions()}
           <button
             onclick={addCaption}
-            class="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700"
+            class="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs whitespace-nowrap text-gray-300 hover:bg-gray-700"
           >
             Add line
           </button>
@@ -749,7 +728,9 @@
 
             <!-- Two starts, because they answer different questions: when the
                  music comes in, and where in the song it comes in from. -->
-            <div class="grid gap-4 sm:grid-cols-3">
+            <div
+              class="grid [grid-template-columns:repeat(auto-fill,minmax(min(100%,14rem),1fr))] gap-4"
+            >
               <div>
                 <label class={labelClass} for="m-start">Comes in at (s)</label>
                 <input
@@ -820,7 +801,11 @@
 
       <!-- Look -->
       <SectionCard title="Look">
-        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <!-- Two presets per row even on the narrowest phone: they're compared
+             against each other, and one per row makes that a scroll. -->
+        <div
+          class="grid [grid-template-columns:repeat(auto-fill,minmax(min(100%,7.5rem),1fr))] gap-3"
+        >
           {#each CLIP_PRESETS as preset (preset.id)}
             <button
               type="button"
@@ -893,7 +878,9 @@
 
         {#if showCustomise}
           <div class="mt-4 space-y-4">
-            <div class="grid gap-4 sm:grid-cols-3">
+            <div
+              class="grid [grid-template-columns:repeat(auto-fill,minmax(min(100%,14rem),1fr))] gap-4"
+            >
               <div>
                 <label class={labelClass} for="opt-aspect">Aspect</label>
                 <select
@@ -963,7 +950,9 @@
               </div>
             </div>
 
-            <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div
+              class="mt-4 grid [grid-template-columns:repeat(auto-fill,minmax(min(100%,10rem),1fr))] gap-2"
+            >
               {#each LOOK_OPTIONS as option (option.key)}
                 <label class="flex items-center gap-2 text-sm text-gray-300" title={option.hint}>
                   <input
@@ -1112,7 +1101,9 @@
                 <h3 class="mb-2 text-xs font-semibold tracking-wide text-gray-400 uppercase">
                   {group.label}
                 </h3>
-                <div class="grid gap-3 sm:grid-cols-3">
+                <div
+                  class="grid [grid-template-columns:repeat(auto-fill,minmax(min(100%,12rem),1fr))] gap-3"
+                >
                   {#each group.fields as field (field.key)}
                     {@const isChanged = advanced[field.key] !== DEFAULT_ADVANCED_CONFIG[field.key]}
                     <div>
@@ -1164,12 +1155,12 @@
         Delete clip
       </button>
     </div>
-  </div>
+  {/snippet}
 
-  <!-- Right column: the render itself, and what happens to it -->
-  <div
-    class="w-2/5 max-w-2xl min-w-96 shrink-0 space-y-6 overflow-y-auto border-l border-gray-800 bg-gray-950 p-6"
-  >
+  <!-- The render and what happens to it. On a phone this is the Preview half,
+       so the video and the buttons that act on it arrive together — no scrolling
+       past the whole settings column to see what you just rendered. -->
+  {#snippet preview()}
     <!-- The clip itself, or the invitation to make one. Progress lives here
          rather than in the Render box: it describes the clip taking shape, and
          showing it in both places said the same thing twice. -->
@@ -1227,7 +1218,7 @@
     {#if isRendering}
       <button
         onclick={handleStop}
-        class="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-base text-gray-300 hover:bg-gray-700"
+        class="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-base whitespace-nowrap text-gray-300 hover:bg-gray-700"
       >
         Cancel render
       </button>
@@ -1235,7 +1226,7 @@
       <button
         onclick={handleRender}
         disabled={!data.renderingAvailable || sources.length === 0}
-        class="w-full rounded-lg bg-sky-700 px-4 py-3 text-base font-medium text-white transition-colors hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-40"
+        class="w-full rounded-lg bg-sky-700 px-4 py-3 text-base font-medium whitespace-nowrap text-white transition-colors hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-40"
       >
         {outputMedia ? 'Render again' : 'Render clip'}
       </button>
@@ -1321,7 +1312,7 @@
             {#if canSendForReview}
               <button
                 onclick={handleSendForReview}
-                class="flex-1 rounded-lg border border-teal-700/60 bg-teal-900/30 px-3 py-2.5 text-sm font-medium text-teal-200 transition-colors hover:bg-teal-900/50"
+                class="flex-1 rounded-lg border border-teal-700/60 bg-teal-900/30 px-3 py-2.5 text-sm font-medium whitespace-nowrap text-teal-200 transition-colors hover:bg-teal-900/50"
               >
                 {selected.status === 'review' ? 'Re-send for review' : 'Send for review'}
               </button>
@@ -1329,7 +1320,7 @@
             {#if canSchedule}
               <button
                 onclick={() => (queueDialogOpen = true)}
-                class="flex-1 rounded-lg bg-violet-600 px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-violet-500"
+                class="flex-1 rounded-lg bg-violet-600 px-3 py-2.5 text-sm font-medium whitespace-nowrap text-white transition-colors hover:bg-violet-500"
               >
                 Schedule release
               </button>
@@ -1426,7 +1417,7 @@
                   : 'Next available slot'}
                 <button
                   onclick={() => (queueDialogOpen = true)}
-                  class="text-violet-400 hover:text-violet-300"
+                  class="whitespace-nowrap text-violet-400 hover:text-violet-300"
                 >
                   Change
                 </button>
@@ -1456,7 +1447,7 @@
             {/if}
             <button
               onclick={handleUnqueue}
-              class="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700"
+              class="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs whitespace-nowrap text-gray-300 hover:bg-gray-700"
             >
               Remove from queue
             </button>
@@ -1464,8 +1455,27 @@
         {/if}
       </SectionCard>
     {/if}
-  </div>
-</div>
+  {/snippet}
+</EditorPreview>
+
+{#if editingSource}
+  <!-- Captured, not read through `editingSource`: the save fires as the dialog
+       closes, and closing is what sets that back to null. -->
+  {@const source = editingSource}
+  {@const item = mediaById.get(source.mediaId)}
+  <SourceClipDialog
+    filename={item?.filename ?? 'Missing file'}
+    duration={formatDuration(item?.durationMs)}
+    trimStart={source.trimStart}
+    trimEnd={source.trimEnd}
+    muted={source.muted ?? false}
+    onchange={async (values) => {
+      await updateSource({ id: source.id, ...values });
+      await invalidateAll();
+    }}
+    onclose={() => (editingSource = null)}
+  />
+{/if}
 
 <!-- Pickers live outside the editor so their modals aren't clipped -->
 {#if queueDialogOpen}

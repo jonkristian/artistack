@@ -19,11 +19,19 @@
     formatDuration,
     ACCEPT_IMAGE,
     ACCEPT_VIDEO,
-    ACCEPT_AUDIO
+    ACCEPT_AUDIO,
+    ACCEPT_DOCUMENT
   } from '$lib/utils/upload';
   import { PhoneUploadDialog } from '$lib/components/dialogs';
-  import { MediaDropZone, SelectCheckbox, SelectionToolbar, TagInput } from '$lib/components/ui';
+  import {
+    FilterSelect,
+    MediaDropZone,
+    SelectCheckbox,
+    SelectionToolbar,
+    TagInput
+  } from '$lib/components/ui';
   import { Selection } from '$lib/utils/selection.svelte';
+  import { mediaDrag } from '$lib/stores/mediaDrag.svelte';
 
   let phoneUploadOpen = $state(false);
 
@@ -34,20 +42,23 @@
   /** 0–1 while a chunked upload is in flight; null when the file went in one request. */
   let uploadProgress = $state<number | null>(null);
   let generating = $state(false);
-  let draggedMediaId = $state<number | null>(null);
 
-  // Role filter. 'all' deliberately includes renders — they're real files
-  // taking up real disk, so hiding them everywhere would make them impossible
-  // to clear out.
-  const ROLE_TABS = [
-    { key: 'all', label: 'All' },
+  // Role filter. Renders are listed deliberately — they're real files taking up
+  // real disk, so hiding them everywhere would make them impossible to clear out.
+  const ROLES = [
     { key: 'asset', label: 'Images' },
     { key: 'source', label: 'Footage' },
     { key: 'music', label: 'Music' },
+    { key: 'document', label: 'Documents' },
     { key: 'render', label: 'Renders' }
   ] as const;
 
-  let roleFilter = $state<(typeof ROLE_TABS)[number]['key']>('all');
+  /** Empty means every role; there's no separate "all" value to keep in sync. */
+  let roleFilter = $state<string[]>([]);
+
+  const roleOptions = $derived(
+    ROLES.map((r) => ({ key: r.key, label: r.label, count: roleCounts[r.key] ?? 0 }))
+  );
 
   const roleCounts = $derived(
     data.media.reduce<Record<string, number>>((acc, m) => {
@@ -57,7 +68,7 @@
   );
 
   const shownMedia = $derived(
-    roleFilter === 'all' ? data.media : data.media.filter((m) => m.role === roleFilter)
+    roleFilter.length === 0 ? data.media : data.media.filter((m) => roleFilter.includes(m.role))
   );
 
   // Pagination
@@ -94,9 +105,6 @@
     toast.success(`Deleted ${count} file${count > 1 ? 's' : ''}`);
     selection.clear();
   }
-
-  // Bio.txt option for press kit
-  let includeBioTxt = $state(true);
 
   // Check if press kit should be shown (toggle in settings)
   const showPressKit = $derived(data.pressKitEnabled);
@@ -188,24 +196,10 @@
    */
   const hasDropZone = $derived(showPressKit || data.clipsEnabled);
 
-  // Dragging a tile out of the grid; the drop zones handle the rest.
-  function handleDragStart(e: DragEvent, mediaId: number) {
-    draggedMediaId = mediaId;
-    if (e.dataTransfer) {
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', String(mediaId));
-    }
-  }
-
-  function handleDragEnd() {
-    draggedMediaId = null;
-  }
-
   async function handleAddToPressKit(mediaId: number) {
     await addToPressKit({ mediaId });
     await invalidateAll();
     toast.success('Added to Press Kit');
-    draggedMediaId = null;
   }
 
   async function handleRemoveFromPressKit(mediaId: number) {
@@ -218,7 +212,6 @@
     await addToClipGraphics({ mediaId });
     await invalidateAll();
     toast.success('Added to Clip Graphics');
-    draggedMediaId = null;
   }
 
   async function handleRemoveFromClipGraphics(mediaId: number) {
@@ -238,8 +231,7 @@
     try {
       const res = await fetch('/api/press-kit/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ includeBio: includeBioTxt })
+        headers: { 'Content-Type': 'application/json' }
       });
       const result = await res.json();
 
@@ -253,12 +245,6 @@
       toast.error('Failed to generate Press Kit');
     }
     generating = false;
-  }
-
-  function copyPressKitUrl() {
-    const url = `${window.location.origin}/uploads/press-kit.zip`;
-    navigator.clipboard.writeText(url);
-    toast.success('URL copied!');
   }
 
   function formatFileSize(bytes: number | null): string {
@@ -278,16 +264,12 @@
   }
 </script>
 
-<div class="min-h-screen bg-gray-950 p-6">
-  <header class="mb-6 flex items-center justify-between">
-    <div>
-      <h1 class="text-2xl font-semibold text-white">Media Library</h1>
-      <p class="text-sm text-gray-500">Upload originals, crop when you use them</p>
-    </div>
+<div class="min-h-screen bg-gray-950 p-[clamp(1rem,4vw,1.5rem)]">
+  <header class="mb-6 flex flex-wrap items-center justify-end gap-3">
     <div class="flex items-center gap-2">
       <button
         onclick={() => (phoneUploadOpen = true)}
-        class="flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
+        class="flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm font-medium whitespace-nowrap text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
       >
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
@@ -333,7 +315,7 @@
     {#if showPressKit}
       <MediaDropZone
         title="Press Kit"
-        description="Drag files here to include them"
+        description="Drag photos, logos and documents here"
         items={pressKitItems}
         ondropmedia={handleAddToPressKit}
         onremove={handleRemoveFromPressKit}
@@ -355,34 +337,28 @@
         {/snippet}
 
         {#snippet actions()}
-          <label class="flex items-center gap-1.5 text-xs text-gray-400">
-            <input
-              type="checkbox"
-              bind:checked={includeBioTxt}
-              class="rounded border-gray-600 bg-gray-700 text-violet-500"
-            />
-            Include bio
-          </label>
           {#if data.pressKitZipExists}
-            <button
-              onclick={copyPressKitUrl}
-              class="flex items-center gap-1.5 rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700"
+            <a
+              href="/uploads/press-kit.zip"
+              download
+              title="Download press-kit.zip"
+              aria-label="Download press-kit.zip"
+              class="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-400 transition-colors hover:bg-gray-700 hover:text-white"
             >
               <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
                   stroke-width="2"
-                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
                 />
               </svg>
-              Copy URL
-            </button>
+            </a>
           {/if}
           <button
             onclick={handleGeneratePressKit}
             disabled={generating || pressKitItems.length === 0}
-            class="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+            class="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium whitespace-nowrap text-white hover:bg-violet-500 disabled:opacity-50"
           >
             {#if generating}
               <div
@@ -401,19 +377,6 @@
               Generate ZIP
             {/if}
           </button>
-        {/snippet}
-
-        {#snippet footer()}
-          {#if data.pressKitZipExists}
-            <p class="mt-3 text-xs text-gray-500">
-              <a href="/uploads/press-kit.zip" download class="text-violet-400 hover:underline">
-                Download press-kit.zip
-              </a>
-              {#if data.bio}
-                <span class="text-gray-600">• Includes bio.txt</span>
-              {/if}
-            </p>
-          {/if}
         {/snippet}
       </MediaDropZone>
     {/if}
@@ -486,35 +449,24 @@
       <p class="mb-4 text-sm text-gray-500">Upload images and video to build your media library</p>
       <button
         onclick={() => fileInput.click()}
-        class="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500"
+        class="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium whitespace-nowrap text-white transition-colors hover:bg-violet-500"
       >
         Upload your first file
       </button>
     </div>
   {:else}
-    <!-- Filters and bulk actions share a row: the tab counts already report
-         how many files there are, so a separate tally said it twice. -->
+    <!-- Filter and bulk actions share a row: the filter's own count already
+         reports how many files are showing, so a separate tally said it twice. -->
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <div class="flex flex-wrap gap-1.5">
-        {#each ROLE_TABS as tab (tab.key)}
-          {@const count = tab.key === 'all' ? data.media.length : (roleCounts[tab.key] ?? 0)}
-          <button
-            onclick={() => {
-              roleFilter = tab.key;
-              currentPage = 1;
-              selection.clear();
-            }}
-            disabled={count === 0 && tab.key !== 'all'}
-            class="rounded-lg px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-30 {roleFilter ===
-            tab.key
-              ? 'bg-violet-600 text-white'
-              : 'border border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white'}"
-          >
-            {tab.label}
-            <span class="ml-1 tabular-nums opacity-60">{count}</span>
-          </button>
-        {/each}
-      </div>
+      <FilterSelect
+        options={roleOptions}
+        bind:selected={roleFilter}
+        total={data.media.length}
+        onchange={() => {
+          currentPage = 1;
+          selection.clear();
+        }}
+      />
 
       <SelectionToolbar
         count={selection.size}
@@ -525,7 +477,9 @@
       />
     </div>
 
-    <div class="grid grid-cols-2 gap-4 pb-16 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+    <div
+      class="grid [grid-template-columns:repeat(auto-fill,minmax(min(100%,9rem),1fr))] gap-4 pb-16"
+    >
       {#each visibleMedia as item (item.id)}
         <div
           role="button"
@@ -533,12 +487,10 @@
           aria-label={showPressKit && pressKitMediaIds.has(item.id)
             ? `${item.alt || item.filename} - in press kit`
             : item.alt || item.filename}
-          draggable={hasDropZone}
-          ondragstart={(e) => handleDragStart(e, item.id)}
-          ondragend={handleDragEnd}
+          onpointerdown={(e) => hasDropZone && mediaDrag.start(item.id, e)}
           class="group relative overflow-hidden rounded-xl bg-gray-800 {hasDropZone
-            ? 'cursor-grab'
-            : ''} {draggedMediaId === item.id ? 'opacity-50' : ''} {selection.has(item.id)
+            ? 'cursor-grab touch-none'
+            : ''} {mediaDrag.dragging === item.id ? 'opacity-50' : ''} {selection.has(item.id)
             ? 'ring-2 ring-violet-500'
             : ''}"
         >
@@ -550,6 +502,29 @@
                 <svg class="h-10 w-10 text-violet-400" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M12 3v10.55A4 4 0 1014 17V7h4V3h-6z" />
                 </svg>
+              </div>
+            {:else if item.role === 'document'}
+              <!-- Same reason as audio, plus the extension: one PDF looks much
+                   like another, so the name is the only thing that identifies it. -->
+              <div
+                class="flex h-full w-full flex-col items-center justify-center gap-2 bg-gray-800 px-2"
+              >
+                <svg
+                  class="h-9 w-9 text-violet-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.5"
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                <span class="text-[10px] font-medium tracking-wider text-gray-400 uppercase">
+                  {item.filename.split('.').pop()}
+                </span>
               </div>
             {:else}
               <img
@@ -670,7 +645,7 @@
   <!-- Fixed Pagination -->
   {#if shownMedia.length > 0 && totalPages > 1}
     <div
-      class="fixed right-0 bottom-0 left-56 flex items-center justify-center gap-2 border-t border-gray-800 bg-gray-950/95 py-3 backdrop-blur-sm"
+      class="fixed right-0 bottom-0 left-0 flex items-center justify-center gap-2 border-t border-gray-800 bg-gray-950/95 py-3 backdrop-blur-sm lg:left-56"
     >
       <button
         type="button"
@@ -706,7 +681,7 @@
   <input
     bind:this={fileInput}
     type="file"
-    accept={`${ACCEPT_IMAGE},${ACCEPT_VIDEO},${ACCEPT_AUDIO}`}
+    accept={`${ACCEPT_IMAGE},${ACCEPT_VIDEO},${ACCEPT_AUDIO},${ACCEPT_DOCUMENT}`}
     multiple
     onchange={handleFileSelect}
     class="sr-only"

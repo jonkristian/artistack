@@ -235,12 +235,8 @@
   }
 </script>
 
-<div class="min-h-screen bg-gray-950 p-6">
+<div class="min-h-screen bg-gray-950 p-[clamp(1rem,4vw,1.5rem)]">
   <!-- Page Header -->
-  <header class="mb-6">
-    <h1 class="text-2xl font-semibold text-white">Integrations</h1>
-    <p class="text-sm text-gray-500">Connect external services to automatically sync content</p>
-  </header>
 
   <div class="max-w-2xl space-y-6">
     <!-- Google Integration (unified for YouTube + Places) -->
@@ -281,7 +277,9 @@
 
       <!-- YouTube stats if available -->
       {#if data.socialStats.youtube && googleYoutubeEnabled}
-        <div class="mb-4 grid grid-cols-3 gap-4 rounded-lg bg-gray-800/50 p-4">
+        <div
+          class="mb-4 grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,7rem),1fr))] gap-4 rounded-lg bg-gray-800/50 p-4"
+        >
           <div>
             <div class="text-xs text-gray-500">YouTube Subscribers</div>
             <div class="text-lg font-semibold text-white">
@@ -436,7 +434,9 @@
         </label>
 
         {#if discordEnabled}
-          <div class="grid grid-cols-3 gap-3 rounded-lg bg-gray-800/50 p-3">
+          <div
+            class="grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,7rem),1fr))] gap-3 rounded-lg bg-gray-800/50 p-3"
+          >
             <div>
               <label for="discordSchedule" class="mb-1 block text-xs text-gray-500">Frequency</label
               >
@@ -552,7 +552,9 @@
         </div>
 
         {#if data.socialStats.spotify}
-          <div class="mb-4 grid grid-cols-3 gap-4 rounded-lg bg-gray-800/50 p-4">
+          <div
+            class="mb-4 grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,7rem),1fr))] gap-4 rounded-lg bg-gray-800/50 p-4"
+          >
             <div>
               <div class="text-xs text-gray-500">Followers</div>
               <div class="text-lg font-semibold text-white">
@@ -610,7 +612,9 @@
         {/if}
 
         <div class="space-y-3">
-          <div class="grid grid-cols-2 gap-3">
+          <div
+            class="grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr))] gap-3"
+          >
             <div>
               <label for="spotifyClientId" class="mb-1 block text-xs text-gray-500">Client ID</label
               >
@@ -784,7 +788,9 @@
               />
             </div>
 
-            <div class="grid gap-4 sm:grid-cols-3">
+            <div
+              class="grid [grid-template-columns:repeat(auto-fill,minmax(min(100%,14rem),1fr))] gap-4"
+            >
               <div>
                 <label class={labelClass} for="publish-interval"> Days between releases </label>
                 <input
@@ -831,7 +837,9 @@
             <!-- Two channels, because they are read by different people at
                  different urgencies: a review wants acting on today, a release
                  is an announcement. Either can be left empty. -->
-            <div class="grid gap-4 sm:grid-cols-2">
+            <div
+              class="grid [grid-template-columns:repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-4"
+            >
               <div>
                 <label class={labelClass} for="clip-review-webhook">Discord: review channel</label>
                 <input

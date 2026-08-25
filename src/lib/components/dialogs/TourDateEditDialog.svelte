@@ -179,7 +179,7 @@
         {/if}
       </div>
 
-      <div class="grid grid-cols-2 gap-3">
+      <div class="grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr))] gap-3">
         <div>
           <label for="tour-date" class={labelClass}>Date</label>
           <input id="tour-date" type="date" bind:value={date} class={fieldClass} />

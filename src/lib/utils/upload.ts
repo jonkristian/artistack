@@ -39,6 +39,12 @@ export const ACCEPT_IMAGE =
 
 export const ACCEPT_VIDEO = 'video/mp4,video/quicktime,video/webm,.mp4,.mov,.m4v,.webm';
 
+/** Press kit paperwork: a bio, a rider, a one-sheet. */
+export const ACCEPT_DOCUMENT =
+  'application/pdf,application/msword,' +
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document,' +
+  'application/rtf,text/plain,text/markdown,.pdf,.doc,.docx,.rtf,.txt,.md';
+
 export const ACCEPT_AUDIO =
   'audio/wav,audio/x-wav,audio/wave,audio/vnd.wave,audio/mpeg,audio/mp3,' +
   'audio/mp4,audio/x-m4a,audio/aac,audio/flac,audio/x-flac,audio/ogg,application/ogg,' +
@@ -57,6 +63,7 @@ export const ACCEPT_AUDIO =
 const VIDEO_EXT = /\.(mp4|mov|m4v|webm)$/i;
 const AUDIO_EXT = /\.(wav|mp3|m4a|flac|ogg|oga)$/i;
 const IMAGE_EXT = /\.(jpe?g|png|webp|gif|svg)$/i;
+const DOCUMENT_EXT = /\.(pdf|docx?|rtf|txt|md)$/i;
 
 export function isVideoFile(file: File): boolean {
   return file.type.startsWith('video/') || VIDEO_EXT.test(file.name);
@@ -68,6 +75,12 @@ export function isAudioFile(file: File): boolean {
 
 export function isImageFile(file: File): boolean {
   return file.type.startsWith('image/') || IMAGE_EXT.test(file.name);
+}
+
+export function isDocumentFile(file: File): boolean {
+  return (
+    file.type === 'application/pdf' || file.type.startsWith('text/') || DOCUMENT_EXT.test(file.name)
+  );
 }
 
 /** Video and audio both take the streaming route; images are buffered. */

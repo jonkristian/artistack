@@ -107,7 +107,9 @@
     class="rounded-xl border border-gray-600 p-4"
     style="background-color: var(--theme-secondary)"
   >
-    <div class="mb-3 grid grid-cols-2 gap-3">
+    <div
+      class="mb-3 grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr))] gap-3"
+    >
       <div>
         <label for="edit-tour-date-{tourDate.id}" class={labelClass}>Date</label>
         <input

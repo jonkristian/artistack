@@ -1,8 +1,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
-import { media, profile, links, settings } from '$lib/server/schema';
-import { eq, asc, inArray, and } from 'drizzle-orm';
+import { media, settings } from '$lib/server/schema';
+import { inArray } from 'drizzle-orm';
 import { auth } from '$lib/server/auth';
 import { user } from '$lib/server/auth-schema';
 import archiver from 'archiver';
@@ -15,15 +15,6 @@ export const POST: RequestHandler = async ({ request }) => {
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user) {
     return json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  // Parse bio option from request body
-  let includeBio = true;
-  try {
-    const body = await request.json();
-    includeBio = body.includeBio ?? true;
-  } catch {
-    // No body or invalid JSON, use defaults
   }
 
   // Get press kit media IDs from settings
@@ -41,24 +32,11 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ error: 'Press kit is empty' }, { status: 400 });
   }
 
-  // Get profile for bio
-  const [profileData] = await db.select().from(profile).limit(1);
-  const artistName = profileData?.name || 'Artist';
-
   // Ensure output directory exists (use data/uploads like other uploads)
   const outputDir = join(process.cwd(), 'data', 'uploads');
   await mkdir(outputDir, { recursive: true });
 
   const outputPath = join(outputDir, 'press-kit.zip');
-
-  // Fetch social links for bio.txt (must be done before entering Promise callback)
-  const socialLinks = includeBio
-    ? await db
-        .select()
-        .from(links)
-        .where(and(eq(links.category, 'social'), eq(links.visible, true)))
-        .orderBy(asc(links.position))
-    : [];
 
   // Create ZIP archive
   return new Promise((resolve) => {
@@ -81,45 +59,6 @@ export const POST: RequestHandler = async ({ request }) => {
     });
 
     archive.pipe(output);
-
-    // Add bio.txt if requested
-    if (includeBio) {
-      const bioLines: string[] = [];
-
-      // Artist name
-      if (artistName) {
-        bioLines.push(artistName);
-        bioLines.push('='.repeat(artistName.length));
-        bioLines.push('');
-      }
-
-      // Bio text
-      if (profileData?.bio) {
-        bioLines.push(profileData.bio);
-        bioLines.push('');
-      }
-
-      // Email
-      if (profileData?.email) {
-        bioLines.push(`Email: ${profileData.email}`);
-        bioLines.push('');
-      }
-
-      // Social links
-      if (socialLinks.length > 0) {
-        bioLines.push('Social Media');
-        bioLines.push('-'.repeat(12));
-        for (const link of socialLinks) {
-          const label =
-            link.label || link.platform.charAt(0).toUpperCase() + link.platform.slice(1);
-          bioLines.push(`${label}: ${link.url}`);
-        }
-      }
-
-      if (bioLines.length > 0) {
-        archive.append(bioLines.join('\n'), { name: 'bio.txt' });
-      }
-    }
 
     // Add each media file (use original when available for full quality)
     // Maintain the order from mediaIds

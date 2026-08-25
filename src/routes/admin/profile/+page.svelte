@@ -65,12 +65,7 @@
   }
 </script>
 
-<div class="min-h-screen bg-gray-950 p-6">
-  <header class="mb-6">
-    <h1 class="text-2xl font-semibold text-white">Your profile</h1>
-    <p class="text-sm text-gray-500">Your name, sign-in email and password</p>
-  </header>
-
+<div class="min-h-screen bg-gray-950 p-[clamp(1rem,4vw,1.5rem)]">
   <div class="max-w-2xl space-y-6">
     <SectionCard>
       <!-- Always editable rather than a view with an Edit button: this page

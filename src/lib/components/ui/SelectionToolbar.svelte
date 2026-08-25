@@ -24,7 +24,7 @@
 <div class="flex items-center gap-2">
   <button
     onclick={onToggleAll}
-    class="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
+    class="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm whitespace-nowrap text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
   >
     {allSelected ? 'Deselect all' : 'Select all'}
   </button>

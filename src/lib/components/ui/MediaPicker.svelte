@@ -565,7 +565,9 @@
             No {kind === 'all' ? 'media' : kindLabel} in library yet
           </p>
         {:else}
-          <div class="grid grid-cols-3 gap-3 sm:grid-cols-4">
+          <div
+            class="grid [grid-template-columns:repeat(auto-fill,minmax(min(100%,7rem),1fr))] gap-3"
+          >
             {#each visibleMedia as item (item.id)}
               {@const isSelected = multiple && multiSelection.includes(item.id)}
               <button

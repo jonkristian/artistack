@@ -200,12 +200,14 @@ export const media = sqliteTable('media', {
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
 });
 
-export type MediaRole = 'asset' | 'source' | 'music' | 'render';
+export type MediaRole = 'asset' | 'source' | 'music' | 'render' | 'document';
 
 /** Default role for a freshly uploaded file, before anything overrides it. */
 export function roleForMime(mimeType: string): MediaRole {
   if (mimeType.startsWith('video/')) return 'source';
   if (mimeType.startsWith('audio/')) return 'music';
+  // Everything non-media: bios, riders, one-sheets.
+  if (mimeType.startsWith('application/') || mimeType.startsWith('text/')) return 'document';
   return 'asset';
 }
 

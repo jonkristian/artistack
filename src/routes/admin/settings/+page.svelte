@@ -159,12 +159,7 @@
   }
 </script>
 
-<div class="min-h-screen bg-gray-950 p-6">
-  <header class="mb-6">
-    <h1 class="text-2xl font-semibold text-white">Settings</h1>
-    <p class="text-sm text-gray-500">Configure system preferences</p>
-  </header>
-
+<div class="min-h-screen bg-gray-950 p-[clamp(1rem,4vw,1.5rem)]">
   <div class="max-w-2xl space-y-6">
     <SectionCard title="General">
       <div class="space-y-4">
@@ -202,7 +197,9 @@
           Configure SMTP settings for sending password reset emails.
         </p>
 
-        <div class="grid grid-cols-2 gap-4">
+        <div
+          class="grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr))] gap-4"
+        >
           <div>
             <label for="smtp-host" class={labelClass}> SMTP Host </label>
             <input
@@ -226,7 +223,9 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-4">
+        <div
+          class="grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr))] gap-4"
+        >
           <div>
             <label for="smtp-user" class={labelClass}> Username </label>
             <input
@@ -250,7 +249,9 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-4">
+        <div
+          class="grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr))] gap-4"
+        >
           <div>
             <label for="smtp-from-address" class={labelClass}> From Address </label>
             <input
@@ -359,7 +360,9 @@
               <p class="mt-1 text-sm text-gray-500">Leave empty to use site title.</p>
             </div>
 
-            <div class="grid grid-cols-2 gap-4">
+            <div
+              class="grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr))] gap-4"
+            >
               <div>
                 <label for="favicon-length" class={labelClass}> Initials </label>
                 <select
@@ -423,7 +426,9 @@
             <div
               class="flex items-center gap-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4"
             >
-              <div class="flex gap-2">
+              <!-- shrink-0 or the previews collapse below their own width and
+                   the icons spill under the text beside them. -->
+              <div class="flex shrink-0 gap-2">
                 <img
                   src="/favicon-32.png?v={faviconCacheBust}"
                   alt="Favicon 32x32"
@@ -435,7 +440,7 @@
                   class="h-8 w-8 rounded"
                 />
               </div>
-              <div class="text-sm text-gray-400">
+              <div class="min-w-0 text-sm text-gray-400">
                 <p>
                   Generated files: favicon.ico, apple-touch-icon.png, icon-192.png, icon-512.png
                 </p>
