@@ -1332,7 +1332,13 @@
                   >
                 {/if}
                 {#if post.error}
-                  <span class="truncate text-red-400/80" title={post.error}>{post.error}</span>
+                  <!-- Quoted, not phrased as our own verdict: the workflow owns
+                       this string, and it sends unhelpful ones. A bare "ok" in
+                       red beside "Failed" reads as a contradiction rather than
+                       as the message TikTok handed back. -->
+                  <span class="truncate text-gray-500" title={post.error}>
+                    said “{post.error}”
+                  </span>
                 {/if}
               </li>
             {/each}

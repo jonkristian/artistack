@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Block, Media, GalleryBlockConfig } from '$lib/server/schema';
   import { MediaPicker } from '$lib/components/ui';
-  import { suppressContextMenu } from '$lib/utils/drag';
+  import { beginDragGesture } from '$lib/utils/drag';
 
   let {
     block,
@@ -51,7 +51,7 @@
     const startY = e.clientY;
     const target = e.currentTarget as HTMLElement;
     let armed = false;
-    const releaseContextMenu = suppressContextMenu();
+    const endDragGesture = beginDragGesture();
 
     const move = (ev: PointerEvent) => {
       if (!armed) {
@@ -73,7 +73,7 @@
     };
 
     const finish = (ev: PointerEvent) => {
-      releaseContextMenu();
+      endDragGesture();
       target.removeEventListener('pointermove', move);
       target.removeEventListener('pointerup', finish);
       target.removeEventListener('pointercancel', finish);

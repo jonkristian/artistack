@@ -12,7 +12,7 @@
    * page instead — without it the browser claims the gesture before we see it.
    */
   import type { Snippet } from 'svelte';
-  import { suppressContextMenu } from '$lib/utils/drag';
+  import { beginDragGesture } from '$lib/utils/drag';
 
   let {
     items = $bindable([]),
@@ -43,7 +43,7 @@
   let insertAt = $state<number | null>(null);
 
   let listEl: HTMLElement;
-  let releaseContextMenu: (() => void) | null = null;
+  let endDragGesture: (() => void) | null = null;
 
   function handlePointerDown(e: PointerEvent, index: number) {
     const target = e.target as HTMLElement;
@@ -54,7 +54,7 @@
 
     e.preventDefault();
     draggedIndex = index;
-    releaseContextMenu = suppressContextMenu();
+    endDragGesture = beginDragGesture();
 
     // Capture on the handle so the drag survives the pointer leaving the row —
     // which it always does, because the row is what's moving. Best-effort:
@@ -97,8 +97,8 @@
   }
 
   function detach(e: PointerEvent) {
-    releaseContextMenu?.();
-    releaseContextMenu = null;
+    endDragGesture?.();
+    endDragGesture = null;
 
     const target = e.target as HTMLElement;
     try {

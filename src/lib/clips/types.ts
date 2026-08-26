@@ -81,6 +81,14 @@ export const PLATFORM_NAMES: Record<string, string> = {
   bluesky: 'Bluesky'
 };
 
+/**
+ * Platforms that can't be posted to from a workflow. TikTok's API only accepts
+ * an upload into the account's inbox; a person still opens the app and posts
+ * it. The best outcome for these is "draft", never "live", so a report saying
+ * otherwise is taken as meaning the upload landed.
+ */
+export const MANUAL_PLATFORMS = new Set(['tiktok']);
+
 export type ClipAspect = '9:16' | '1:1' | '16:9';
 export type ClipTone = 'none' | 'bw' | 'warm' | 'cool' | 'vintage';
 export type ClipFill = 'blur' | 'black' | 'crop';

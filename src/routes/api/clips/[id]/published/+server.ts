@@ -6,6 +6,7 @@ import {
   announceRelease,
   EXPECTED_PLATFORMS
 } from '$lib/server/clip-queue';
+import { MANUAL_PLATFORMS } from '$lib/clips/types';
 import { eq, and } from 'drizzle-orm';
 import type { RequestHandler } from './$types';
 
@@ -46,8 +47,11 @@ export const POST: RequestHandler = async ({ request, params, url: requestUrl })
   const platform = typeof body.platform === 'string' ? body.platform.trim().toLowerCase() : '';
   if (!platform) throw error(400, 'platform is required');
 
-  const status: 'live' | 'failed' | 'draft' =
+  // A manual platform has no "live" to report — the workflow only gets the clip
+  // as far as the inbox, so a success there is a draft whatever it calls itself.
+  const reported: 'live' | 'failed' | 'draft' =
     body.status === 'failed' ? 'failed' : body.status === 'draft' ? 'draft' : 'live';
+  const status = reported === 'live' && MANUAL_PLATFORMS.has(platform) ? 'draft' : reported;
   const url = typeof body.url === 'string' && body.url.trim() ? body.url.trim() : null;
   const message = typeof body.error === 'string' && body.error.trim() ? body.error.trim() : null;
 

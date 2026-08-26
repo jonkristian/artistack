@@ -15,6 +15,8 @@
 - Page titles dropped from the admin; on a phone the top bar says where you are
 - Page views chart keeps a readable day spacing and scrolls, rather than squeezing 30 days into a phone
 - Fixed a needless re-encode on single-source clips, cutting about a fifth off every render
+- TikTok always reports as a draft to post by hand, since the workflow can only reach the inbox
+- A platform's own message is quoted rather than shown as if it were Artistack's verdict
 - Fixed the browser's context menu interrupting a drag on long press
 - Fixed the drop indicator showing two positions for the same gap
 - Fixed favicon previews overlapping their filenames on a narrow screen

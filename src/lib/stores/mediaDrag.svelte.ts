@@ -7,7 +7,7 @@
  * meet through this store — the grid says what's moving, the zones say where
  * they are, and the drop is matched by hit-testing.
  */
-import { suppressContextMenu } from '$lib/utils/drag';
+import { beginDragGesture } from '$lib/utils/drag';
 
 type DropHandler = (mediaId: number) => void;
 
@@ -46,9 +46,10 @@ export const mediaDrag = {
     const startY = e.clientY;
     const target = e.target as HTMLElement;
     let armed = false;
-    // From pointerdown, not from the threshold: on touch the long-press menu
-    // fires at about half a second, before any movement has happened.
-    const releaseContextMenu = suppressContextMenu();
+    // From pointerdown, not from the threshold: text selection starts on the
+    // very first move, and on touch the long-press menu fires at about half a
+    // second, before any movement has happened at all.
+    const endDragGesture = beginDragGesture();
 
     const move = (ev: PointerEvent) => {
       if (!armed) {
@@ -69,7 +70,7 @@ export const mediaDrag = {
     };
 
     const finish = (ev: PointerEvent) => {
-      releaseContextMenu();
+      endDragGesture();
       target.removeEventListener('pointermove', move);
       target.removeEventListener('pointerup', finish);
       target.removeEventListener('pointercancel', finish);
