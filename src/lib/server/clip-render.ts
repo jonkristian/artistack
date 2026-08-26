@@ -242,6 +242,15 @@ async function resolveFont(
 }
 
 /**
+ * How much of a source's progress the loudness measurement accounts for.
+ *
+ * The measurement decodes the whole file without encoding, so it's quicker than
+ * the encode that follows but far from free — roughly a quarter, measured on a
+ * 1080p30 clip. Splitting the share keeps the bar moving through both.
+ */
+const LOUDNORM_SHARE = 0.25;
+
+/**
  * Measures a clip and returns a two-pass (linear) loudnorm filter string, or
  * null when the clip is effectively silent.
  *
@@ -249,22 +258,23 @@ async function resolveFont(
  * "dynamic" mode pumps and over-loudens. Clips below the floor are skipped
  * because normalising near-silence just amplifies hiss.
  */
-async function loudnormFilter(path: string, adv: ClipAdvancedConfig): Promise<string | null> {
+async function loudnormFilter(
+  path: string,
+  adv: ClipAdvancedConfig,
+  onProgress?: (fraction: number) => void
+): Promise<string | null> {
   const targets = `I=${adv.loudnormTarget}:TP=${adv.loudnormTruePeak}:LRA=${adv.loudnormRange}`;
+
+  const duration = onProgress ? await probeDuration(path).catch(() => 0) : 0;
 
   let output: string;
   try {
     // loudnorm's JSON report goes to stderr, and ffmpeg exits non-zero on some
     // inputs even after printing it, so read the log either way.
-    output = await runFfmpeg([
-      '-i',
-      path,
-      '-af',
-      `loudnorm=${targets}:print_format=json`,
-      '-f',
-      'null',
-      '-'
-    ]);
+    output = await runFfmpeg(
+      ['-i', path, '-af', `loudnorm=${targets}:print_format=json`, '-f', 'null', '-'],
+      { totalDuration: duration || undefined, onProgress }
+    );
   } catch (e) {
     output = e instanceof Error ? e.message : '';
   }
@@ -429,6 +439,8 @@ async function renderPart(
     hasWatermarkGraphic: boolean;
     signal?: AbortSignal;
     onLog?: (line: string) => void;
+    /** 0..1 within this source; the caller maps it onto the overall bar. */
+    onProgress?: (fraction: number) => void;
   }
 ): Promise<string> {
   const { tmp, config, adv, width, height, hasIntroGraphic, hasWatermarkGraphic } = ctx;
@@ -509,7 +521,11 @@ async function renderPart(
   if (!silent) {
     if (speedOn) audioFilters.push(`atempo=${config.speed}`);
     if (config.loudnorm) {
-      const ln = await loudnormFilter(source.path, adv);
+      // The measurement pass decodes the whole file before the encode starts.
+      // Without this the bar would sit still for its entire duration.
+      const ln = await loudnormFilter(source.path, adv, (f) =>
+        ctx.onProgress?.(f * LOUDNORM_SHARE)
+      );
       if (ln) audioFilters.push(ln);
     }
   }
@@ -534,7 +550,21 @@ async function renderPart(
   // -shortest stops the looped logo stills (and silence) from extending the clip.
   args.push('-shortest', ...encodeArgs(adv), partPath);
 
-  await runFfmpeg(args, { signal: ctx.signal });
+  // Trimmed length if set, otherwise the source's own — ffmpeg reports elapsed
+  // output time, which only becomes a fraction against the expected total.
+  const partDuration =
+    source.trimStart != null && source.trimEnd != null
+      ? Math.max(0, source.trimEnd - source.trimStart)
+      : probe.duration;
+
+  const encodeShare = config.loudnorm && !silent ? 1 - LOUDNORM_SHARE : 1;
+  const encodeBase = 1 - encodeShare;
+
+  await runFfmpeg(args, {
+    signal: ctx.signal,
+    totalDuration: partDuration || undefined,
+    onProgress: (fraction) => ctx.onProgress?.(encodeBase + fraction * encodeShare)
+  });
   return partPath;
 }
 
@@ -602,6 +632,12 @@ async function joinParts(
 ): Promise<string> {
   const output = join(tmp, 'joined.mp4');
 
+  // One part is already the joined clip. This used to fall through to the
+  // concat demuxer below, which re-encoded the whole thing to produce a copy of
+  // its only input — on a single-source clip that was the second most expensive
+  // stage of the render, for nothing.
+  if (parts.length === 1) return parts[0];
+
   if (xfade && parts.length >= 2) {
     const duration = adv.xfadeSeconds;
     const inputs: string[] = [];
@@ -652,6 +688,9 @@ async function joinParts(
   const listPath = join(tmp, 'list.txt');
   await writeFile(listPath, parts.map((p) => `file '${p}'`).join('\n') + '\n');
 
+  // Stream copy: every part came out of renderPart with identical encoder
+  // settings, which is exactly the condition the concat demuxer needs. The
+  // final pass re-encodes anyway, so a second encode here bought nothing.
   await runFfmpeg(
     [
       '-y',
@@ -663,7 +702,8 @@ async function joinParts(
       '0',
       '-i',
       listPath,
-      ...encodeArgs(adv, true),
+      '-c',
+      'copy',
       output
     ],
     { signal }
@@ -829,6 +869,21 @@ export async function renderClip(
   const tmp = await mkdtemp(join(tmpdir(), 'artistack-clip-'));
   const progress = (percent: number) => onProgress?.(Math.round(clamp(percent, 0, 100)));
 
+  /**
+   * Stage timings, written into the job log.
+   *
+   * A render is several ffmpeg passes — one per source, one per card, a
+   * loudness measurement, a join, a final encode — so "it was slow" is not
+   * actionable without knowing which pass took the time.
+   */
+  const started = Date.now();
+  let lastMark = started;
+  const mark = (stage: string) => {
+    const now = Date.now();
+    onLog?.(`⏱ ${stage}: ${((now - lastMark) / 1000).toFixed(1)}s`);
+    lastMark = now;
+  };
+
   try {
     progress(2);
 
@@ -876,8 +931,24 @@ export async function renderClip(
     progress(5);
 
     // ---- 2) normalise each source --------------------------------------
+    /**
+     * The bar's bands, sized to the stages that will actually run.
+     *
+     * They used to be fixed waypoints — 55, 70, 78 — so a single-source clip
+     * with no outro jumped 15% the instant its sources finished, because two
+     * stages that do nothing still owned a slice of the bar. Whatever they'd
+     * have taken goes to the final encode, which is the stage still working.
+     */
+    const willJoin = input.sources.length > 1;
+    const willOutro = config.outro && hasOutroGraphic;
+    const joinBand = willJoin ? 10 : 0;
+    const outroBand = willOutro ? 8 : 0;
+    const finalStart = 55 + joinBand + outroBand;
+
     const parts: string[] = [];
+    const sourceSlice = 50 / input.sources.length;
     for (let i = 0; i < input.sources.length; i++) {
+      const sliceStart = 5 + i * sourceSlice;
       parts.push(
         await renderPart(input.sources[i], i, {
           tmp,
@@ -890,15 +961,18 @@ export async function renderClip(
           hasIntroGraphic,
           hasWatermarkGraphic,
           signal,
-          onLog
+          onLog,
+          onProgress: (fraction) => progress(sliceStart + fraction * sourceSlice)
         })
       );
-      progress(5 + ((i + 1) / input.sources.length) * 50);
+      progress(sliceStart + sourceSlice);
+      mark(`source ${i + 1}/${input.sources.length}`);
     }
 
     // ---- 3) join --------------------------------------------------------
     let joined = await joinParts(tmp, parts, config.xfade, adv, signal);
-    progress(70);
+    progress(55 + joinBand);
+    mark('join');
 
     // ---- 4) outro dissolve into a graphic card ---------------------------
     if (config.outro && hasOutroGraphic) {
@@ -940,7 +1014,8 @@ export async function renderClip(
       );
       joined = withOutro;
     }
-    progress(78);
+    progress(finalStart);
+    mark('outro');
 
     // ---- 5) burn text, fades, music bed, encode -------------------------
     const totalDuration = await probeDuration(joined);
@@ -1044,13 +1119,15 @@ export async function renderClip(
 
     finalArgs.push(...encodeArgs(adv, true), input.outputPath);
 
+    mark('build filters');
     await runFfmpeg(finalArgs, {
       signal,
       totalDuration,
-      onProgress: (fraction) => progress(78 + fraction * 18)
+      onProgress: (fraction) => progress(finalStart + fraction * (96 - finalStart))
     });
 
     progress(96);
+    mark('final encode');
 
     // ---- 6) branded cover still ----------------------------------------
     let coverPath: string | undefined;
@@ -1082,6 +1159,8 @@ export async function renderClip(
       }
     }
 
+    mark('cover');
+    onLog?.(`⏱ total: ${((Date.now() - started) / 1000).toFixed(1)}s`);
     progress(100);
 
     return {

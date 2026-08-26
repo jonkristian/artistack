@@ -425,8 +425,7 @@ export const CLIP_PRESETS: ClipPreset[] = [
       audioFadeOut: true,
       xfade: false,
       captionBackground: false,
-      colorizeCaption: true,
-      fill: 'blur'
+      colorizeCaption: true
     }
   },
   {
@@ -444,8 +443,7 @@ export const CLIP_PRESETS: ClipPreset[] = [
       xfade: true,
       captionPosition: 'center',
       captionBackground: false,
-      colorizeCaption: true,
-      fill: 'crop'
+      colorizeCaption: true
     }
   },
   {
@@ -464,7 +462,6 @@ export const CLIP_PRESETS: ClipPreset[] = [
       captionPosition: 'bottom',
       captionBackground: false,
       colorizeCaption: false,
-      fill: 'blur',
       outro: true
     }
   },
@@ -483,8 +480,7 @@ export const CLIP_PRESETS: ClipPreset[] = [
       xfade: false,
       captionPosition: 'bottom',
       captionBackground: true,
-      colorizeCaption: false,
-      fill: 'blur'
+      colorizeCaption: false
     }
   }
 ];

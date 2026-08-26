@@ -8,8 +8,13 @@
 - Press kit ships the documents you put in it, instead of generating a bio.txt from the profile block
 - Filter media and clips by several types at once, from one menu instead of a row of tabs
 - Clip source rows collapse to a single line, with trim and mute behind a tap
+- Framing moved to the top of Look: aspect, and what to do with footage that doesn't fit
+- The blurred background says what it costs, so you can pick black bars or a crop instead
+- Look presets no longer change the framing, so switching look keeps the clip framed how you set it
+- Render progress moves steadily instead of jumping between a handful of steps
 - Page titles dropped from the admin; on a phone the top bar says where you are
 - Page views chart keeps a readable day spacing and scrolls, rather than squeezing 30 days into a phone
+- Fixed a needless re-encode on single-source clips, cutting about a fifth off every render
 - Fixed the browser's context menu interrupting a drag on long press
 - Fixed the drop indicator showing two positions for the same gap
 - Fixed favicon previews overlapping their filenames on a narrow screen

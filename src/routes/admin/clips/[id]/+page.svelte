@@ -801,6 +801,67 @@
 
       <!-- Look -->
       <SectionCard title="Look">
+        <!-- The frame comes before the look: it depends on what you shot, not
+             on the mood you want, and it's the one choice here with a real
+             render cost. Presets used to set it, so changing look silently
+             re-framed the clip. -->
+        <div class="mb-5 flex flex-wrap gap-4">
+          <div class="min-w-36 flex-1">
+            <label class={labelClass} for="opt-aspect">Aspect</label>
+            <select
+              id="opt-aspect"
+              class={fieldClass}
+              value={config.aspect}
+              onchange={(e) => patchConfig({ aspect: e.currentTarget.value as never })}
+            >
+              <option value="9:16">9:16 vertical</option>
+              <option value="1:1">1:1 square</option>
+              <option value="16:9">16:9 landscape</option>
+            </select>
+          </div>
+          <div class="min-w-36 flex-1">
+            <!-- Blur is the one choice here with a real render cost, so the
+                 label carries the warning. Measured at roughly a sixth of the
+                 render on a 90-second clip. -->
+            <div class="mb-1 flex flex-wrap items-baseline gap-x-2">
+              <label class="block text-sm text-gray-400" for="opt-fill">
+                Footage that doesn't fit
+              </label>
+              {#if config.fill === 'blur'}
+                <span class="flex items-center gap-1 text-[11px] text-amber-400">
+                  <svg
+                    class="h-3 w-3 shrink-0 self-center"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"
+                    />
+                    <line x1="12" y1="9" x2="12" y2="13" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                  Adds 15% to render time
+                </span>
+              {/if}
+            </div>
+            <select
+              id="opt-fill"
+              class={fieldClass}
+              value={config.fill}
+              onchange={(e) => patchConfig({ fill: e.currentTarget.value as never })}
+            >
+              <option value="blur">Blurred background</option>
+              <option value="black">Black bars</option>
+              <option value="crop">Crop to fill</option>
+            </select>
+          </div>
+        </div>
+
         <!-- Two presets per row even on the narrowest phone: they're compared
              against each other, and one per row makes that a scroll. -->
         <div
@@ -881,32 +942,6 @@
             <div
               class="grid [grid-template-columns:repeat(auto-fill,minmax(min(100%,14rem),1fr))] gap-4"
             >
-              <div>
-                <label class={labelClass} for="opt-aspect">Aspect</label>
-                <select
-                  id="opt-aspect"
-                  class={fieldClass}
-                  value={config.aspect}
-                  onchange={(e) => patchConfig({ aspect: e.currentTarget.value as never })}
-                >
-                  <option value="9:16">9:16 vertical</option>
-                  <option value="1:1">1:1 square</option>
-                  <option value="16:9">16:9 landscape</option>
-                </select>
-              </div>
-              <div>
-                <label class={labelClass} for="opt-fill">Fill</label>
-                <select
-                  id="opt-fill"
-                  class={fieldClass}
-                  value={config.fill}
-                  onchange={(e) => patchConfig({ fill: e.currentTarget.value as never })}
-                >
-                  <option value="blur">Blurred background</option>
-                  <option value="black">Black bars</option>
-                  <option value="crop">Crop to fill</option>
-                </select>
-              </div>
               <div>
                 <label class={labelClass} for="opt-tone">Tone</label>
                 <select
