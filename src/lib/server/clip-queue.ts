@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { eq, asc, desc, and, isNotNull, isNull, lt, gt } from 'drizzle-orm';
 import { db } from './db';
 import { clipProjects, clipPosts, media, settings, type ClipProject, type Media } from './schema';
-import { buildPostSheet } from './post-sheet';
+import { buildPostSheet, campaignUrlFor } from './post-sheet';
 import { ensurePreviewToken, previewUrl } from './clip-review';
 import { tagsFor } from './tags';
 import { PLATFORM_NAMES } from '../clips/types';
@@ -435,12 +435,21 @@ export async function announceRelease(projectId: number, baseUrl: string): Promi
     return p.url ? `**${name}** — ${p.url}` : `**${name}** — live`;
   });
 
+  // Anything left to post by hand needs the caption and hashtags to hand, not
+  // just the news that it's out. The preview page carries the video and the
+  // post sheet with copy buttons, so it's the one link worth adding — and only
+  // when there's actually manual work waiting.
+  if (landed.some((p) => p.status === 'draft')) {
+    const token = await ensurePreviewToken(projectId);
+    lines.push('', `Caption and hashtags to copy: ${previewUrl(origin, token)}`);
+  }
+
   await fetch(config.clipPublishedWebhookUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       username: 'Artistack Clips',
-      content: `**${project.name}** is out`,
+      content: `**${project.name}** is out — ${campaignUrlFor(project, origin)}`,
       embeds: [
         {
           title: project.name,

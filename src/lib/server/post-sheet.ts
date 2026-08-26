@@ -30,6 +30,10 @@ export interface PostSheet {
   markdown: string;
   /** The campaign URL the CTA points at. */
   ctaUrl: string;
+  /** The caption on its own, for pasting into a platform's compose box. */
+  caption: string;
+  /** The hashtags as one space-separated string, in sheet order. */
+  hashtags: string;
 }
 
 /**
@@ -78,7 +82,7 @@ export async function buildPostSheet(projectId: number, baseUrl: string): Promis
     ''
   ].join('\n');
 
-  return { markdown, ctaUrl };
+  return { markdown, ctaUrl, caption: body, hashtags: hashtags.join(' ') };
 }
 
 /** Collapses a multi-line value so it stays valid on one frontmatter line. */
@@ -95,4 +99,15 @@ function flatten(text: string): string {
  */
 function campaignSlugFor(project: Pick<ClipProject, 'id' | 'name'>) {
   return slugify(project.name) || `clip-${project.id}`;
+}
+
+/**
+ * The campaign link for a clip, without building the whole sheet.
+ *
+ * Same URL `buildPostSheet` puts in the sheet, so the link announced in Discord
+ * is the one that was posted to the platforms — which is the point, since Stats
+ * attributes a visit to whichever clip's `/c/` link carried it.
+ */
+export function campaignUrlFor(project: Pick<ClipProject, 'id' | 'name'>, baseUrl: string) {
+  return `${baseUrl.replace(/\/$/, '')}/c/${campaignSlugFor(project)}`;
 }

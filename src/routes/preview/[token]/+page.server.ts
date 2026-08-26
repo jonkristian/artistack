@@ -56,6 +56,11 @@ export const load: PageServerLoad = async ({ params, url }) => {
       status: project.status
     },
     postSheet: sheet.markdown,
+    // The sheet's parts on their own, so the page can hand over exactly what a
+    // compose box wants without the frontmatter wrapped around it.
+    caption: sheet.caption,
+    hashtags: sheet.hashtags,
+    ctaUrl: sheet.ctaUrl,
     // Token-scoped rather than the permanent /uploads path, so what gets
     // unfurled into Discord expires with the link.
     videoUrl: `${url.origin}/preview/${params.token}/video.mp4`,

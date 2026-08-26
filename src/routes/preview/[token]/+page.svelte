@@ -4,13 +4,29 @@
 
   let { data }: { data: PageData } = $props();
 
-  let copied = $state(false);
+  /**
+   * Which button last copied, so only that one says so. One shared key rather
+   * than a flag per button — copying a second thing should move the label, not
+   * leave two buttons both claiming to be the clipboard.
+   */
+  let copiedKey = $state<string | null>(null);
+  let timer: ReturnType<typeof setTimeout>;
 
-  function copySheet() {
-    navigator.clipboard.writeText(data.postSheet);
-    copied = true;
-    setTimeout(() => (copied = false), 2000);
+  function copy(key: string, text: string) {
+    navigator.clipboard.writeText(text);
+    copiedKey = key;
+    clearTimeout(timer);
+    timer = setTimeout(() => (copiedKey = null), 2000);
   }
+
+  /**
+   * What actually goes in a compose box: caption, hashtags, campaign link. The
+   * post sheet has all three too, but wrapped in frontmatter you'd have to
+   * delete by hand every time.
+   */
+  const forPosting = $derived(
+    [data.caption, data.hashtags, data.ctaUrl].filter(Boolean).join('\n\n')
+  );
 
   const duration = $derived(
     data.clip.durationMs ? `${Math.round(data.clip.durationMs / 1000)}s` : ''
@@ -52,6 +68,24 @@
   <meta name="twitter:card" content="player" />
 </svelte:head>
 
+<!-- One row of the post: its label, the text itself, and a copy for that piece
+     alone — pasting a caption and hashtags separately is how most compose boxes
+     want them anyway. -->
+{#snippet part(key: string, label: string, text: string)}
+  <div class="border-t border-gray-800 py-3 first:border-t-0 first:pt-0">
+    <div class="mb-1 flex items-center justify-between gap-2">
+      <span class="text-xs text-gray-500">{label}</span>
+      <button
+        onclick={() => copy(key, text)}
+        class="shrink-0 rounded px-2 py-1 text-xs text-gray-400 hover:bg-gray-800 hover:text-gray-200"
+      >
+        {copiedKey === key ? 'Copied' : 'Copy'}
+      </button>
+    </div>
+    <p class="text-sm break-words whitespace-pre-wrap text-gray-300">{text}</p>
+  </div>
+{/snippet}
+
 <div class="min-h-screen bg-gray-950 px-4 py-10 text-gray-100">
   <div class="mx-auto max-w-3xl">
     <header class="mb-6 flex flex-wrap items-start justify-between gap-3">
@@ -84,21 +118,36 @@
       {data.clip.width}×{data.clip.height}{duration ? ` · ${duration}` : ''} · unlisted preview
     </p>
 
-    {#if data.project.description}
-      <section class="mb-6 rounded-xl border border-gray-800 bg-gray-900 p-5">
-        <h2 class="mb-2 text-sm font-semibold text-white">Caption</h2>
-        <p class="text-sm whitespace-pre-wrap text-gray-300">{data.project.description}</p>
-      </section>
-    {/if}
+    <!-- The page's job on a platform that can't be posted to from a workflow:
+         hand over the pieces of the post one paste at a time. -->
+    <section class="mb-6 rounded-xl border border-gray-800 bg-gray-900 p-5">
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 class="text-sm font-semibold text-white">Ready to post</h2>
+        <button
+          onclick={() => copy('all', forPosting)}
+          class="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500"
+        >
+          {copiedKey === 'all' ? 'Copied' : 'Copy all'}
+        </button>
+      </div>
+
+      {#if data.caption}
+        {@render part('caption', 'Caption', data.caption)}
+      {/if}
+      {#if data.hashtags}
+        {@render part('hashtags', 'Hashtags', data.hashtags)}
+      {/if}
+      {@render part('link', 'Link in post', data.ctaUrl)}
+    </section>
 
     <section class="rounded-xl border border-gray-800 bg-gray-900 p-5">
       <div class="mb-3 flex items-center justify-between">
         <h2 class="text-sm font-semibold text-white">Post sheet</h2>
         <button
-          onclick={copySheet}
+          onclick={() => copy('sheet', data.postSheet)}
           class="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700"
         >
-          {copied ? 'Copied' : 'Copy'}
+          {copiedKey === 'sheet' ? 'Copied' : 'Copy'}
         </button>
       </div>
       <pre class="overflow-auto text-xs whitespace-pre-wrap text-gray-400">{data.postSheet}</pre>
