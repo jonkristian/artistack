@@ -5,12 +5,20 @@ import { user } from '$lib/server/auth-schema';
 import { auth } from '$lib/server/auth';
 import { eq } from 'drizzle-orm';
 import {
-  getIntegrationConfig,
+  getSpotifyConfig,
   getCachedSocialStats,
   getDetectedPlatformIds,
   getGoogleConfig
 } from '$lib/server/social-stats';
 import type { SpotifyConfig } from '$lib/server/social-stats';
+import {
+  getDiscordSettings,
+  getClipSettings,
+  getMetaSettings,
+  getTiktokSettings,
+  getClipPublishingSettings,
+  getSettings
+} from '$lib/server/settings';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ request }) => {
@@ -28,12 +36,28 @@ export const load: PageServerLoad = async ({ request }) => {
   const [allIntegrations, spotifyConfig, googleConfig, socialStats, detectedIds, settingsData] =
     await Promise.all([
       db.select().from(integrations),
-      getIntegrationConfig('spotify') as Promise<SpotifyConfig | null>,
+      getSpotifyConfig(),
       getGoogleConfig(),
       getCachedSocialStats(),
       getDetectedPlatformIds(),
-      db.select().from(settings).limit(1)
+      getSettings()
     ]);
+
+  // Each feature's config now lives beside the feature. This route is
+  // admin-only, so it reads the ones its panels edit.
+  const [discord, clips, publishing, meta, tiktok] = await Promise.all([
+    getDiscordSettings(),
+    getClipSettings(),
+    getClipPublishingSettings(),
+    getMetaSettings(),
+    getTiktokSettings()
+  ]);
+  const pixels = {
+    metaPixelId: meta.pixelId,
+    metaCapiToken: meta.capiToken,
+    tiktokPixelId: tiktok.pixelId
+  };
+  const clipConfig = { ...clips, ...publishing };
 
   return {
     integrations: allIntegrations,
@@ -41,6 +65,9 @@ export const load: PageServerLoad = async ({ request }) => {
     googleConfig: googleConfig ?? null,
     socialStats,
     detectedIds,
-    settings: settingsData[0] ?? null
+    settings: settingsData,
+    discord,
+    clips: clipConfig,
+    pixels
   };
 };

@@ -1,4 +1,5 @@
 import { requireAdmin } from '$lib/server/guards';
+import { getSettings, updateSiteSettings } from '$lib/server/settings';
 import * as v from 'valibot';
 import { command } from '$app/server';
 import { db } from '$lib/server/db';
@@ -18,7 +19,13 @@ const settingsSchema = v.object({
   siteTitle: v.optional(v.nullable(v.string())),
   locale: v.optional(v.string()),
   pressKitEnabled: v.optional(v.boolean()),
-  clipsEnabled: v.optional(v.boolean())
+  clipsEnabled: v.optional(v.boolean()),
+  releasesEnabled: v.optional(v.boolean()),
+  subscribersEnabled: v.optional(v.boolean()),
+  pixelsEnabled: v.optional(v.boolean()),
+  metaPixelId: v.optional(v.nullable(v.string())),
+  metaCapiToken: v.optional(v.nullable(v.string())),
+  tiktokPixelId: v.optional(v.nullable(v.string()))
 });
 
 const generateFaviconSchema = v.object({
@@ -38,14 +45,6 @@ const smtpSettingsSchema = v.object({
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-async function getOrCreateSettings() {
-  const [existing] = await db.select().from(settings).limit(1);
-  if (existing) return existing;
-
-  const [created] = await db.insert(settings).values({}).returning();
-  return created;
-}
 
 /**
  * Creates an ICO file from multiple PNG buffers
@@ -111,8 +110,6 @@ function createIco(images: { size: number; buffer: Buffer }[]): Buffer {
 export const updateSettings = command(settingsSchema, async (data) => {
   await requireAdmin();
 
-  const existing = await getOrCreateSettings();
-
   // Filter out undefined values
   const updates: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(data)) {
@@ -121,13 +118,9 @@ export const updateSettings = command(settingsSchema, async (data) => {
     }
   }
 
-  const [updated] = await db
-    .update(settings)
-    .set(updates)
-    .where(eq(settings.id, existing.id))
-    .returning();
+  await updateSiteSettings(updates);
 
-  return { success: true, settings: updated };
+  return { success: true };
 });
 
 // ============================================================================
@@ -136,8 +129,6 @@ export const updateSettings = command(settingsSchema, async (data) => {
 
 export const generateFavicon = command(generateFaviconSchema, async ({ sourceUrl }) => {
   await requireAdmin();
-
-  const existing = await getOrCreateSettings();
 
   const sourcePath = mediaPath(sourceUrl);
 
@@ -178,16 +169,12 @@ export const generateFavicon = command(generateFaviconSchema, async ({ sourceUrl
   await writeFile(join(DATA_DIR, 'favicon.ico'), icoBuffer);
 
   // Update settings
-  const [updated] = await db
-    .update(settings)
-    .set({
-      faviconUrl: sourceUrl,
-      faviconGenerated: true
-    })
-    .where(eq(settings.id, existing.id))
-    .returning();
+  await updateSiteSettings({
+    faviconUrl: sourceUrl,
+    faviconGenerated: true
+  });
 
-  return { success: true, settings: updated };
+  return { success: true };
 });
 
 // ============================================================================
@@ -202,14 +189,14 @@ export const generateFaviconFromInitials = command(
   }),
   async ({ name, rounded = false, length = 2 }) => {
     await requireAdmin();
-
-    const existing = await getOrCreateSettings();
     const [artistProfile] = await db.select().from(profile).limit(1);
 
-    const displayName = name || existing.siteTitle || artistProfile?.name || 'A';
+    const current = await getSettings();
 
-    const bg = (existing.colorBg || '#0c0a14').replace('#', '');
-    const color = (existing.colorText || '#f4f4f5').replace('#', '');
+    const displayName = name || current.siteTitle || artistProfile?.name || 'A';
+
+    const bg = (current.colorBg || '#0c0a14').replace('#', '');
+    const color = (current.colorText || '#f4f4f5').replace('#', '');
 
     // Fetch initials image from UI Avatars API
     const url = `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=${bg}&color=${color}&size=512&bold=true&format=png&rounded=${rounded}&length=${length}`;
@@ -247,16 +234,12 @@ export const generateFaviconFromInitials = command(
     await writeFile(join(DATA_DIR, 'favicon.ico'), icoBuffer);
 
     // Update settings
-    const [updated] = await db
-      .update(settings)
-      .set({
-        faviconUrl: null,
-        faviconGenerated: true
-      })
-      .where(eq(settings.id, existing.id))
-      .returning();
+    await updateSiteSettings({
+      faviconUrl: null,
+      faviconGenerated: true
+    });
 
-    return { success: true, settings: updated };
+    return { success: true };
   }
 );
 
@@ -267,8 +250,6 @@ export const generateFaviconFromInitials = command(
 export const updateSmtpSettings = command(smtpSettingsSchema, async (data) => {
   await requireAdmin();
 
-  const existing = await getOrCreateSettings();
-
   const updates: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(data)) {
     if (value !== undefined) {
@@ -276,13 +257,9 @@ export const updateSmtpSettings = command(smtpSettingsSchema, async (data) => {
     }
   }
 
-  const [updated] = await db
-    .update(settings)
-    .set(updates)
-    .where(eq(settings.id, existing.id))
-    .returning();
+  await updateSiteSettings(updates);
 
-  return { success: true, settings: updated };
+  return { success: true };
 });
 
 export const testSmtp = command(v.object({}), async () => {

@@ -1,9 +1,11 @@
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import { getRequestEvent } from '$app/server';
 import { eq } from 'drizzle-orm';
 import { db } from './db';
 import { user } from './auth-schema';
+import { settings } from './schema';
 import { auth } from './auth';
+import { getSettings } from './settings';
 
 /**
  * Guards for remote functions.
@@ -17,6 +19,10 @@ import { auth } from './auth';
  *   requireUser  — signed in at all. Content work: the page, media, clips.
  *   requireAdmin — the things that let you reach outside the band or change who
  *                  is in it: integration secrets, SMTP, site settings, users.
+ *
+ * requireFeature is the load-function counterpart, for sections that can be
+ * switched off entirely. It redirects rather than throwing, because a load
+ * function has somewhere sensible to send you and a remote function does not.
  */
 
 async function currentUser() {
@@ -45,4 +51,28 @@ export async function requireAdmin() {
     throw error(403, 'Admins only');
   }
   return me;
+}
+
+/** Feature flags that gate a whole admin section. */
+type FeatureFlag = 'clipsEnabled' | 'releasesEnabled' | 'subscribersEnabled';
+
+/**
+ * Route guard for an optional section: signed in, and the feature switched on.
+ *
+ * Hiding the nav entry isn't enough on its own — the URL still resolves — and
+ * every route in the section needs the same two checks, so they live here
+ * rather than being copied into each `+page.server.ts`.
+ */
+export async function requireFeature(request: Request, feature: FeatureFlag) {
+  const session = await auth.api.getSession({ headers: request.headers });
+  if (!session?.user) {
+    throw redirect(302, '/login');
+  }
+
+  const siteSettings = await getSettings();
+  if (!siteSettings?.[feature]) {
+    throw redirect(302, '/admin/integrations');
+  }
+
+  return { user: session.user, settings: siteSettings };
 }

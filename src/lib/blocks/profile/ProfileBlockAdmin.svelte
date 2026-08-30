@@ -73,6 +73,7 @@
     const newLink: Link = {
       id: getTempId(),
       blockId: block.id,
+      releaseId: null,
       category: 'social',
       platform,
       url: newSocialUrl,

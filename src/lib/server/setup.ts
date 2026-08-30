@@ -32,7 +32,11 @@ export async function ensureBlocksExist() {
     const allLinks = await db.select().from(links);
 
     for (const link of allLinks) {
-      if (!blockIds.includes(link.blockId)) {
+      // A release link has no block on purpose. Adopting it would drag it onto
+      // the home page, so only genuinely ownerless links get picked up here.
+      if (link.releaseId !== null) continue;
+
+      if (link.blockId === null || !blockIds.includes(link.blockId)) {
         await db.update(links).set({ blockId: linksBlock.id }).where(eq(links.id, link.id));
         console.log(`[Setup] Associated orphaned link ${link.id} with links block`);
       }

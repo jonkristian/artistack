@@ -56,6 +56,7 @@
         const tempLink: Link = {
           id: getTempId(),
           blockId: block.id,
+          releaseId: null,
           category,
           platform: platform || 'link',
           url: urlToAdd,

@@ -12,6 +12,7 @@ import { runFfmpeg, probeDuration } from '$lib/server/ffmpeg';
 import { previewFilters } from '$lib/server/clip-render';
 import { CLIP_PRESETS } from '$lib/clips/types';
 import type { RequestHandler } from './$types';
+import { getSettings } from '$lib/server/settings';
 
 /**
  * A still of the clip's own footage with a preset's grade applied.
@@ -31,7 +32,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user) throw redirect(302, '/login');
 
-  const [siteSettings] = await db.select().from(settings).limit(1);
+  const siteSettings = await getSettings();
   if (!siteSettings?.clipsEnabled) throw error(404, 'Not found');
 
   const preset = CLIP_PRESETS.find((p) => p.id === params.preset);

@@ -1,5 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
+import { requireFeature } from '$lib/server/guards';
+import { getClipSettings, getClipPublishingSettings } from '$lib/server/settings';
 import { clipProjects, clipSources, clipPosts, media, settings } from '$lib/server/schema';
 import { getQueue } from '$lib/server/clip-queue';
 import { user } from '$lib/server/auth-schema';
@@ -9,16 +11,8 @@ import { videoSupported } from '$lib/server/ffmpeg';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ request }) => {
-  const session = await auth.api.getSession({ headers: request.headers });
-  if (!session?.user) {
-    throw redirect(302, '/login');
-  }
-
-  const [siteSettings] = await db.select().from(settings).limit(1);
-  // Hiding the nav entry isn't enough on its own — the URL still resolves.
-  if (!siteSettings?.clipsEnabled) {
-    throw redirect(302, '/admin/integrations');
-  }
+  const { settings: siteSettings } = await requireFeature(request, 'clipsEnabled');
+  const [clips, publishing] = await Promise.all([getClipSettings(), getClipPublishingSettings()]);
 
   const projects = await db.select().from(clipProjects).orderBy(desc(clipProjects.updatedAt));
 
@@ -47,6 +41,6 @@ export const load: PageServerLoad = async ({ request }) => {
     media: allMedia,
     queue: await getQueue(),
     renderingAvailable: await videoSupported(),
-    publishConfigured: Boolean(siteSettings.publishWebhookUrl)
+    publishConfigured: Boolean(publishing?.publishWebhookUrl)
   };
 };

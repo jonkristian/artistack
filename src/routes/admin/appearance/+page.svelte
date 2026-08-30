@@ -1,6 +1,11 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { ColorWheel, EditorPreview, LayoutPreview, ToggleSwitch } from '$lib/components/ui';
   import { SectionCard } from '$lib/components/cards';
+  import { fieldClass } from '$lib/utils/classes';
+  import { toast } from '$lib/stores/toast.svelte';
+  import { saveScheme, removeScheme } from './data.remote';
+  import type { ThemeSettings } from '$lib/server/settings';
   import Default from '$lib/themes/Default.svelte';
   import Simple from '$lib/themes/Simple.svelte';
   import * as draft from '$lib/stores/pageDraft.svelte';
@@ -11,6 +16,61 @@
 
   // Get reactive draft data - shared with layout and dashboard
   const draftData = draft.getData<UnifiedDraftData>();
+
+  /*
+   * Saved palettes.
+   *
+   * Applying one writes into the draft rather than the database, so it behaves
+   * like any other appearance edit: the preview updates immediately, Undo puts
+   * the old colours back, and nothing is committed until Update.
+   */
+  const COLOR_FIELDS = [
+    'colorBg',
+    'colorCard',
+    'colorAccent',
+    'colorText',
+    'colorTextMuted',
+    'colorIcon'
+  ] as const;
+
+  let schemes = $state<Record<string, ThemeSettings>>(untrack(() => data.schemes ?? {}));
+  let newSchemeName = $state('');
+  let savingScheme = $state(false);
+
+  function currentPalette(): ThemeSettings {
+    return Object.fromEntries(
+      COLOR_FIELDS.map((f) => [f, draftData.appearance[f] as string])
+    ) as unknown as ThemeSettings;
+  }
+
+  async function handleSaveScheme() {
+    const name = newSchemeName.trim();
+    if (!name || savingScheme) return;
+    savingScheme = true;
+    try {
+      const result = await saveScheme({ name, palette: currentPalette() });
+      schemes = result.schemes;
+      newSchemeName = '';
+      toast.info(`Saved “${name}”`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not save the scheme');
+    }
+    savingScheme = false;
+  }
+
+  function applyScheme(palette: ThemeSettings) {
+    for (const f of COLOR_FIELDS) draftData.appearance[f] = palette[f];
+  }
+
+  async function handleRemoveScheme(name: string) {
+    if (!confirm(`Delete the “${name}” scheme?`)) return;
+    try {
+      const result = await removeScheme({ name });
+      schemes = result.schemes;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not delete the scheme');
+    }
+  }
 
   // Track which color picker is open (accordion behavior)
   let openPicker = $state<string | null>(null);
@@ -88,6 +148,70 @@
           />
         </div>
       </SectionCard>
+
+      <div class="mt-6">
+        <SectionCard title="Schemes">
+          <p class="-mt-2 mb-3 text-xs text-gray-500">
+            Save the palette above under a name, then switch between them. Applying one is an edit
+            like any other — it lands with Update, and Undo puts the old colours back.
+          </p>
+
+          {#if Object.keys(schemes).length > 0}
+            <ul class="mb-4 flex flex-col gap-2">
+              {#each Object.entries(schemes) as [name, palette] (name)}
+                <li
+                  class="flex items-center gap-3 rounded-lg border border-gray-800 bg-gray-950 p-2.5"
+                >
+                  <!-- The palette itself is the label; a name alone tells you
+                       nothing about what you're about to apply. -->
+                  <div class="flex shrink-0 gap-1">
+                    {#each COLOR_FIELDS as field (field)}
+                      <span
+                        class="h-5 w-5 rounded-full border border-white/10"
+                        style="background-color: {palette[field]}"
+                        title={palette[field]}
+                      ></span>
+                    {/each}
+                  </div>
+                  <span class="min-w-0 flex-1 truncate text-sm text-gray-200">{name}</span>
+                  <button
+                    type="button"
+                    onclick={() => applyScheme(palette)}
+                    class="shrink-0 rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-300 transition hover:border-gray-600 hover:text-white"
+                  >
+                    Apply
+                  </button>
+                  <button
+                    type="button"
+                    onclick={() => handleRemoveScheme(name)}
+                    class="shrink-0 px-1 text-xs text-gray-600 transition hover:text-red-400"
+                    aria-label="Delete the {name} scheme"
+                  >
+                    Delete
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+
+          <div class="flex flex-wrap items-center gap-2">
+            <input
+              class="{fieldClass} min-w-40 flex-1"
+              placeholder="Name this palette"
+              bind:value={newSchemeName}
+              onkeydown={(e) => e.key === 'Enter' && handleSaveScheme()}
+            />
+            <button
+              type="button"
+              onclick={handleSaveScheme}
+              disabled={savingScheme || !newSchemeName.trim()}
+              class="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-500 disabled:opacity-50"
+            >
+              {savingScheme ? 'Saving…' : 'Save current'}
+            </button>
+          </div>
+        </SectionCard>
+      </div>
 
       <!-- Layout -->
       <SectionCard title="Layout">

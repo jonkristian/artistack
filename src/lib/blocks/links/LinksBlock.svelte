@@ -2,7 +2,7 @@
   import type {
     Block,
     Profile,
-    Settings,
+    PublicSettings,
     Link,
     TourDate,
     Media,
@@ -25,7 +25,7 @@
   }: {
     block: Block;
     profile: Profile;
-    settings?: Settings | null;
+    settings?: PublicSettings | null;
     links: Link[];
     tourDates: TourDate[];
     media: Media[];

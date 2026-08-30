@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tileGridClass } from '$lib/utils/classes';
   import { invalidateAll } from '$app/navigation';
   import { toast } from '$lib/stores/toast.svelte';
   import type { PageData } from './$types';
@@ -23,13 +24,7 @@
     ACCEPT_DOCUMENT
   } from '$lib/utils/upload';
   import { PhoneUploadDialog } from '$lib/components/dialogs';
-  import {
-    FilterSelect,
-    MediaDropZone,
-    SelectCheckbox,
-    SelectionToolbar,
-    TagInput
-  } from '$lib/components/ui';
+  import { MediaDropZone, LibraryToolbar, SelectCheckbox, TagInput } from '$lib/components/ui';
   import { Selection } from '$lib/utils/selection.svelte';
   import { mediaDrag } from '$lib/stores/mediaDrag.svelte';
 
@@ -113,7 +108,7 @@
   const pressKitMediaIds = $derived(new Set(data.pressKitMediaIds));
 
   const clipGraphicItems = $derived(
-    data.clipGraphicsMediaIds
+    data.graphicsMediaIds
       .map((id) => data.media.find((m) => m.id === id))
       .filter((m): m is NonNullable<typeof m> => m != null)
   );
@@ -265,48 +260,63 @@
 </script>
 
 <div class="min-h-screen bg-gray-950 p-[clamp(1rem,4vw,1.5rem)]">
-  <header class="mb-6 flex flex-wrap items-center justify-end gap-3">
-    <div class="flex items-center gap-2">
-      <button
-        onclick={() => (phoneUploadOpen = true)}
-        class="flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm font-medium whitespace-nowrap text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
-      >
-        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="1.5"
-            d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
-          />
-        </svg>
-        From phone
-      </button>
-      <button
-        onclick={() => fileInput.click()}
-        disabled={uploading}
-        class="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
-      >
-        {#if uploading}
-          <div
-            class="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"
-          ></div>
-          {uploadProgress === null
-            ? 'Uploading...'
-            : `Uploading ${Math.round(uploadProgress * 100)}%`}
-        {:else}
+  <LibraryToolbar
+    options={roleOptions}
+    bind:selected={roleFilter}
+    total={data.media.length}
+    onFilterChange={() => {
+      currentPage = 1;
+      selection.clear();
+    }}
+    count={selection.size}
+    allSelected={selection.covers(visibleMedia)}
+    onToggleAll={() => selection.toggleAll(visibleMedia)}
+    onDelete={deleteSelected}
+    onClear={() => selection.clear()}
+  >
+    {#snippet actions()}
+      <div class="flex items-center gap-2">
+        <button
+          onclick={() => (phoneUploadOpen = true)}
+          class="flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm font-medium whitespace-nowrap text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
+        >
           <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
-              stroke-width="2"
-              d="M12 4v16m8-8H4"
+              stroke-width="1.5"
+              d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
             />
           </svg>
-          Upload
-        {/if}
-      </button>
-    </div>
-  </header>
+          From phone
+        </button>
+        <button
+          onclick={() => fileInput.click()}
+          disabled={uploading}
+          class="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
+        >
+          {#if uploading}
+            <div
+              class="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"
+            ></div>
+            {uploadProgress === null
+              ? 'Uploading...'
+              : `Uploading ${Math.round(uploadProgress * 100)}%`}
+          {:else}
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+            Upload
+          {/if}
+        </button>
+      </div>
+    {/snippet}
+  </LibraryToolbar>
 
   <PhoneUploadDialog bind:open={phoneUploadOpen} label="Add to the media library" />
 
@@ -408,7 +418,7 @@
 
         {#snippet overlay(item)}
           <!-- The default is what a clip uses when it hasn't picked one itself. -->
-          {#if data.defaultClipGraphicMediaId === item.id}
+          {#if data.defaultGraphicMediaId === item.id}
             <span
               class="absolute bottom-1 left-1 rounded bg-violet-600 px-1 py-0.5 text-[9px] font-medium text-white"
             >
@@ -455,31 +465,7 @@
       </button>
     </div>
   {:else}
-    <!-- Filter and bulk actions share a row: the filter's own count already
-         reports how many files are showing, so a separate tally said it twice. -->
-    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <FilterSelect
-        options={roleOptions}
-        bind:selected={roleFilter}
-        total={data.media.length}
-        onchange={() => {
-          currentPage = 1;
-          selection.clear();
-        }}
-      />
-
-      <SelectionToolbar
-        count={selection.size}
-        allSelected={selection.covers(visibleMedia)}
-        onToggleAll={() => selection.toggleAll(visibleMedia)}
-        onDelete={deleteSelected}
-        onClear={() => selection.clear()}
-      />
-    </div>
-
-    <div
-      class="grid [grid-template-columns:repeat(auto-fill,minmax(min(100%,9rem),1fr))] gap-4 pb-16"
-    >
+    <div class="{tileGridClass} pb-16">
       {#each visibleMedia as item (item.id)}
         <div
           role="button"

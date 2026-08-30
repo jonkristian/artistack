@@ -2,7 +2,7 @@ import type { Component } from 'svelte';
 import type {
   Block,
   Profile,
-  Settings,
+  PublicSettings,
   Link,
   TourDate,
   Media,
@@ -12,13 +12,14 @@ import type {
   TourDatesBlockConfig,
   GalleryBlockConfig,
   ImageBlockConfig,
-  ProductsBlockConfig
+  ProductsBlockConfig,
+  EmailBlockConfig
 } from '$lib/server/schema';
 
 export interface BlockComponentProps {
   block: Block;
   profile: Profile;
-  settings?: Settings | null;
+  settings?: PublicSettings | null;
   links: Link[];
   tourDates: TourDate[];
   media: Media[];
@@ -34,13 +35,19 @@ export interface BlockDefinition {
   adminComponent: Component<any>;
   adminSettingsComponent?: Component<any>;
   defaultLabel: string;
+  /**
+   * Only offered when this setting is on. A sign-up block on a site with the
+   * fan list switched off is a form that quietly posts into a 404.
+   */
+  requiresFeature?: 'clipsEnabled' | 'releasesEnabled' | 'subscribersEnabled';
   defaultConfig:
     | ProfileBlockConfig
     | LinksBlockConfig
     | TourDatesBlockConfig
     | GalleryBlockConfig
     | ImageBlockConfig
-    | ProductsBlockConfig;
+    | ProductsBlockConfig
+    | EmailBlockConfig;
 }
 
 export type {
@@ -49,5 +56,6 @@ export type {
   TourDatesBlockConfig,
   GalleryBlockConfig,
   ImageBlockConfig,
-  ProductsBlockConfig
+  ProductsBlockConfig,
+  EmailBlockConfig
 };

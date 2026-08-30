@@ -233,6 +233,66 @@ export async function getPageViewStats(days: number = 30): Promise<PageViewStats
   };
 }
 
+/**
+ * How one release is doing.
+ *
+ * Joined through `links.releaseId` rather than kept in its own table: a click
+ * has always pointed at a link, and a link now knows which release it belongs
+ * to, so the release dimension costs a join rather than a schema.
+ */
+export interface ReleaseClickStats {
+  total: number;
+  byPlatform: { platform: string; label: string | null; count: number }[];
+  byDevice: { device: string; count: number }[];
+  byCountry: { country: string; count: number }[];
+}
+
+export async function getReleaseClickStats(
+  releaseId: number,
+  days: number = 30
+): Promise<ReleaseClickStats> {
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const scope = and(eq(links.releaseId, releaseId), gte(linkClicks.createdAt, since));
+
+  const [totalRow] = await db
+    .select({ count: count() })
+    .from(linkClicks)
+    .innerJoin(links, eq(links.id, linkClicks.linkId))
+    .where(scope);
+
+  const byPlatform = await db
+    .select({ platform: links.platform, label: links.label, count: count() })
+    .from(linkClicks)
+    .innerJoin(links, eq(links.id, linkClicks.linkId))
+    .where(scope)
+    .groupBy(links.platform, links.label)
+    .orderBy(desc(count()));
+
+  const byDevice = await db
+    .select({ device: sql<string>`coalesce(${linkClicks.device}, 'unknown')`, count: count() })
+    .from(linkClicks)
+    .innerJoin(links, eq(links.id, linkClicks.linkId))
+    .where(scope)
+    .groupBy(linkClicks.device)
+    .orderBy(desc(count()));
+
+  const byCountry = await db
+    .select({ country: sql<string>`coalesce(${linkClicks.country}, 'unknown')`, count: count() })
+    .from(linkClicks)
+    .innerJoin(links, eq(links.id, linkClicks.linkId))
+    .where(scope)
+    .groupBy(linkClicks.country)
+    .orderBy(desc(count()))
+    .limit(8);
+
+  return {
+    total: totalRow?.count ?? 0,
+    byPlatform,
+    byDevice,
+    byCountry
+  };
+}
+
 export async function getLinkClickStats(days: number = 30): Promise<LinkClickStats> {
   const range = {
     start: new Date(Date.now() - days * 24 * 60 * 60 * 1000),

@@ -3,6 +3,7 @@ import { db } from '$lib/server/db';
 import { user } from '$lib/server/auth-schema';
 import { auth } from '$lib/server/auth';
 import { eq } from 'drizzle-orm';
+import { getColorSchemes } from '$lib/server/settings';
 import type { PageServerLoad } from './$types';
 
 // The look of the site is the artist's identity, not day-to-day content work,
@@ -19,5 +20,5 @@ export const load: PageServerLoad = async ({ request }) => {
     throw redirect(302, '/admin');
   }
 
-  return {};
+  return { schemes: (await getColorSchemes()).schemes };
 };

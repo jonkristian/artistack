@@ -23,102 +23,71 @@ export const profile = sqliteTable('profile', {
 });
 
 // Site/app settings (single row singleton)
+/**
+ * Every setting, one row each.
+ *
+ * Columns were the wrong shape twice over. A 59-column singleton mixed theme
+ * colours with SMTP credentials, so a public `select *` shipped the credentials
+ * to every visitor; splitting it into six typed tables fixed that but still
+ * needed a migration for every new setting, and SQLite doesn't enforce column
+ * types anyway — an INTEGER column stores 'abc' happily unless the table is
+ * STRICT, which none were.
+ *
+ * So the types come from valibot at the boundary instead, where they can be
+ * checked at runtime as well as compile time, and adding a setting stops
+ * needing a schema change at all.
+ *
+ * `secret` is the part that matters most: it makes "everything the public site
+ * may see" a query rather than a list someone has to keep correct.
+ */
 export const settings = sqliteTable('settings', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  // Site
-  siteTitle: text('site_title'), // Overrides name for browser title, falls back to name if empty
-  setupCompleted: integer('setup_completed', { mode: 'boolean' }).default(false),
-  pressKitEnabled: integer('press_kit_enabled', { mode: 'boolean' }).default(false),
-  /**
-   * The clip studio as a whole. Distinct from publishEnabled below, which only
-   * governs the scheduled outbound release — you want to render and review
-   * clips long before any of them are wired up to go out.
-   */
-  clipsEnabled: integer('clips_enabled', { mode: 'boolean' }).default(false),
-  pressKitMediaIds: text('press_kit_media_ids', { mode: 'json' }).$type<number[]>().default([]),
-  layout: text('layout').default('default'),
-  locale: text('locale').default('nb-NO'),
-  // Theme colors
-  colorBg: text('color_bg').default('#0c0a14'),
-  colorCard: text('color_card').default('#14101f'),
-  colorAccent: text('color_accent').default('#8b5cf6'),
-  colorText: text('color_text').default('#f4f4f5'),
-  colorTextMuted: text('color_text_muted').default('#a1a1aa'),
-  colorIcon: text('color_icon').default('#a1a1aa'),
-  // UI options
-  showShareButton: integer('show_share_button', { mode: 'boolean' }).default(true),
-  showPressKit: integer('show_press_kit', { mode: 'boolean' }).default(false),
-  // Favicon & PWA
-  faviconUrl: text('favicon_url'), // Source image from media library
-  faviconGenerated: integer('favicon_generated', { mode: 'boolean' }).default(false),
-  // API Keys
-  googlePlacesApiKey: text('google_places_api_key'),
-  // SMTP Configuration
-  smtpHost: text('smtp_host'),
-  smtpPort: integer('smtp_port').default(587),
-  smtpUser: text('smtp_user'),
-  smtpPassword: text('smtp_password'),
-  smtpFromAddress: text('smtp_from_address'),
-  smtpFromName: text('smtp_from_name'),
-  smtpTls: integer('smtp_tls', { mode: 'boolean' }).default(true),
-  // Clip publishing — an outbound webhook fired when a queued clip comes due.
-  // Deliberately generic rather than platform-specific: whatever consumes it
-  // (n8n today) owns the platform credentials and app review, which is the part
-  // that doesn't get cheaper by moving it in here.
-  publishWebhookUrl: text('publish_webhook_url'),
-  publishEnabled: integer('publish_enabled', { mode: 'boolean' }).default(false),
-  /** Days between releases when a clip doesn't set its own gap. */
-  publishIntervalDays: integer('publish_interval_days').default(3),
-  /** Hour of day (0-23) a due clip is released. */
-  publishHour: integer('publish_hour').default(10),
-  publishLastSent: integer('publish_last_sent', { mode: 'timestamp' }),
-  /** Optional shared secret, sent as X-Artistack-Signature. */
-  publishSecret: text('publish_secret'),
-  /**
-   * Images designated as clip graphics — logos and marks a clip can be dressed
-   * with. Same shape as pressKitMediaIds: a set of pointers into the library
-   * rather than a table, so a file stays an ordinary image and can be both.
-   */
-  clipGraphicsMediaIds: text('clip_graphics_media_ids', { mode: 'json' })
-    .$type<number[]>()
-    .default([]),
-  /** Used by clips that don't pick one of their own. */
-  defaultClipGraphicMediaId: integer('default_clip_graphic_media_id'),
-  /**
-   * Boilerplate a new clip starts with, saved from whichever clip you last got
-   * right. Most posts share their hashtags and their call to action, and typing
-   * them again per clip is the kind of copying a default exists to stop.
-   */
-  clipDefaultTagIds: text('clip_default_tag_ids', { mode: 'json' }).$type<number[]>().default([]),
-  clipDefaultDescription: text('clip_default_description'),
-
-  // Discord Integration
-  discordWebhookUrl: text('discord_webhook_url'),
-  discordEnabled: integer('discord_enabled', { mode: 'boolean' }).default(false),
-  /**
-   * Clip channels, separate from the stats webhook above because they serve
-   * different audiences: a review needs someone to act on it today, a release
-   * announcement is for everyone, and stats are a monthly skim.
-   */
-  clipReviewWebhookUrl: text('discord_clips_webhook_url'),
-  clipPublishedWebhookUrl: text('clip_published_webhook_url'),
-  discordSchedule: text('discord_schedule').default('weekly'), // 'daily', 'weekly', 'monthly'
-  discordScheduleDay: integer('discord_schedule_day').default(1), // 0-6 for weekly (Monday=1), 1-31 for monthly
-  discordScheduleTime: text('discord_schedule_time').default('09:00'), // HH:MM
-  discordLastSent: integer('discord_last_sent', { mode: 'timestamp' })
+  key: text('key').primaryKey(),
+  value: text('value', { mode: 'json' }),
+  /** Never leaves the server. See getPublicSettings(). */
+  secret: integer('secret', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  /** Per setting, so you can see which one changed and when. */
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
 });
 
-// Pages - support for multiple pages (home, shop, about, etc.)
+/**
+ * Every public URL the site owns, and what renders at it.
+ *
+ * This is a routing and identity table, not a content store. It holds what all
+ * pages have in common — the slug, which renderer to dispatch to, whether it's
+ * live, and the metadata scrapers read. The content itself lives in whatever
+ * table suits its type: a release in `releases`, a shop's items in `products`,
+ * a custom page's composition in `blocks`.
+ *
+ * One table owning the slug is what makes flat URLs safe. `/i-will-be-me` reads
+ * better on a poster than `/r/i-will-be-me`, but only works if something can
+ * refuse a slug that collides with `/admin` or `/go` at creation time rather
+ * than leaving it to be discovered as a routing bug. See RESERVED_SLUGS.
+ */
 export const pages = sqliteTable('pages', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  slug: text('slug').notNull().unique(), // 'home', 'shop', 'about'
+  slug: text('slug').notNull().unique(), // 'home', 'i-will-be-me', 'shop'
   title: text('title').notNull(),
-  type: text('type').notNull().default('custom'), // 'landing', 'shop', 'custom'
-  description: text('description'), // SEO description
+  type: text('type').$type<PageType>().notNull().default('custom'),
+  description: text('description'), // meta description + og:description
+  /**
+   * og:image. A plain path rather than a media reference: scrapers cache this
+   * hard and only re-scrape on request, so once a link is in circulation the
+   * URL behind it is effectively frozen in every cache that saw it. A static
+   * asset restored by the deploy survives a lost volume; a generated file on
+   * one does not.
+   */
+  shareImageUrl: text('share_image_url'),
   published: integer('published', { mode: 'boolean' }).default(true),
   position: integer('position').default(0),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
 });
+
+/**
+ * `landing` is the artist page at `/` — exactly one exists and it can't be
+ * deleted. The rest are addressed by slug.
+ */
+export type PageType = 'landing' | 'release' | 'shop' | 'custom';
 
 // Blocks - modular, reorderable page sections
 export const blocks = sqliteTable(
@@ -137,12 +106,41 @@ export const blocks = sqliteTable(
   (table) => [index('blocks_page_id_idx').on(table.pageId)]
 );
 
+/**
+ * A music release. Its URL, SEO and published state live on its `pages` row;
+ * this table holds only what's specific to a piece of recorded music.
+ *
+ * `releaseDate` is the single source of truth for when the record is out. The
+ * page derives its own state from it (pre-release → out) rather than storing a
+ * status that a scheduled job has to flip: a date that moves then only moves in
+ * one place, and there's no window where a column and the calendar disagree
+ * because a job didn't fire.
+ */
+export const releases = sqliteTable('releases', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  pageId: integer('page_id').notNull().unique(), // FK to pages
+  title: text('title').notNull(), // the work's title, distinct from the page's
+  releaseDate: integer('release_date', { mode: 'timestamp' }).notNull(),
+  coverUrl: text('cover_url'), // what MediaPicker returns; may be a crop with no media row
+  presaveUrl: text('presave_url'), // outbound handoff while native pre-save is blocked
+  isrc: text('isrc'), // needed for YouTube Content ID; stable across services
+  upc: text('upc'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
+});
+
 // Links with categories
 export const links = sqliteTable(
   'links',
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
-    blockId: integer('block_id').notNull(), // FK to blocks table
+    /**
+     * A link belongs to exactly one owner: a block on a page, or a release.
+     * Both are nullable because only one is ever set. Reusing this table rather
+     * than giving releases their own means /go, linkClicks and LinkCard all
+     * work on release links with no changes.
+     */
+    blockId: integer('block_id'), // FK to blocks table
+    releaseId: integer('release_id'), // FK to releases table
     category: text('category').notNull(), // 'streaming', 'social', 'merch', 'other'
     platform: text('platform').notNull(), // 'spotify', 'instagram', etc.
     url: text('url').notNull(),
@@ -152,7 +150,10 @@ export const links = sqliteTable(
     position: integer('position').default(0),
     visible: integer('visible', { mode: 'boolean' }).default(true)
   },
-  (table) => [index('links_block_id_idx').on(table.blockId)]
+  (table) => [
+    index('links_block_id_idx').on(table.blockId),
+    index('links_release_id_idx').on(table.releaseId)
+  ]
 );
 
 // Tour dates
@@ -445,12 +446,51 @@ export const linkClicks = sqliteTable(
     linkId: integer('link_id').notNull(), // FK to links table
     referrer: text('referrer'),
     country: text('country'),
+    /**
+     * 'mobile' | 'tablet' | 'desktop', not the raw user agent. Enough to decide
+     * whether a destination wants an app deep link or a web URL, without
+     * keeping a string that identifies a browser.
+     */
+    device: text('device'),
     createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
   },
   (table) => [
     index('link_clicks_link_id_idx').on(table.linkId),
     index('link_clicks_created_at_idx').on(table.createdAt)
   ]
+);
+
+/**
+ * The fan email list.
+ *
+ * Worth owning rather than leaving to a pre-save service: a hosted pre-save
+ * collects the address and then charges to let you have it back. Capturing it
+ * on your own page first means the list stays yours whatever the pre-save runs
+ * on — which is the whole reason this sits on the critical path.
+ */
+export const subscribers = sqliteTable(
+  'subscribers',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    email: text('email').notNull().unique(),
+    name: text('name'),
+    /**
+     * The page they signed up from, held as a slug rather than a foreign key so
+     * it still says something after that page is deleted or renamed.
+     */
+    source: text('source'),
+    country: text('country'),
+    /** Evidenced, not assumed: consent has to be demonstrable after the fact. */
+    consentAt: integer('consent_at', { mode: 'timestamp' }).notNull(),
+    /**
+     * One-click unsubscribe. A mailing has to be able to honour it without
+     * asking someone to log in to a site they only ever gave an address to.
+     */
+    token: text('token').notNull().unique(),
+    unsubscribedAt: integer('unsubscribed_at', { mode: 'timestamp' }),
+    createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
+  },
+  (table) => [index('subscribers_created_at_idx').on(table.createdAt)]
 );
 
 // Products - simple shop items (merch, music, etc.)
@@ -470,13 +510,19 @@ export const products = sqliteTable('products', {
 });
 
 // Integrations config
+/**
+ * Cached responses from services we poll — follower counts, recent videos.
+ *
+ * Only a cache. Credentials and enable flags for those services are columns on
+ * `settings`, with everything else that configures a built-in feature. This
+ * table used to hold both, which is how an API key ended up living in two
+ * places at once.
+ */
 export const integrations = sqliteTable('integrations', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  provider: text('provider').notNull().unique(), // 'spotify', 'facebook', 'youtube'
-  enabled: integer('enabled', { mode: 'boolean' }).default(false),
-  config: text('config', { mode: 'json' }), // Store API keys, artist IDs, etc.
+  provider: text('provider').notNull().unique(), // 'spotify', 'youtube'
   lastSync: integer('last_sync', { mode: 'timestamp' }),
-  cachedData: text('cached_data', { mode: 'json' }) // Cache fetched data
+  cachedData: text('cached_data', { mode: 'json' })
 });
 
 // Venue type for tour dates
@@ -509,6 +555,18 @@ export interface ImageBlockConfig extends BaseBlockConfig {
   showGlow?: boolean; // Accent color glow effect
 }
 
+/**
+ * Sign-up for the fan list, as a block.
+ *
+ * The release page has its own; this is for everywhere else — the artist page
+ * is where most people actually land, so a list that only grows from release
+ * pages grows in bursts and then stops.
+ */
+export interface EmailBlockConfig extends BaseBlockConfig {
+  heading?: string;
+  blurb?: string;
+}
+
 export interface LinksBlockConfig extends BaseBlockConfig {
   heading?: string;
   displayAs?: 'rows' | 'grid';
@@ -536,6 +594,7 @@ export interface ProductsBlockConfig extends BaseBlockConfig {
 }
 
 export type BlockConfig =
+  | EmailBlockConfig
   | ProfileBlockConfig
   | LinksBlockConfig
   | TourDatesBlockConfig
@@ -546,10 +605,49 @@ export type BlockConfig =
 // Types
 export type Profile = typeof profile.$inferSelect;
 export type NewProfile = typeof profile.$inferInsert;
-export type Settings = typeof settings.$inferSelect;
+export type SettingRow = typeof settings.$inferSelect;
 export type NewSettings = typeof settings.$inferInsert;
+/**
+ * The subset of settings safe to hand to the public site.
+ *
+ * Everything a layout load returns is serialised into the page for the client,
+ * and the full row carries the SMTP password, the publish webhook secret and
+ * the Google API key. Public components type their prop as this so a widened
+ * query can't quietly start shipping them again.
+ */
+
+/**
+ * Kept as an alias so public components keep a name that says what it is.
+ * `settings` holds no credentials now, so the whole row is public-safe.
+ */
+/*
+ * Settings types come from server/settings, where the shapes are declared as
+ * valibot schemas. Re-exported here so the many `import type { Settings } from
+ * '$lib/server/schema'` call sites didn't all have to move when storage
+ * changed. Type-only, so there's no runtime cycle.
+ */
+export type {
+  Settings,
+  PublicSettings,
+  SiteSettings,
+  ThemeSettings,
+  FeatureSettings,
+  MailSettings,
+  DiscordSettings,
+  ClipSettings,
+  ClipPublishingSettings,
+  GoogleSettings,
+  SpotifySettings,
+  MetaSettings,
+  TiktokSettings
+} from './settings';
+
 export type Page = typeof pages.$inferSelect;
 export type NewPage = typeof pages.$inferInsert;
+export type Subscriber = typeof subscribers.$inferSelect;
+export type NewSubscriber = typeof subscribers.$inferInsert;
+export type Release = typeof releases.$inferSelect;
+export type NewRelease = typeof releases.$inferInsert;
 export type Block = typeof blocks.$inferSelect;
 export type NewBlock = typeof blocks.$inferInsert;
 export type Link = typeof links.$inferSelect;

@@ -3,6 +3,7 @@ import { clipProjects, profile, settings, type ClipProject } from './schema';
 import { eq } from 'drizzle-orm';
 import { slugify } from '$lib/utils/slug';
 import { tagsFor } from './tags';
+import { getSettings } from './settings';
 
 /**
  * The post sheet: a small markdown file generated alongside every rendered clip,
@@ -50,7 +51,7 @@ export async function buildPostSheet(projectId: number, baseUrl: string): Promis
   if (!project) throw new Error('Clip project not found');
 
   const [profileData] = await db.select().from(profile).limit(1);
-  const [settingsData] = await db.select().from(settings).limit(1);
+  const settingsData = await getSettings();
 
   const artist = profileData?.name || settingsData?.siteTitle || 'Artist';
 

@@ -11,6 +11,7 @@
   import { editorPreview } from '$lib/stores/editorPreview.svelte';
   import { publishAllChanges, buildDraftFromServerData } from './publishDraft';
   import type { UnifiedDraftData } from './publishDraft';
+  import type { Link } from '$lib/server/schema';
   import type { LayoutData } from './$types';
 
   let { children, data }: { children: any; data: LayoutData } = $props();
@@ -33,14 +34,39 @@
   // Use direct function calls in $derived for proper signal tracking
   const isDirty = $derived(draft.isDirty());
 
-  // Per-section dirty indicators for nav dots
+  /*
+   * Per-section dirty indicators for nav dots.
+   *
+   * Links are shared: a link belongs either to a block on the artist page or to
+   * a release, so the dot has to look at who owns the changed ones rather than
+   * at the collection as a whole. Otherwise editing a Spotify URL on a release
+   * lights up Dashboard.
+   */
+  const changedLinkOwners = $derived.by(() => {
+    if (!draft.hasChanges('links')) return { block: false, release: false };
+
+    const diff = draft.computeCollectionDiff<Link>('links');
+    const snapshot = draft.getSnapshot<Link[]>('links') ?? [];
+    const touched = [
+      ...diff.added,
+      ...diff.updated.map(({ id }) => snapshot.find((l) => l.id === id)),
+      ...diff.deleted.map((id) => snapshot.find((l) => l.id === id))
+    ].filter((l): l is Link => Boolean(l));
+
+    return {
+      block: touched.some((l) => l.releaseId == null),
+      release: touched.some((l) => l.releaseId != null)
+    };
+  });
+
   const dashboardDirty = $derived(
     draft.hasChanges('profile') ||
       draft.hasChanges('blocks') ||
-      draft.hasChanges('links') ||
-      draft.hasChanges('tourDates')
+      draft.hasChanges('tourDates') ||
+      changedLinkOwners.block
   );
   const appearanceDirty = $derived(draft.hasChanges('appearance'));
+  const releasesDirty = $derived(draft.hasChanges('releases') || changedLinkOwners.release);
 
   // Local updating state for minimum spinner duration
   let isUpdating = $state(false);
@@ -76,8 +102,14 @@
       { href: '/admin', label: 'Dashboard', icon: 'home' },
       { href: '/admin/stats', label: 'Stats', icon: 'chart' },
       { href: '/admin/media', label: 'Media', icon: 'image' },
+      ...(data.settings?.releasesEnabled
+        ? [{ href: '/admin/releases', label: 'Releases', icon: 'disc' }]
+        : []),
       ...(data.settings?.clipsEnabled
         ? [{ href: '/admin/clips', label: 'Clips', icon: 'film' }]
+        : []),
+      ...(data.settings?.subscribersEnabled
+        ? [{ href: '/admin/subscribers', label: 'Audience', icon: 'mail' }]
         : []),
       { href: '/admin/appearance', label: 'Appearance', icon: 'palette', adminOnly: true },
       { href: '/admin/integrations', label: 'Integrations', icon: 'plug', adminOnly: true },
@@ -106,6 +138,7 @@
   function isNavDirty(href: string): boolean {
     if (href === '/admin') return dashboardDirty;
     if (href === '/admin/appearance') return appearanceDirty;
+    if (href === '/admin/releases') return releasesDirty;
     return false;
   }
 
@@ -336,6 +369,24 @@
                     stroke-linejoin="round"
                     stroke-width="1.5"
                     d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                  />
+                </svg>
+              {:else if item.icon === 'mail'}
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.5"
+                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                  />
+                </svg>
+              {:else if item.icon === 'disc'}
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.5"
+                    d="M9 19V6l12-3v13M9 19a3 3 0 11-6 0 3 3 0 016 0zm12-3a3 3 0 11-6 0 3 3 0 016 0z"
                   />
                 </svg>
               {:else if item.icon === 'film'}

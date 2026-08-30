@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { platformLabel } from '$lib/utils/platforms';
   import { SectionCard } from '$lib/components/cards';
   import type { PageData } from './$types';
   import { onMount, tick } from 'svelte';
@@ -381,9 +382,10 @@
             <tbody class="divide-y divide-gray-800">
               {#each data.linkClicks.clicksByLink as link}
                 <tr>
-                  <td class="py-3 text-sm text-white">{link.label || link.platform || 'Unnamed'}</td
-                  >
-                  <td class="py-3 text-sm text-gray-400 capitalize">{link.platform}</td>
+                  <td class="py-3 text-sm text-white">
+                    {link.label || platformLabel(link.platform) || 'Unnamed'}
+                  </td>
+                  <td class="py-3 text-sm text-gray-400">{platformLabel(link.platform)}</td>
                   <td class="py-3 pr-4 text-right text-sm text-white">{link.count}</td>
                   <td class="py-3">
                     <div class="flex items-center gap-2">

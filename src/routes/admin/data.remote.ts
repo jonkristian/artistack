@@ -1,8 +1,10 @@
+import { error } from '@sveltejs/kit';
+import { getSettings, updateSiteSettings } from '$lib/server/settings';
 import { requireUser } from '$lib/server/guards';
 import * as v from 'valibot';
 import { form, command } from '$app/server';
 import { db } from '$lib/server/db';
-import { profile, links, tourDates, blocks, settings } from '$lib/server/schema';
+import { profile, links, tourDates, blocks, settings, pages } from '$lib/server/schema';
 import { eq } from 'drizzle-orm';
 import {
   fetchYouTubeMetadata,
@@ -216,9 +218,22 @@ export const addBlock = command(addBlockSchema, async ({ type, label, config }) 
   const existing = await db.select().from(blocks);
   const position = getNextPosition(existing);
 
+  /*
+   * Blocks belong to the artist page. NULL used to mean the same thing, but
+   * every existing block was attached to its `pages` row when pages became the
+   * routing table — leaving new ones NULL would split the data across two
+   * conventions for the same fact.
+   */
+  const [landing] = await db
+    .select({ id: pages.id })
+    .from(pages)
+    .where(eq(pages.type, 'landing'))
+    .limit(1);
+
   const [created] = await db
     .insert(blocks)
     .values({
+      pageId: landing?.id ?? null,
       type,
       label: label || null,
       config: config || null,
@@ -395,9 +410,16 @@ export const deleteLink = command(idSchema, async (id) => {
 });
 
 // Command version of addLink for programmatic use
+/**
+ * A link hangs off a block on the artist page, or off a release. Exactly one
+ * owner is given; the other stays null. Both go through this command so URL
+ * detection, metadata fetching and positioning behave identically wherever a
+ * link is added.
+ */
 const createLinkSchema = v.object({
   url: v.pipe(v.string(), v.url('Please enter a valid URL')),
-  blockId: v.number(),
+  blockId: v.optional(v.number()),
+  releaseId: v.optional(v.number()),
   category: v.optional(v.picklist(['social', 'streaming', 'merch', 'other'])),
   platform: v.optional(v.string()),
   label: v.optional(v.string())
@@ -405,8 +427,12 @@ const createLinkSchema = v.object({
 
 export const createLink = command(
   createLinkSchema,
-  async ({ url, blockId, category, platform, label }) => {
+  async ({ url, blockId, releaseId, category, platform, label }) => {
     await requireUser();
+
+    if (blockId == null && releaseId == null) {
+      error(400, 'A link needs a block or a release to belong to.');
+    }
 
     // Auto-detect platform and category from URL if not provided
     let detectedPlatform: string | undefined = platform;
@@ -435,14 +461,19 @@ export const createLink = command(
     // Auto-fetch metadata for supported URLs
     const fetched = await fetchPlatformMetadata(url, label || null);
 
-    // Get next position
-    const existing = await db.select().from(links);
+    // Position within the owner, not across every link in the database — a
+    // release's first link is 0 even when the artist page already has twenty.
+    const existing = await db
+      .select()
+      .from(links)
+      .where(releaseId != null ? eq(links.releaseId, releaseId) : eq(links.blockId, blockId!));
     const position = getNextPosition(existing);
 
     const [created] = await db
       .insert(links)
       .values({
-        blockId,
+        blockId: blockId ?? null,
+        releaseId: releaseId ?? null,
         category: detectedCategory || 'other',
         platform: detectedPlatform || 'link',
         url,
@@ -734,28 +765,15 @@ const setupSchema = v.object({
   locale: v.string()
 });
 
-async function getOrCreateSettings() {
-  const [existing] = await db.select().from(settings).limit(1);
-  if (existing) return existing;
-
-  const [created] = await db.insert(settings).values({}).returning();
-  return created;
-}
-
 export const completeSetup = command(setupSchema, async ({ siteTitle, locale }) => {
   await requireUser();
 
-  const existingSettings = await getOrCreateSettings();
-
   // Update settings
-  await db
-    .update(settings)
-    .set({
-      siteTitle: siteTitle || null,
-      locale,
-      setupCompleted: true
-    })
-    .where(eq(settings.id, existingSettings.id));
+  await updateSiteSettings({
+    siteTitle: siteTitle || null,
+    locale,
+    setupCompleted: true
+  });
 
   // Update profile name if siteTitle provided
   if (siteTitle) {

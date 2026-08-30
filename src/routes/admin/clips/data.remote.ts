@@ -1,4 +1,5 @@
 import { requireUser } from '$lib/server/guards';
+import { getClipSettings, updateClipSettings } from '$lib/server/settings';
 import * as v from 'valibot';
 import { command, query } from '$app/server';
 import { db } from '$lib/server/db';
@@ -134,18 +135,18 @@ export const createProject = command(v.object({ name: v.string() }), async ({ na
 
   // Seeded with whatever boilerplate was last saved as the default, so the
   // hashtags and call to action every post shares are already there.
-  const [siteSettings] = await db.select().from(settings).limit(1);
+  const siteSettings = await getClipSettings();
 
   const [created] = await db
     .insert(clipProjects)
     .values({
       name: name.trim() || 'Untitled clip',
-      description: siteSettings?.clipDefaultDescription ?? null,
+      description: siteSettings?.defaultDescription ?? null,
       config: { ...DEFAULT_CLIP_CONFIG }
     })
     .returning();
 
-  const defaultTagIds = siteSettings?.clipDefaultTagIds ?? [];
+  const defaultTagIds = siteSettings?.defaultTagIds ?? [];
   if (defaultTagIds.length) {
     await db
       .insert(taggings)
@@ -167,13 +168,8 @@ export const saveClipDefaultDescription = command(v.string(), async (value) => {
   await requireUser();
 
   const stored = value.trim() || null;
-  const [existing] = await db.select({ id: settings.id }).from(settings).limit(1);
-  if (!existing) return { success: false, message: 'No settings row' };
 
-  await db
-    .update(settings)
-    .set({ clipDefaultDescription: stored })
-    .where(eq(settings.id, existing.id));
+  await updateClipSettings({ defaultDescription: stored });
 
   return { success: true, cleared: stored === null };
 });
@@ -182,11 +178,8 @@ export const saveClipDefaultDescription = command(v.string(), async (value) => {
 export const saveClipDefaultTags = command(v.array(v.string()), async (names) => {
   await requireUser();
 
-  const [existing] = await db.select({ id: settings.id }).from(settings).limit(1);
-  if (!existing) return { success: false, message: 'No settings row' };
-
   const tagIds = await resolveTags(names);
-  await db.update(settings).set({ clipDefaultTagIds: tagIds }).where(eq(settings.id, existing.id));
+  await updateClipSettings({ defaultTagIds: tagIds });
 
   return { success: true, cleared: tagIds.length === 0 };
 });

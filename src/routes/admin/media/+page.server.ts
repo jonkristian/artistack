@@ -1,3 +1,4 @@
+import { getSettings, getClipSettings } from '$lib/server/settings';
 import { redirect } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import { tagsForMany, listTags } from '$lib/server/tags';
@@ -18,9 +19,9 @@ export const load: PageServerLoad = async ({ request }) => {
   const allMedia = await db.select().from(media).orderBy(desc(media.createdAt));
 
   // Get settings for press kit
-  const [settingsData] = await db.select().from(settings).limit(1);
+  const [settingsData, clips] = await Promise.all([getSettings(), getClipSettings()]);
   const pressKitMediaIds: number[] = (settingsData?.pressKitMediaIds ?? []) as number[];
-  const clipGraphicsMediaIds: number[] = (settingsData?.clipGraphicsMediaIds ?? []) as number[];
+  const graphicsMediaIds: number[] = (clips?.graphicsMediaIds ?? []) as number[];
 
   // Check if press kit zip exists
   const pressKitZipPath = join(process.cwd(), 'data', 'uploads', 'press-kit.zip');
@@ -39,10 +40,10 @@ export const load: PageServerLoad = async ({ request }) => {
     ) as Record<number, string[]>,
     allTags: (await listTags()).map((t) => t.name),
     pressKitMediaIds,
-    clipGraphicsMediaIds,
+    graphicsMediaIds,
     pressKitZipExists,
     pressKitEnabled: settingsData?.pressKitEnabled ?? false,
     clipsEnabled: settingsData?.clipsEnabled ?? false,
-    defaultClipGraphicMediaId: settingsData?.defaultClipGraphicMediaId ?? null
+    defaultGraphicMediaId: clips?.defaultGraphicMediaId ?? null
   };
 };

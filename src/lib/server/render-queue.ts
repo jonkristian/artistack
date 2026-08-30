@@ -4,6 +4,7 @@ import { eq, and, ne, asc, inArray } from 'drizzle-orm';
 import sharp from 'sharp';
 import { UPLOAD_DIR, THUMBNAIL_SIZE, mediaPath } from './paths';
 import { db } from './db';
+import { getSettings, getClipSettings } from './settings';
 import {
   renderJobs,
   clipProjects,
@@ -282,14 +283,10 @@ async function buildRenderInput(projectId: number) {
     };
   });
 
-  const [siteSettings] = await db.select().from(settings).limit(1);
+  const [site, clips] = await Promise.all([getSettings(), getClipSettings()]);
 
-  const designated = (siteSettings?.clipGraphicsMediaIds ?? []) as number[];
-  const graphicId = resolveGraphic(
-    config,
-    designated,
-    siteSettings?.defaultClipGraphicMediaId ?? null
-  );
+  const designated = (clips?.graphicsMediaIds ?? []) as number[];
+  const graphicId = resolveGraphic(config, designated, clips?.defaultGraphicMediaId ?? null);
 
   // One graphic serves all three placements, rasterised at each size. No
   // designated graphic means no intro, watermark or outro — the renderer skips
@@ -323,7 +320,7 @@ async function buildRenderInput(projectId: number) {
       sources,
       config: {
         ...config,
-        logoColor: config.logoColor || siteSettings?.colorAccent || '#8b5cf6'
+        logoColor: config.logoColor || site?.colorAccent || '#8b5cf6'
       },
       captions: (project.captions ?? []) as TimedCaption[],
       introPath: graphicPath,

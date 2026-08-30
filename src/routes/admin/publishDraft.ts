@@ -15,6 +15,7 @@ import {
   saveProfile as serverSaveProfile
 } from './data.remote';
 import { updateAppearance } from './appearance/data.remote';
+import { updateRelease as serverUpdateRelease } from './releases/data.remote';
 
 // ===== Types =====
 
@@ -36,7 +37,52 @@ export type UnifiedDraftData = {
   links: Link[];
   tourDates: TourDate[];
   appearance: AppearanceData;
+  releases: ReleaseDraft[];
 };
+
+/**
+ * A release and the page that addresses it, flattened into one draft row.
+ *
+ * The two-table split exists so `pages` can own every URL; it isn't something
+ * the editor should have to know about, and keeping it out of the draft means
+ * one diff decides what to write to both.
+ *
+ * `releaseDate` is a yyyy-mm-dd string rather than a Date because the draft is
+ * compared by JSON round-trip — a Date would stringify differently after a
+ * clone and read as dirty when nothing had changed.
+ */
+export type ReleaseDraft = {
+  id: number;
+  pageId: number;
+  title: string;
+  slug: string;
+  description: string | null;
+  shareImageUrl: string | null;
+  published: boolean;
+  releaseDate: string;
+  coverUrl: string | null;
+  presaveUrl: string | null;
+  isrc: string | null;
+  upc: string | null;
+};
+
+/*
+ * Dates cross this boundary as local parts, never through UTC: toISOString()
+ * shifts the day, and a release showing as the 17th when it's the 18th is a
+ * real bug rather than a rounding detail.
+ */
+
+export function toDateInput(date: Date | string): string {
+  const d = new Date(date);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+export function fromDateInput(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
 
 // ===== Helpers =====
 
@@ -49,6 +95,20 @@ export function buildDraftFromServerData(data: {
   blocks: Block[];
   links: Link[];
   tourDates: TourDate[];
+  releases?: {
+    id: number;
+    pageId: number;
+    title: string;
+    slug: string;
+    description: string | null;
+    shareImageUrl: string | null;
+    published: boolean | null;
+    releaseDate: Date;
+    coverUrl: string | null;
+    presaveUrl: string | null;
+    isrc: string | null;
+    upc: string | null;
+  }[];
   settings: {
     colorBg?: string | null;
     colorCard?: string | null;
@@ -67,6 +127,11 @@ export function buildDraftFromServerData(data: {
     blocks: data.blocks ?? [],
     links: data.links ?? [],
     tourDates: data.tourDates ?? [],
+    releases: (data.releases ?? []).map((r) => ({
+      ...r,
+      published: r.published ?? false,
+      releaseDate: toDateInput(r.releaseDate)
+    })),
     appearance: {
       colorBg: s?.colorBg ?? '#0c0a14',
       colorCard: s?.colorCard ?? '#14101f',
@@ -161,16 +226,25 @@ export async function publishAllChanges(draftData: UnifiedDraftData) {
     for (const id of linkDiff.deleted) {
       // Skip links whose block was already deleted (cascade-deleted by server)
       const originalLink = originalLinks.find((l) => l.id === id);
-      if (originalLink && deletedBlockIds.has(originalLink.blockId)) continue;
+      if (originalLink?.blockId != null && deletedBlockIds.has(originalLink.blockId)) continue;
       await serverDeleteLink(id);
     }
 
     for (const link of linkDiff.added) {
+      // A block-owned link may point at a block created in this same publish,
+      // so its temp id is remapped first. A release link has a real owner
+      // already — the release exists before its editor opens.
       const blockId =
-        link.blockId < 0 ? (blockIdMap.get(link.blockId) ?? link.blockId) : link.blockId;
+        link.blockId == null
+          ? undefined
+          : link.blockId < 0
+            ? (blockIdMap.get(link.blockId) ?? link.blockId)
+            : link.blockId;
+
       await serverCreateLink({
         url: link.url,
         blockId,
+        releaseId: link.releaseId ?? undefined,
         category: (link.category as 'social' | 'streaming' | 'merch' | 'other') ?? undefined,
         platform: link.platform ?? undefined,
         label: link.label ?? undefined
@@ -251,6 +325,23 @@ export async function publishAllChanges(draftData: UnifiedDraftData) {
           soldOut: changes.soldOut ?? undefined
         });
       }
+    }
+  }
+
+  // --- Releases ---
+  //
+  // Updates only. Creating a release has to happen server-side before its
+  // editor can be opened at a URL, and deleting one navigates away — neither
+  // is something you stage and then commit.
+  if (draft.hasChanges('releases')) {
+    const releaseDiff = draft.computeCollectionDiff<ReleaseDraft>('releases');
+
+    for (const { id, changes } of releaseDiff.updated) {
+      // pageId is carried in the draft row so the editor can stay ignorant of
+      // the two-table split; it is never something the editor changes.
+      const { pageId: _pageId, ...fields } = changes;
+      if (Object.keys(fields).length === 0) continue;
+      await serverUpdateRelease({ id, ...fields });
     }
   }
 

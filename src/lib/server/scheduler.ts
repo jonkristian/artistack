@@ -1,5 +1,7 @@
 import cron from 'node-cron';
 import { db } from './db';
+import { getSettings, getDiscordSettings } from './settings';
+import type { DiscordSettings } from './schema';
 import { settings, integrations } from './schema';
 import { sendScheduledDiscordReport } from './discord';
 import { refreshAllSocialStats } from './social-stats';
@@ -48,12 +50,12 @@ export function initScheduler(): void {
 async function runScheduledTasks(): Promise<void> {
   try {
     // Get settings
-    const [settingsData] = await db.select().from(settings).limit(1);
+    const [settingsData, discord] = await Promise.all([getSettings(), getDiscordSettings()]);
     if (!settingsData) return;
 
     // Task 1: Discord scheduled report
-    if (settingsData.discordEnabled && settingsData.discordWebhookUrl) {
-      const shouldSend = checkDiscordSchedule(settingsData);
+    if (discord?.enabled && discord.webhookUrl) {
+      const shouldSend = checkDiscordSchedule(discord);
       if (shouldSend) {
         console.log('[Scheduler] Sending Discord report...');
         const result = await sendScheduledDiscordReport();
@@ -105,17 +107,12 @@ async function runScheduledTasks(): Promise<void> {
   }
 }
 
-function checkDiscordSchedule(profileData: {
-  discordSchedule: string | null;
-  discordScheduleDay: number | null;
-  discordScheduleTime: string | null;
-  discordLastSent: Date | null;
-}): boolean {
+function checkDiscordSchedule(discord: DiscordSettings): boolean {
   const now = new Date();
-  const schedule = profileData.discordSchedule ?? 'weekly';
-  const scheduleDay = profileData.discordScheduleDay ?? 1;
-  const scheduleTime = profileData.discordScheduleTime ?? '09:00';
-  const lastSent = profileData.discordLastSent;
+  const schedule = discord.schedule ?? 'weekly';
+  const scheduleDay = discord.scheduleDay ?? 1;
+  const scheduleTime = discord.scheduleTime ?? '09:00';
+  const lastSent = discord.lastSent;
 
   // Parse scheduled time
   const [hour] = scheduleTime.split(':').map(Number);

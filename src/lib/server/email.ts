@@ -1,7 +1,6 @@
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
-import { db } from './db';
-import { settings } from './schema';
+import { getMailSettings } from './settings';
 import { env } from '$env/dynamic/private';
 
 interface SmtpConfig {
@@ -15,18 +14,18 @@ interface SmtpConfig {
 }
 
 async function getSmtpConfig(): Promise<SmtpConfig | null> {
-  // Try database settings first
-  const [siteSettings] = await db.select().from(settings).limit(1);
+  // Stored config first, environment variables as the fallback.
+  const mail = await getMailSettings();
 
-  if (siteSettings?.smtpHost && siteSettings?.smtpUser && siteSettings?.smtpPassword) {
+  if (mail?.smtpHost && mail?.smtpUser && mail?.smtpPassword) {
     return {
-      host: siteSettings.smtpHost,
-      port: siteSettings.smtpPort ?? 587,
-      user: siteSettings.smtpUser,
-      password: siteSettings.smtpPassword,
-      fromAddress: siteSettings.smtpFromAddress ?? siteSettings.smtpUser,
-      fromName: siteSettings.smtpFromName ?? 'Artistack',
-      tls: siteSettings.smtpTls ?? true
+      host: mail.smtpHost,
+      port: mail.smtpPort ?? 587,
+      user: mail.smtpUser,
+      password: mail.smtpPassword,
+      fromAddress: mail.smtpFromAddress ?? mail.smtpUser,
+      fromName: mail.smtpFromName ?? 'Artistack',
+      tls: mail.smtpTls ?? true
     };
   }
 

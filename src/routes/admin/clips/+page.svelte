@@ -1,9 +1,10 @@
 <script lang="ts">
+  import { tileGridClass } from '$lib/utils/classes';
   import { goto, invalidateAll } from '$app/navigation';
   import { toast } from '$lib/stores/toast.svelte';
   import { formatDuration } from '$lib/utils/upload';
   import { CLIP_STATUS_LABELS, CLIP_STATUS_STYLES, type ClipStatus } from '$lib/clips/types';
-  import { FilterSelect, SelectCheckbox, SelectionToolbar } from '$lib/components/ui';
+  import { LibraryToolbar, SelectCheckbox } from '$lib/components/ui';
   import { Selection } from '$lib/utils/selection.svelte';
   import type { PageData } from './$types';
   import { createProject, deleteProject } from './data.remote';
@@ -102,18 +103,35 @@
 </script>
 
 <div class="min-h-screen bg-gray-950 p-[clamp(1rem,4vw,1.5rem)]">
-  <header class="mb-6 flex flex-wrap items-center justify-end gap-3">
-    <button
-      onclick={handleCreate}
-      disabled={creating}
-      class="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium whitespace-nowrap text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
-    >
-      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-      </svg>
-      {creating ? 'Creating…' : 'New clip'}
-    </button>
-  </header>
+  <LibraryToolbar
+    options={statusOptions}
+    bind:selected={statusFilter}
+    total={data.projects.length}
+    onFilterChange={() => selection.clear()}
+    count={selection.size}
+    allSelected={selection.covers(shownProjects)}
+    onToggleAll={() => selection.toggleAll(shownProjects)}
+    onDelete={deleteSelected}
+    onClear={() => selection.clear()}
+  >
+    {#snippet actions()}
+      <button
+        onclick={handleCreate}
+        disabled={creating}
+        class="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium whitespace-nowrap text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
+      >
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M12 4v16m8-8H4"
+          />
+        </svg>
+        {creating ? 'Creating…' : 'New clip'}
+      </button>
+    {/snippet}
+  </LibraryToolbar>
 
   {#if !data.renderingAvailable}
     <div class="mb-6 rounded-lg border border-amber-700/50 bg-amber-950/40 p-4 text-sm">
@@ -139,27 +157,7 @@
       </button>
     </div>
   {:else}
-    <!-- Same row as the media library: filters left, bulk actions right. -->
-    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <FilterSelect
-        options={statusOptions}
-        bind:selected={statusFilter}
-        total={data.projects.length}
-        onchange={() => selection.clear()}
-      />
-
-      <SelectionToolbar
-        count={selection.size}
-        allSelected={selection.covers(shownProjects)}
-        onToggleAll={() => selection.toggleAll(shownProjects)}
-        onDelete={deleteSelected}
-        onClear={() => selection.clear()}
-      />
-    </div>
-
-    <!-- One step denser than the media library at each width: these cards are
-         3:4 rather than square, so the same column count reads much taller. -->
-    <div class="grid [grid-template-columns:repeat(auto-fill,minmax(min(100%,9rem),1fr))] gap-4">
+    <div class={tileGridClass}>
       {#each shownProjects as project (project.id)}
         {@const output = project.outputMediaId ? mediaById.get(project.outputMediaId) : undefined}
         <!-- The checkbox sits beside the link rather than inside it: a button

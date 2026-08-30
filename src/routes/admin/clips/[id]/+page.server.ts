@@ -1,5 +1,11 @@
+import {
+  getClipSettings,
+  getClipPublishingSettings,
+  updateClipSettings
+} from '$lib/server/settings';
 import { error, redirect } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
+import { requireFeature } from '$lib/server/guards';
 import {
   clipProjects,
   clipSources,
@@ -17,15 +23,8 @@ import { projectedNextSlot } from '$lib/server/clip-queue';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ request, params }) => {
-  const session = await auth.api.getSession({ headers: request.headers });
-  if (!session?.user) {
-    throw redirect(302, '/login');
-  }
-
-  const [siteSettings] = await db.select().from(settings).limit(1);
-  if (!siteSettings?.clipsEnabled) {
-    throw redirect(302, '/admin/integrations');
-  }
+  const { settings: siteSettings } = await requireFeature(request, 'clipsEnabled');
+  const [clips, publishing] = await Promise.all([getClipSettings(), getClipPublishingSettings()]);
 
   const id = Number(params.id);
   if (!Number.isInteger(id)) throw error(404, 'Clip not found');
@@ -50,7 +49,7 @@ export const load: PageServerLoad = async ({ request, params }) => {
 
   const allMedia = await db.select().from(media).orderBy(desc(media.createdAt));
 
-  const designatedIds = (siteSettings.clipGraphicsMediaIds ?? []) as number[];
+  const designatedIds = (clips?.graphicsMediaIds ?? []) as number[];
   const designatedGraphics = allMedia.filter((m) => designatedIds.includes(m.id));
 
   const posts = await db
@@ -71,12 +70,12 @@ export const load: PageServerLoad = async ({ request, params }) => {
     // The images designated as clip graphics, resolved to media rows so the
     // Branding picker can show them without a second round trip.
     graphics: designatedGraphics,
-    defaultGraphicMediaId: siteSettings.defaultClipGraphicMediaId ?? null,
+    defaultGraphicMediaId: clips?.defaultGraphicMediaId ?? null,
     // Drives the "install ffmpeg" notice instead of letting renders fail late.
     renderingAvailable: await videoSupported(),
     // Publishing needs a webhook target; without one the release controls are
     // shown but disabled rather than hidden, so the gap is discoverable.
-    publishConfigured: Boolean(siteSettings.publishWebhookUrl),
+    publishConfigured: Boolean(publishing?.publishWebhookUrl),
     // Where this clip would land if queued now, for the queue dialog.
     nextSlot: await projectedNextSlot()
   };

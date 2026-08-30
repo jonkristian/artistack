@@ -4,6 +4,7 @@ import { clipProjects, media, profile, settings } from '$lib/server/schema';
 import { eq } from 'drizzle-orm';
 import { buildPostSheet } from '$lib/server/post-sheet';
 import type { PageServerLoad } from './$types';
+import { getSettings } from '$lib/server/settings';
 
 /**
  * Unlisted preview of a rendered clip, reachable by token only.
@@ -38,7 +39,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
   if (!clip) throw error(404, 'Not found');
 
   const [profileData] = await db.select().from(profile).limit(1);
-  const [settingsData] = await db.select().from(settings).limit(1);
+  const settingsData = await getSettings();
 
   const sheet = await buildPostSheet(project.id, url.origin);
 

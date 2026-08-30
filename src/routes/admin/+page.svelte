@@ -130,6 +130,17 @@
     accent: draftData.appearance.colorAccent
   });
 
+  /*
+   * A block can depend on a feature being switched on. Offering a sign-up
+   * block while the fan list is off would put a form on the page that posts
+   * into a 404.
+   */
+  const availableBlocks = $derived(
+    Object.values(blockRegistry).filter(
+      (def) => !def.requiresFeature || data.settings?.[def.requiresFeature]
+    )
+  );
+
   // ===== Block operations =====
   function handleAddBlock(type: string) {
     const def = blockRegistry[type];
@@ -241,7 +252,7 @@
 
       <!-- Add Block -->
       <div class="flex flex-wrap gap-2">
-        {#each Object.values(blockRegistry) as def}
+        {#each availableBlocks as def}
           <button
             onclick={() => handleAddBlock(def.type)}
             class="flex items-center gap-1.5 rounded-lg border border-dashed border-gray-700 px-3 py-2 text-xs text-gray-400 transition-colors hover:border-gray-500 hover:text-gray-200"

@@ -12,4 +12,7 @@ export { default as LayoutPreview } from './LayoutPreview.svelte';
 export { default as PasswordFields } from './PasswordFields.svelte';
 export { default as SelectCheckbox } from './SelectCheckbox.svelte';
 export { default as SelectionToolbar } from './SelectionToolbar.svelte';
+export { default as LibraryToolbar } from './LibraryToolbar.svelte';
+export { default as EmailCapture } from './EmailCapture.svelte';
+export { default as TrackingPixels } from './TrackingPixels.svelte';
 export { default as TagInput } from './TagInput.svelte';

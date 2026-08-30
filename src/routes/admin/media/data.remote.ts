@@ -1,3 +1,9 @@
+import {
+  getSettings,
+  getClipSettings,
+  updateSiteSettings,
+  updateClipSettings
+} from '$lib/server/settings';
 import { requireUser } from '$lib/server/guards';
 import * as v from 'valibot';
 import { command } from '$app/server';
@@ -133,15 +139,12 @@ export const deleteMedia = command(deleteMediaSchema, async (id) => {
       }
     }
 
-    // Also remove from press kit media IDs in settings
-    const [s] = await db.select().from(settings).limit(1);
-    if (s) {
-      const pressKitIds = (s.pressKitMediaIds ?? []) as number[];
+    // Also drop it from the press kit selection
+    const current = await getSettings();
+    if (current) {
+      const pressKitIds = current.pressKitMediaIds ?? [];
       if (pressKitIds.includes(id)) {
-        await db
-          .update(settings)
-          .set({ pressKitMediaIds: pressKitIds.filter((mid) => mid !== id) })
-          .where(eq(settings.id, s.id));
+        await updateSiteSettings({ pressKitMediaIds: pressKitIds.filter((mid) => mid !== id) });
       }
     }
 
@@ -178,31 +181,19 @@ export const deleteMedia = command(deleteMediaSchema, async (id) => {
 });
 
 // ============================================================================
-// Press Kit Commands (stored in settings.pressKitMediaIds)
+// Press Kit Commands (stored on the site's own settings)
 // ============================================================================
-
-async function getOrCreateSettings() {
-  const [existing] = await db.select().from(settings).limit(1);
-  if (existing) return existing;
-
-  const [created] = await db.insert(settings).values({}).returning();
-  return created;
-}
 
 export const addToPressKit = command(v.object({ mediaId: v.number() }), async ({ mediaId }) => {
   await requireUser();
-
-  const s = await getOrCreateSettings();
-  const ids = (s.pressKitMediaIds ?? []) as number[];
+  const current = await getSettings();
+  const ids = current.pressKitMediaIds ?? [];
 
   if (ids.includes(mediaId)) {
     return { success: false, message: 'Already in press kit' };
   }
 
-  await db
-    .update(settings)
-    .set({ pressKitMediaIds: [...ids, mediaId] })
-    .where(eq(settings.id, s.id));
+  await updateSiteSettings({ pressKitMediaIds: [...ids, mediaId] });
 
   return { success: true };
 });
@@ -211,21 +202,17 @@ export const removeFromPressKit = command(
   v.object({ mediaId: v.number() }),
   async ({ mediaId }) => {
     await requireUser();
+    const current = await getSettings();
+    const ids = current.pressKitMediaIds ?? [];
 
-    const s = await getOrCreateSettings();
-    const ids = (s.pressKitMediaIds ?? []) as number[];
-
-    await db
-      .update(settings)
-      .set({ pressKitMediaIds: ids.filter((id) => id !== mediaId) })
-      .where(eq(settings.id, s.id));
+    await updateSiteSettings({ pressKitMediaIds: ids.filter((id) => id !== mediaId) });
 
     return { success: true };
   }
 );
 
 // ============================================================================
-// Clip Graphics (stored in settings.clipGraphicsMediaIds)
+// Clip Graphics (stored with the rest of the clip studio's settings)
 // ============================================================================
 
 /**
@@ -236,20 +223,17 @@ export const removeFromPressKit = command(
 export const addToClipGraphics = command(v.object({ mediaId: v.number() }), async ({ mediaId }) => {
   await requireUser();
 
-  const s = await getOrCreateSettings();
-  const ids = (s.clipGraphicsMediaIds ?? []) as number[];
+  const s = (await getClipSettings()) ?? { graphicsMediaIds: [], defaultGraphicMediaId: null };
+  const ids = (s.graphicsMediaIds ?? []) as number[];
 
   if (ids.includes(mediaId)) {
     return { success: false, message: 'Already a clip graphic' };
   }
 
-  await db
-    .update(settings)
-    .set({
-      clipGraphicsMediaIds: [...ids, mediaId],
-      ...(s.defaultClipGraphicMediaId ? {} : { defaultClipGraphicMediaId: mediaId })
-    })
-    .where(eq(settings.id, s.id));
+  await updateClipSettings({
+    graphicsMediaIds: [...ids, mediaId],
+    ...(s.defaultGraphicMediaId ? {} : { defaultGraphicMediaId: mediaId })
+  });
 
   return { success: true };
 });
@@ -259,19 +243,14 @@ export const removeFromClipGraphics = command(
   async ({ mediaId }) => {
     await requireUser();
 
-    const s = await getOrCreateSettings();
-    const ids = ((s.clipGraphicsMediaIds ?? []) as number[]).filter((id) => id !== mediaId);
+    const s = (await getClipSettings()) ?? { graphicsMediaIds: [], defaultGraphicMediaId: null };
+    const ids = ((s.graphicsMediaIds ?? []) as number[]).filter((id) => id !== mediaId);
 
-    await db
-      .update(settings)
-      .set({
-        clipGraphicsMediaIds: ids,
-        // Never leave the default pointing at something no longer designated.
-        ...(s.defaultClipGraphicMediaId === mediaId
-          ? { defaultClipGraphicMediaId: ids[0] ?? null }
-          : {})
-      })
-      .where(eq(settings.id, s.id));
+    await updateClipSettings({
+      graphicsMediaIds: ids,
+      // Never leave the default pointing at something no longer designated.
+      ...(s.defaultGraphicMediaId === mediaId ? { defaultGraphicMediaId: ids[0] ?? null } : {})
+    });
 
     return { success: true };
   }
@@ -282,11 +261,8 @@ export const setDefaultClipGraphic = command(
   async ({ mediaId }) => {
     await requireUser();
 
-    const s = await getOrCreateSettings();
-    await db
-      .update(settings)
-      .set({ defaultClipGraphicMediaId: mediaId })
-      .where(eq(settings.id, s.id));
+    const s = (await getClipSettings()) ?? { graphicsMediaIds: [], defaultGraphicMediaId: null };
+    await updateClipSettings({ defaultGraphicMediaId: mediaId });
     return { success: true };
   }
 );

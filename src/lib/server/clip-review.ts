@@ -1,6 +1,7 @@
 import { randomBytes } from 'crypto';
 import { eq } from 'drizzle-orm';
 import { db } from './db';
+import { getClipSettings, getDiscordSettings } from './settings';
 import { clipProjects, media, settings, type ClipProject } from './schema';
 import { buildPostSheet } from './post-sheet';
 import type { DiscordWebhookPayload } from './discord';
@@ -107,13 +108,13 @@ export async function submitForReview(
     .set({ status: 'review', reviewNote: null, reviewedAt: null, updatedAt: new Date() })
     .where(eq(clipProjects.id, projectId));
 
-  const [settingsData] = await db.select().from(settings).limit(1);
+  const [clips, discord] = await Promise.all([getClipSettings(), getDiscordSettings()]);
 
   // Reviews go to their own channel when one is configured, falling back to the
   // general webhook. Discord is optional either way: the preview link is the
   // deliverable, and a site with no webhook should still be able to share one.
-  const webhookUrl = settingsData?.clipReviewWebhookUrl || settingsData?.discordWebhookUrl;
-  if (!settingsData?.discordEnabled || !webhookUrl) {
+  const webhookUrl = clips?.reviewWebhookUrl || discord?.webhookUrl;
+  if (!discord?.enabled || !webhookUrl) {
     return { success: true, previewUrl: url };
   }
 

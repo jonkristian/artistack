@@ -9,6 +9,7 @@ import archiver from 'archiver';
 import { createWriteStream } from 'fs';
 import { mkdir } from 'fs/promises';
 import { join } from 'path';
+import { getSettings } from '$lib/server/settings';
 
 export const POST: RequestHandler = async ({ request }) => {
   // Editors curate the press kit in Media, so they can build it too.
@@ -18,7 +19,7 @@ export const POST: RequestHandler = async ({ request }) => {
   }
 
   // Get press kit media IDs from settings
-  const [settingsData] = await db.select().from(settings).limit(1);
+  const settingsData = await getSettings();
   const mediaIds: number[] = (settingsData?.pressKitMediaIds ?? []) as number[];
 
   if (mediaIds.length === 0) {

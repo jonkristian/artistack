@@ -1,5 +1,14 @@
 <script lang="ts">
-  import type { Profile, Settings, Link, TourDate, Media, Block, ImageBlockConfig, BaseBlockConfig } from '$lib/server/schema';
+  import type {
+    Profile,
+    PublicSettings,
+    Link,
+    TourDate,
+    Media,
+    Block,
+    ImageBlockConfig,
+    BaseBlockConfig
+  } from '$lib/server/schema';
   import { blockRegistry } from '$lib/blocks';
   import { shareProfile, spacingTopClasses, spacingBottomClasses } from '$lib/blocks/utils';
 
@@ -12,7 +21,7 @@
     media = []
   }: {
     profile: Profile;
-    settings?: Settings | null;
+    settings?: PublicSettings | null;
     links: Link[];
     tourDates: TourDate[];
     blocks?: Block[];
@@ -57,7 +66,9 @@
     ></div>
     <!-- Card content -->
     <div
-      class="relative min-h-screen w-full overflow-hidden rounded-t-3xl px-2 pb-8 sm:min-h-[calc(100vh-4rem)] sm:px-6 sm:shadow-xl {firstBlockFlush() ? '' : 'pt-8'}"
+      class="relative min-h-screen w-full overflow-hidden rounded-t-3xl px-2 pb-8 sm:min-h-[calc(100vh-4rem)] sm:px-6 sm:shadow-xl {firstBlockFlush()
+        ? ''
+        : 'pt-8'}"
       style="background-color: var(--color-card)"
     >
       {#each visibleBlocks as block (block.id)}
@@ -65,7 +76,11 @@
         {@const cfg = (block.config as BaseBlockConfig) ?? {}}
         {#if def}
           {@const BlockComponent = def.component}
-          <div class="{spacingTopClasses[cfg.marginTop ?? 'none']} {spacingBottomClasses[cfg.marginBottom ?? 'medium']}">
+          <div
+            class="{spacingTopClasses[cfg.marginTop ?? 'none']} {spacingBottomClasses[
+              cfg.marginBottom ?? 'medium'
+            ]}"
+          >
             <BlockComponent {block} {profile} {settings} {links} {tourDates} {media} {locale} />
           </div>
         {/if}

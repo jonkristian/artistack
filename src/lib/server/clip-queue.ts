@@ -1,7 +1,13 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 import { eq, asc, desc, and, isNotNull, isNull, lt, gt } from 'drizzle-orm';
 import { db } from './db';
-import { clipProjects, clipPosts, media, settings, type ClipProject, type Media } from './schema';
+import {
+  getClipSettings,
+  getClipPublishingSettings,
+  getDiscordSettings,
+  updateClipPublishingSettings
+} from './settings';
+import { clipProjects, clipPosts, media, type ClipProject, type Media } from './schema';
 import { buildPostSheet, campaignUrlFor } from './post-sheet';
 import { ensurePreviewToken, previewUrl } from './clip-review';
 import { tagsFor } from './tags';
@@ -32,7 +38,7 @@ export async function verifyPublishSignature(
   rawBody: string,
   header: string | null
 ): Promise<boolean> {
-  const [config] = await db.select().from(settings).limit(1);
+  const config = await getClipPublishingSettings();
   if (!config?.publishSecret || !header) return false;
 
   const expected =
@@ -60,10 +66,11 @@ export async function getQueue(): Promise<QueueEntry[]> {
   const outputs = await db.select().from(media);
   const byId = new Map(outputs.map((m) => [m.id, m]));
 
-  const [config] = await db.select().from(settings).limit(1);
+  const config = await getClipPublishingSettings();
   const intervalDays = config?.publishIntervalDays ?? 3;
   const hour = config?.publishHour ?? 10;
-  const lastSent = config?.publishLastSent ?? null;
+  // Stored as epoch ms — JSON has no Date.
+  const lastSent = config?.publishLastSent ? new Date(config.publishLastSent) : null;
 
   // The first slot is one interval after the last release (or today if nothing
   // has gone out yet); each subsequent slot adds that clip's own gap.
@@ -99,7 +106,7 @@ export async function getQueue(): Promise<QueueEntry[]> {
  * can say "Friday 28 August, 10:00" instead of "the next available slot".
  */
 export async function projectedNextSlot(): Promise<Date | null> {
-  const [config] = await db.select().from(settings).limit(1);
+  const config = await getClipPublishingSettings();
   if (!config?.publishEnabled) return null;
 
   const intervalDays = config.publishIntervalDays ?? 3;
@@ -107,7 +114,11 @@ export async function projectedNextSlot(): Promise<Date | null> {
   const last = queue.at(-1);
 
   if (!last?.eta) {
-    return nextSlot(config.publishLastSent ?? null, intervalDays, config.publishHour ?? 10);
+    return nextSlot(
+      config.publishLastSent ? new Date(config.publishLastSent) : null,
+      intervalDays,
+      config.publishHour ?? 10
+    );
   }
 
   return addDays(last.eta, last.project.queueGapDays ?? intervalDays);
@@ -226,7 +237,7 @@ export async function publishClip(
     return { success: false, error: 'Clip has no render to publish' };
   }
 
-  const [config] = await db.select().from(settings).limit(1);
+  const config = await getClipPublishingSettings();
   if (!config?.publishWebhookUrl) {
     return { success: false, error: 'No publish webhook configured' };
   }
@@ -295,7 +306,7 @@ export async function publishClip(
     })
     .where(eq(clipProjects.id, projectId));
 
-  await db.update(settings).set({ publishLastSent: new Date() }).where(eq(settings.id, config.id));
+  await updateClipPublishingSettings({ publishLastSent: Date.now() });
 
   // The announcement waits for announceRelease(): at this point the webhook has
   // only been accepted, so there are no platform links to put in it yet.
@@ -308,7 +319,7 @@ export async function publishClip(
  * Called from the hourly scheduler; releases at most one clip per tick.
  */
 export async function runReleaseTick(baseUrl: string): Promise<void> {
-  const [config] = await db.select().from(settings).limit(1);
+  const config = await getClipPublishingSettings();
   if (!config?.publishEnabled || !config.publishWebhookUrl) return;
 
   const now = new Date();
@@ -403,8 +414,8 @@ export const EXPECTED_PLATFORMS = 4;
  * URL and reads as something for a human to finish, the same as in the editor.
  */
 export async function announceRelease(projectId: number, baseUrl: string): Promise<void> {
-  const [config] = await db.select().from(settings).limit(1);
-  if (!config?.clipPublishedWebhookUrl) return;
+  const config = await getClipPublishingSettings();
+  if (!config?.publishedWebhookUrl) return;
 
   const [project] = await db
     .select()
@@ -444,7 +455,7 @@ export async function announceRelease(projectId: number, baseUrl: string): Promi
     lines.push('', `Caption and hashtags to copy: ${previewUrl(origin, token)}`);
   }
 
-  await fetch(config.clipPublishedWebhookUrl, {
+  await fetch(config.publishedWebhookUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -482,8 +493,8 @@ export async function announceRelease(projectId: number, baseUrl: string): Promi
  * processing is one people stop reading.
  */
 export async function checkPublishCoverage(baseUrl: string): Promise<void> {
-  const [config] = await db.select().from(settings).limit(1);
-  const webhook = config?.clipReviewWebhookUrl || config?.discordWebhookUrl;
+  const clips = await getClipSettings();
+  const webhook = clips?.reviewWebhookUrl || (await getDiscordSettings())?.webhookUrl;
   if (!webhook) return;
 
   const now = Date.now();

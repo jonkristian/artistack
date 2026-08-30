@@ -34,3 +34,18 @@ export const numberClass =
   fieldBase +
   ' [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none' +
   ' [&::-webkit-outer-spin-button]:appearance-none';
+
+/**
+ * The tile grid behind the Media, Clips and Releases lists.
+ *
+ * All three are the same kind of page — a library of things you open — and the
+ * grid string was copied between Media and Clips, so they were one edit away
+ * from drifting apart. One constant keeps them a set, and is the single place
+ * to change tile size.
+ *
+ * `min(100%, …)` rather than a bare minimum: a track that can't shrink below
+ * its floor overflows a narrow screen, so this yields one full-width column
+ * instead of a cramped two.
+ */
+export const tileGridClass =
+  'grid [grid-template-columns:repeat(auto-fill,minmax(min(100%,12rem),1fr))] gap-4';

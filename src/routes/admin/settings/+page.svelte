@@ -62,13 +62,13 @@
       selectedFaviconUrl = data.settings.faviconUrl ?? null;
       faviconGenerated = data.settings.faviconGenerated ?? false;
       // SMTP
-      smtpHost = data.settings.smtpHost ?? '';
-      smtpPort = data.settings.smtpPort ?? 587;
-      smtpUser = data.settings.smtpUser ?? '';
-      smtpPassword = data.settings.smtpPassword ?? '';
-      smtpFromAddress = data.settings.smtpFromAddress ?? '';
-      smtpFromName = data.settings.smtpFromName ?? '';
-      smtpTls = data.settings.smtpTls ?? true;
+      smtpHost = data.mail?.smtpHost ?? '';
+      smtpPort = data.mail?.smtpPort ?? 587;
+      smtpUser = data.mail?.smtpUser ?? '';
+      smtpPassword = data.mail?.smtpPassword ?? '';
+      smtpFromAddress = data.mail?.smtpFromAddress ?? '';
+      smtpFromName = data.mail?.smtpFromName ?? '';
+      smtpTls = data.mail?.smtpTls ?? true;
     }
   });
 

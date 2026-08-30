@@ -60,8 +60,8 @@
 
         <h2 class="!mt-8 text-lg font-semibold" style="color: var(--color-text)">Cookies</h2>
         <p>
-          We use minimal cookies required for site functionality (e.g., admin session management). We
-          do not use advertising or cross-site tracking cookies.
+          We use minimal cookies required for site functionality (e.g., admin session management).
+          We do not use advertising or cross-site tracking cookies.
         </p>
 
         <h2 class="!mt-8 text-lg font-semibold" style="color: var(--color-text)">
@@ -69,13 +69,12 @@
         </h2>
         <p>
           This site may embed content from third-party platforms such as Spotify, YouTube,
-          SoundCloud, or social media networks. These embeds are governed by their respective privacy
-          policies. We may also use third-party analytics to understand aggregate traffic patterns.
+          SoundCloud, or social media networks. These embeds are governed by their respective
+          privacy policies. We may also use third-party analytics to understand aggregate traffic
+          patterns.
         </p>
 
-        <h2 class="!mt-8 text-lg font-semibold" style="color: var(--color-text)">
-          Data Retention
-        </h2>
+        <h2 class="!mt-8 text-lg font-semibold" style="color: var(--color-text)">Data Retention</h2>
         <p>
           Server logs are retained for a limited period for security and diagnostic purposes and are
           then deleted. We do not sell or share personal data with third parties.
@@ -117,9 +116,9 @@
 
         <h2 class="!mt-8 text-lg font-semibold" style="color: var(--color-text)">External Links</h2>
         <p>
-          This site contains links to external platforms and services. We are not responsible for the
-          content, availability, or privacy practices of those sites. Clicking external links is at
-          your own discretion.
+          This site contains links to external platforms and services. We are not responsible for
+          the content, availability, or privacy practices of those sites. Clicking external links is
+          at your own discretion.
         </p>
 
         <h2 class="!mt-8 text-lg font-semibold" style="color: var(--color-text)">
@@ -140,6 +139,7 @@
   </article>
 
   <footer class="mt-16 text-xs" style="color: var(--color-text-muted); opacity: 0.5">
-    &copy; {new Date().getFullYear()} {siteName}
+    &copy; {new Date().getFullYear()}
+    {siteName}
   </footer>
 </main>

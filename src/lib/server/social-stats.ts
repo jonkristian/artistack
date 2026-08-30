@@ -1,4 +1,10 @@
 import { db } from './db';
+import {
+  getGoogleSettings,
+  updateGoogleSettings,
+  getSpotifySettings,
+  updateSpotifySettings
+} from './settings';
 import { integrations, links } from './schema';
 import { eq } from 'drizzle-orm';
 import { extractSpotifyArtistId, extractYouTubeChannelId } from '$lib/utils/platforms';
@@ -308,7 +314,7 @@ async function resolveYouTubeChannel(
 // ============================================================================
 
 /**
- * Get or create an integration record for a provider
+ * Get or create the cache row for a provider.
  */
 async function getOrCreateIntegration(provider: string) {
   const [existing] = await db
@@ -319,7 +325,7 @@ async function getOrCreateIntegration(provider: string) {
 
   if (existing) return existing;
 
-  const [created] = await db.insert(integrations).values({ provider, enabled: false }).returning();
+  const [created] = await db.insert(integrations).values({ provider }).returning();
 
   return created;
 }
@@ -352,36 +358,56 @@ export async function getIntegrationCache(provider: string): Promise<unknown | n
   return integration?.cachedData ?? null;
 }
 
-/**
- * Get integration config for a provider
+/*
+ * Provider credentials read from and written to `settings`.
+ *
+ * The shapes below are unchanged, so callers didn't have to move with the
+ * storage — only these four functions know the difference.
  */
-export async function getIntegrationConfig(provider: string): Promise<unknown | null> {
-  const [integration] = await db
-    .select()
-    .from(integrations)
-    .where(eq(integrations.provider, provider))
-    .limit(1);
 
-  return integration?.config ?? null;
+export async function getSpotifyConfig(): Promise<SpotifyConfig | null> {
+  const row = await getSpotifySettings();
+
+  return {
+    artistId: row.artistId ?? undefined,
+    accessToken: row.accessToken ?? undefined,
+    refreshToken: row.refreshToken ?? undefined,
+    tokenExpiry: row.tokenExpiry ?? undefined,
+    clientId: row.clientId ?? undefined,
+    clientSecret: row.clientSecret ?? undefined
+  };
 }
 
-/**
- * Update integration config for a provider
- */
-export async function updateIntegrationConfig(
-  provider: string,
-  config: unknown,
-  enabled: boolean = true
-): Promise<void> {
-  const integration = await getOrCreateIntegration(provider);
+export async function updateSpotifyConfigValues(config: SpotifyConfig): Promise<void> {
+  await updateSpotifySettings({
+    artistId: config.artistId ?? null,
+    accessToken: config.accessToken ?? null,
+    refreshToken: config.refreshToken ?? null,
+    tokenExpiry: config.tokenExpiry ?? null,
+    clientId: config.clientId ?? null,
+    clientSecret: config.clientSecret ?? null
+  });
+}
 
-  await db
-    .update(integrations)
-    .set({
-      config: config as Record<string, unknown>,
-      enabled
-    })
-    .where(eq(integrations.id, integration.id));
+export async function getGoogleConfig(): Promise<GoogleConfig | null> {
+  const row = await getGoogleSettings();
+  if (!row.apiKey) return null;
+
+  return {
+    apiKey: row.apiKey,
+    placesEnabled: row.placesEnabled,
+    youtubeEnabled: row.youtubeEnabled,
+    youtubeChannelId: row.youtubeChannelId ?? undefined
+  };
+}
+
+export async function updateGoogleConfig(config: GoogleConfig): Promise<void> {
+  await updateGoogleSettings({
+    apiKey: config.apiKey || null,
+    placesEnabled: config.placesEnabled ?? true,
+    youtubeEnabled: config.youtubeEnabled ?? true,
+    youtubeChannelId: config.youtubeChannelId ?? null
+  });
 }
 
 /**
@@ -392,7 +418,7 @@ export async function refreshAllSocialStats(): Promise<SocialStats> {
   const stats: SocialStats = {};
 
   // Fetch Spotify stats if configured
-  const spotifyConfig = (await getIntegrationConfig('spotify')) as SpotifyConfig | null;
+  const spotifyConfig = await getSpotifyConfig();
   if (spotifyConfig?.clientId && spotifyConfig?.clientSecret) {
     // Auto-detect artist ID from links if not configured
     let artistId = spotifyConfig.artistId;
@@ -485,20 +511,6 @@ export async function getDetectedPlatformIds(): Promise<{
     spotify: { artistId: spotifyArtistId },
     youtube: youtubeInfo
   };
-}
-
-/**
- * Get the Google integration config
- */
-export async function getGoogleConfig(): Promise<GoogleConfig | null> {
-  return (await getIntegrationConfig('google')) as GoogleConfig | null;
-}
-
-/**
- * Update Google integration config
- */
-export async function updateGoogleConfig(config: GoogleConfig): Promise<void> {
-  await updateIntegrationConfig('google', config, true);
 }
 
 /**

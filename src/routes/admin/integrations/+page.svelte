@@ -63,6 +63,14 @@
   // Artist features state
   let pressKitEnabled = $state(false);
   let clipsEnabled = $state(false);
+  let releasesEnabled = $state(false);
+  let subscribersEnabled = $state(false);
+  let pixelsEnabled = $state(false);
+  let metaPixelId = $state('');
+  let metaCapiToken = $state('');
+  let tiktokPixelId = $state('');
+  let savingPixels = $state(false);
+  let pixelResult = $state<{ success: boolean; message: string } | null>(null);
 
   // UI state
   let savingSpotify = $state(false);
@@ -83,21 +91,26 @@
   $effect(() => {
     if (data.settings && data.settings.id !== syncedSettingsId) {
       syncedSettingsId = data.settings.id;
-      discordWebhookUrl = data.settings.discordWebhookUrl ?? '';
-      clipReviewWebhookUrl = data.settings.clipReviewWebhookUrl ?? '';
-      clipPublishedWebhookUrl = data.settings.clipPublishedWebhookUrl ?? '';
-      discordEnabled = data.settings.discordEnabled ?? false;
-      discordSchedule =
-        (data.settings.discordSchedule as 'daily' | 'weekly' | 'monthly') ?? 'weekly';
-      discordScheduleDay = data.settings.discordScheduleDay ?? 1;
-      discordScheduleTime = data.settings.discordScheduleTime ?? '09:00';
+      discordWebhookUrl = data.discord?.webhookUrl ?? '';
+      clipReviewWebhookUrl = data.clips?.reviewWebhookUrl ?? '';
+      clipPublishedWebhookUrl = data.clips?.publishedWebhookUrl ?? '';
+      discordEnabled = data.discord?.enabled ?? false;
+      discordSchedule = (data.discord?.schedule as 'daily' | 'weekly' | 'monthly') ?? 'weekly';
+      discordScheduleDay = data.discord?.scheduleDay ?? 1;
+      discordScheduleTime = data.discord?.scheduleTime ?? '09:00';
       pressKitEnabled = data.settings.pressKitEnabled ?? false;
       clipsEnabled = data.settings.clipsEnabled ?? false;
-      publishWebhookUrl = data.settings.publishWebhookUrl ?? '';
-      publishEnabled = data.settings.publishEnabled ?? false;
-      publishIntervalDays = data.settings.publishIntervalDays ?? 3;
-      publishHour = data.settings.publishHour ?? 10;
-      publishSecret = data.settings.publishSecret ?? '';
+      releasesEnabled = data.settings.releasesEnabled ?? false;
+      subscribersEnabled = data.settings.subscribersEnabled ?? false;
+      pixelsEnabled = data.settings.pixelsEnabled ?? false;
+      metaPixelId = data.pixels?.metaPixelId ?? '';
+      metaCapiToken = data.pixels?.metaCapiToken ?? '';
+      tiktokPixelId = data.pixels?.tiktokPixelId ?? '';
+      publishWebhookUrl = data.clips?.publishWebhookUrl ?? '';
+      publishEnabled = data.clips?.publishEnabled ?? false;
+      publishIntervalDays = data.clips?.publishIntervalDays ?? 3;
+      publishHour = data.clips?.publishHour ?? 10;
+      publishSecret = data.clips?.publishSecret ?? '';
     }
   });
 
@@ -217,6 +230,43 @@
     await invalidateAll();
   }
 
+  async function togglePixels() {
+    pixelsEnabled = !pixelsEnabled;
+    await updateSettings({ pixelsEnabled });
+    await invalidateAll();
+  }
+
+  async function savePixels() {
+    savingPixels = true;
+    pixelResult = null;
+    try {
+      await updateSettings({
+        metaPixelId: metaPixelId || null,
+        metaCapiToken: metaCapiToken || null,
+        tiktokPixelId: tiktokPixelId || null
+      });
+      await invalidateAll();
+      pixelResult = { success: true, message: 'Saved' };
+    } catch {
+      pixelResult = { success: false, message: 'Could not save' };
+    }
+    savingPixels = false;
+    setTimeout(() => (pixelResult = null), 4000);
+  }
+
+  async function toggleSubscribers() {
+    subscribersEnabled = !subscribersEnabled;
+    await updateSettings({ subscribersEnabled });
+    await invalidateAll();
+  }
+
+  // invalidateAll because this one adds and removes a nav item, like clips.
+  async function toggleReleases() {
+    releasesEnabled = !releasesEnabled;
+    await updateSettings({ releasesEnabled });
+    await invalidateAll();
+  }
+
   /**
    * Persists straight away, like the press kit switch — the detail fields below
    * keep their own Save button, so flipping the switch shouldn't also commit a
@@ -225,11 +275,11 @@
   async function toggleClipPublishing() {
     publishEnabled = !publishEnabled;
     await updatePublishSettings({
-      publishWebhookUrl: data.settings?.publishWebhookUrl || null,
+      publishWebhookUrl: data.clips?.publishWebhookUrl || null,
       publishEnabled,
-      publishIntervalDays: data.settings?.publishIntervalDays ?? 3,
-      publishHour: data.settings?.publishHour ?? 10,
-      publishSecret: data.settings?.publishSecret || null
+      publishIntervalDays: data.clips?.publishIntervalDays ?? 3,
+      publishHour: data.clips?.publishHour ?? 10,
+      publishSecret: data.clips?.publishSecret || null
     });
     await invalidateAll();
   }
@@ -510,9 +560,9 @@
           {/if}
         </div>
 
-        {#if data.settings?.discordLastSent}
+        {#if data.discord?.lastSent}
           <p class="text-xs text-gray-500">
-            Last report: {new Date(data.settings.discordLastSent).toLocaleString()}
+            Last report: {new Date(data.discord?.lastSent).toLocaleString()}
           </p>
         {/if}
 
@@ -705,6 +755,204 @@
         </p>
       </section>
 
+      <!-- Ad Pixels -->
+      <section class="mt-6 rounded-xl border border-gray-800 bg-gray-900 p-5">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600/20">
+              <svg
+                class="h-5 w-5 text-violet-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.5"
+                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                />
+              </svg>
+            </div>
+            <div>
+              <h3 class="font-semibold text-white">Ad pixels</h3>
+              <p class="text-xs text-gray-500">Attribute ad spend to plays and sign-ups</p>
+            </div>
+          </div>
+          <ToggleSwitch
+            checked={pixelsEnabled}
+            label="Toggle ad pixels"
+            onchange={togglePixels}
+            size="md"
+            hideLabel
+          />
+        </div>
+
+        {#if !pixelsEnabled}
+          <p class="mt-3 text-xs text-gray-500">
+            Adds Meta and TikTok pixels to your public pages, and reports a conversion from the
+            server when someone opens a streaming link — the half an ad blocker can't drop.
+          </p>
+        {:else}
+          <!-- Stated plainly because switching this on has a legal consequence
+               that pasting an id into a field doesn't look like it should. -->
+          <div class="mt-4 rounded-lg border border-amber-700/50 bg-amber-950/40 p-3 text-sm">
+            <p class="font-medium text-amber-300">These set cookies for an advertiser</p>
+            <p class="mt-1 text-amber-200/70">
+              In the EEA that needs the visitor's consent <em>before</em> the script loads. Artistack
+              has no consent banner yet, so leave this off on a public site until it does, or add one.
+            </p>
+          </div>
+
+          <div class="mt-4 grid gap-4 sm:grid-cols-2">
+            <div>
+              <label class={labelClass} for="meta-pixel">Meta pixel ID</label>
+              <input
+                id="meta-pixel"
+                class={fieldClass}
+                bind:value={metaPixelId}
+                placeholder="123456789012345"
+              />
+            </div>
+            <div>
+              <label class={labelClass} for="tiktok-pixel">TikTok pixel ID</label>
+              <input
+                id="tiktok-pixel"
+                class={fieldClass}
+                bind:value={tiktokPixelId}
+                placeholder="CXXXXXXXXXXXXXXXXXXX"
+              />
+            </div>
+          </div>
+
+          <div class="mt-4">
+            <label class={labelClass} for="meta-capi">Meta Conversions API token</label>
+            <input
+              id="meta-capi"
+              type="password"
+              class={fieldClass}
+              bind:value={metaCapiToken}
+              placeholder="Optional"
+            />
+            <p class="mt-1 text-xs text-gray-500">
+              Optional, and only used server-side. Without it the browser pixel still works; with
+              it, a click through to a streaming service is reported even when the pixel is blocked.
+            </p>
+          </div>
+
+          <div class="mt-4 flex items-center gap-3">
+            <button
+              onclick={savePixels}
+              disabled={savingPixels}
+              class="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
+            >
+              {savingPixels ? 'Saving…' : 'Save'}
+            </button>
+            {#if pixelResult}
+              <span class="text-sm {pixelResult.success ? 'text-green-400' : 'text-red-400'}">
+                {pixelResult.message}
+              </span>
+            {/if}
+          </div>
+        {/if}
+      </section>
+
+      <!-- Fan List Toggle -->
+      <section class="mt-6 rounded-xl border border-gray-800 bg-gray-900 p-5">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600/20">
+              <svg
+                class="h-5 w-5 text-violet-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.5"
+                  d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                />
+              </svg>
+            </div>
+            <div>
+              <h3 class="font-semibold text-white">Fan list</h3>
+              <p class="text-xs text-gray-500">Collect email addresses on your own pages</p>
+            </div>
+          </div>
+          <ToggleSwitch
+            checked={subscribersEnabled}
+            label="Toggle fan list"
+            onchange={toggleSubscribers}
+            size="md"
+            hideLabel
+          />
+        </div>
+
+        {#if !subscribersEnabled}
+          <p class="mt-3 text-xs text-gray-500">
+            Adds a sign-up form to your release pages and an Audience section to collect what it
+            gathers. Worth having even when a pre-save runs elsewhere — hosted pre-saves keep the
+            addresses they collect unless you pay for them.
+          </p>
+        {:else}
+          <p class="mt-3 text-xs text-gray-500">
+            Every sign-up records when consent was given and carries a one-click unsubscribe link,
+            so a mailing can honour it without anyone logging in.
+          </p>
+        {/if}
+      </section>
+
+      <!-- Release Pages Toggle -->
+      <section class="mt-6 rounded-xl border border-gray-800 bg-gray-900 p-5">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600/20">
+              <svg
+                class="h-5 w-5 text-violet-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.5"
+                  d="M9 19V6l12-3v13M9 19a3 3 0 11-6 0 3 3 0 016 0zm12-3a3 3 0 11-6 0 3 3 0 016 0z"
+                />
+              </svg>
+            </div>
+            <div>
+              <h3 class="font-semibold text-white">Release pages</h3>
+              <p class="text-xs text-gray-500">
+                Smart links for singles and albums, on your own domain
+              </p>
+            </div>
+          </div>
+          <ToggleSwitch
+            checked={releasesEnabled}
+            label="Toggle release pages"
+            onchange={toggleReleases}
+            size="md"
+            hideLabel
+          />
+        </div>
+
+        {#if !releasesEnabled}
+          <p class="mt-3 text-xs text-gray-500">
+            For musicians. Adds a Releases section where each single or album gets its own page,
+            routing listeners to the streaming service they already use, with clicks tracked per
+            platform. Leave this off if you publish work of another kind.
+          </p>
+        {:else}
+          <p class="mt-3 text-xs text-gray-500">
+            Pages already published stay live if you switch this off — only the Releases section is
+            hidden. A link that's out in the world keeps working.
+          </p>
+        {/if}
+      </section>
+
       <!-- Clip Publishing Toggle -->
       <section class="mt-6 rounded-xl border border-gray-800 bg-gray-900 p-5">
         <div class="flex items-center justify-between">
@@ -881,9 +1129,9 @@
               {/if}
             </div>
 
-            {#if data.settings?.publishLastSent}
+            {#if data.clips?.publishLastSent}
               <p class="text-xs text-gray-500">
-                Last release: {new Date(data.settings.publishLastSent).toLocaleString()}
+                Last release: {new Date(data.clips?.publishLastSent).toLocaleString()}
               </p>
             {/if}
 

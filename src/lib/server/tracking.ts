@@ -117,6 +117,27 @@ export async function recordPageView(
   });
 }
 
+/**
+ * Coarse device class from a user-agent string.
+ *
+ * Deliberately not the raw UA, which `page_views` stores: a full UA string is a
+ * meaningful fingerprinting surface, and nothing here needs more than "was this
+ * a phone". The answer decides whether a destination should be an app deep link
+ * or a web URL, and three buckets settle that.
+ *
+ * Tablet before mobile: an iPad reports "Macintosh" in recent iPadOS but keeps
+ * "Mobile" in the token list, and Android tablets say "Android" without it.
+ */
+export function deviceFromUserAgent(userAgent: string): 'mobile' | 'tablet' | 'desktop' {
+  const ua = userAgent.toLowerCase();
+
+  if (/ipad|tablet|playbook|silk|(android(?!.*mobile))/.test(ua)) return 'tablet';
+  if (/mobi|iphone|ipod|android|blackberry|opera mini|iemobile|windows phone/.test(ua)) {
+    return 'mobile';
+  }
+  return 'desktop';
+}
+
 export function getClientIP(request: Request): string | null {
   const headers = [
     'cf-connecting-ip',

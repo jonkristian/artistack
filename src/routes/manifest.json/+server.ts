@@ -2,11 +2,12 @@ import { json } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import { profile, settings } from '$lib/server/schema';
 import type { RequestHandler } from './$types';
+import { getSettings } from '$lib/server/settings';
 
 export const GET: RequestHandler = async () => {
   // Get profile and settings data for dynamic manifest
   const [profileData] = await db.select().from(profile).limit(1);
-  const [settingsData] = await db.select().from(settings).limit(1);
+  const settingsData = await getSettings();
 
   const name = settingsData?.siteTitle || profileData?.name || 'Artistack';
   const shortName = name.length > 12 ? name.substring(0, 12) : name;

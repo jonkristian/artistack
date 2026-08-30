@@ -1,3 +1,27 @@
+# 1.3.0 (30-08-2026)
+
+- Release pages: give a single or album its own address, with buttons to every service it's on
+- Pages are addressed flat — thehow.band/i-will-be-me rather than a prefix — and reserved names are refused when you pick one
+- A release page shows a pre-save button until the release date passes, then platform buttons
+- Cover art is the link preview, so pasting a release into Discord or WhatsApp shows the sleeve without setting anything up
+- Clicks are counted per platform, with device and country, and shown on the release itself
+- A returning listener's service goes first, marked as the one they used last
+- Turn Releases on in Integrations; it stays hidden for sites that aren't music
+- Fan list: a sign-up form on release pages, and a block you can put on any page
+- Every sign-up records consent and carries a one-click unsubscribe link
+- Audience section lists everyone with where they signed up, and exports plain CSV including unsubscribes
+- Ad pixels for Meta and TikTok, with a server-side conversion when someone opens a streaming link
+- Save a colour scheme by name and switch between them; applying one is an edit like any other, so Undo puts the old colours back
+- Media, Clips and Releases share one toolbar and bigger tiles, with filter and bulk actions on the same row as the New button
+- Fixed credentials being included in the HTML of every public page — rotate your SMTP password, webhook URLs and API keys
+- Fixed SMTP and pixel settings reporting success while saving nothing
+- Fixed link clicks losing campaign tags, so traffic from an ad now arrives attributed
+- Fixed the Apple Music icon rendering as a red rectangle, and TIDAL being invisible on a dark page
+- Fixed platform names reading as Apple_music and Youtube
+- Fixed the first-run setup card appearing on a site that was already set up
+- Adding a streaming link now offers only services you can listen on, not ticketing or social
+- Settings are stored one per row, so a new setting no longer needs a database change
+
 # 1.2.0 (25-08-2026)
 
 - Implemented responsive layouts across the admin: navigation slides in from a hamburger, and pages reflow instead of scrolling sideways

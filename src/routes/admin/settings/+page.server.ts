@@ -4,6 +4,7 @@ import { settings } from '$lib/server/schema';
 import { user } from '$lib/server/auth-schema';
 import { auth } from '$lib/server/auth';
 import { eq } from 'drizzle-orm';
+import { getMailSettings, getSettings } from '$lib/server/settings';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ request }) => {
@@ -18,9 +19,11 @@ export const load: PageServerLoad = async ({ request }) => {
     throw redirect(302, '/admin');
   }
 
-  const currentSettings = await db.select().from(settings).get();
+  const currentSettings = await getSettings();
 
   return {
-    settings: currentSettings
+    settings: currentSettings,
+    // SMTP has its own table now; this route is admin-only, so it reads it.
+    mail: await getMailSettings()
   };
 };

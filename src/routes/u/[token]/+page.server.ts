@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm';
 import { getValidSession } from '$lib/server/upload-session';
 import { videoSupported } from '$lib/server/ffmpeg';
 import type { PageServerLoad } from './$types';
+import { getSettings } from '$lib/server/settings';
 
 /**
  * The page a phone lands on after scanning an upload QR.
@@ -23,7 +24,7 @@ export const load: PageServerLoad = async ({ params }) => {
   }
 
   const [profileData] = await db.select().from(profile).limit(1);
-  const [settingsData] = await db.select().from(settings).limit(1);
+  const settingsData = await getSettings();
 
   let projectName: string | null = null;
   if (session.projectId) {

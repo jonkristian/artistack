@@ -1,4 +1,9 @@
 import { requireAdmin } from '$lib/server/guards';
+import {
+  updateDiscordSettings as saveDiscordSettings,
+  updateClipSettings as saveClipSettings,
+  updateClipPublishingSettings as savePublishing
+} from '$lib/server/settings';
 import * as v from 'valibot';
 import { command } from '$app/server';
 import { db } from '$lib/server/db';
@@ -7,7 +12,7 @@ import { eq } from 'drizzle-orm';
 import { sendDiscordReport } from '$lib/server/discord';
 import { getOverviewStats, getPageViewStats, getLinkClickStats } from '$lib/server/analytics';
 import {
-  updateIntegrationConfig,
+  updateSpotifyConfigValues,
   fetchSpotifyArtistStats,
   fetchYouTubeChannelStats,
   updateIntegrationCache,
@@ -65,14 +70,6 @@ const publishSettingsSchema = v.object({
 // Helper Functions
 // ============================================================================
 
-async function getOrCreateSettings() {
-  const [existing] = await db.select().from(settings).limit(1);
-  if (existing) return existing;
-
-  const [created] = await db.insert(settings).values({}).returning();
-  return created;
-}
-
 // ============================================================================
 // Commands
 // ============================================================================
@@ -106,7 +103,7 @@ export const updateSpotifyConfig = command(spotifyConfigSchema, async (data) => 
   }
 
   // Save config and cache initial stats
-  await updateIntegrationConfig('spotify', config, true);
+  await updateSpotifyConfigValues(config);
   await updateIntegrationCache('spotify', stats);
 
   return { success: true, message: 'Spotify connected!', stats };
@@ -153,43 +150,30 @@ export const saveGoogleConfig = command(googleConfigSchema, async (data) => {
 export const updateDiscordSettings = command(discordSettingsSchema, async (data) => {
   await requireAdmin();
 
-  const existing = await getOrCreateSettings();
+  await saveDiscordSettings({
+    webhookUrl: data.discordWebhookUrl,
+    enabled: data.discordEnabled,
+    schedule: data.discordSchedule,
+    scheduleDay: data.discordScheduleDay,
+    scheduleTime: data.discordScheduleTime
+  });
 
-  const [updated] = await db
-    .update(settings)
-    .set({
-      discordWebhookUrl: data.discordWebhookUrl,
-      discordEnabled: data.discordEnabled,
-      discordSchedule: data.discordSchedule,
-      discordScheduleDay: data.discordScheduleDay,
-      discordScheduleTime: data.discordScheduleTime
-    })
-    .where(eq(settings.id, existing.id))
-    .returning();
-
-  return { success: true, settings: updated };
+  return { success: true };
 });
 
 export const updatePublishSettings = command(publishSettingsSchema, async (data) => {
   await requireAdmin();
 
-  const existing = await getOrCreateSettings();
+  await savePublishing({
+    publishWebhookUrl: data.publishWebhookUrl,
+    publishEnabled: data.publishEnabled,
+    publishIntervalDays: data.publishIntervalDays,
+    publishHour: data.publishHour,
+    publishSecret: data.publishSecret,
+    publishedWebhookUrl: data.clipPublishedWebhookUrl ?? null
+  });
 
-  const [updated] = await db
-    .update(settings)
-    .set({
-      publishWebhookUrl: data.publishWebhookUrl,
-      publishEnabled: data.publishEnabled,
-      publishIntervalDays: data.publishIntervalDays,
-      publishHour: data.publishHour,
-      publishSecret: data.publishSecret,
-      clipReviewWebhookUrl: data.clipReviewWebhookUrl ?? null,
-      clipPublishedWebhookUrl: data.clipPublishedWebhookUrl ?? null
-    })
-    .where(eq(settings.id, existing.id))
-    .returning();
-
-  return { success: true, settings: updated };
+  return { success: true };
 });
 
 export const testDiscordWebhook = command(testWebhookSchema, async (data) => {

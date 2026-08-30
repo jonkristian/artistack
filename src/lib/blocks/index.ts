@@ -11,6 +11,8 @@ import TourDatesBlockSettings from './tour-dates/TourDatesBlockSettings.svelte';
 import GalleryBlock from './gallery/GalleryBlock.svelte';
 import GalleryBlockAdmin from './gallery/GalleryBlockAdmin.svelte';
 import GalleryBlockSettings from './gallery/GalleryBlockSettings.svelte';
+import EmailBlock from './email/EmailBlock.svelte';
+import EmailBlockAdmin from './email/EmailBlockAdmin.svelte';
 import ImageBlock from './image/ImageBlock.svelte';
 import ImageBlockAdmin from './image/ImageBlockAdmin.svelte';
 import ImageBlockSettings from './image/ImageBlockSettings.svelte';
@@ -65,6 +67,16 @@ export const blockRegistry: Record<string, BlockDefinition> = {
       size: 'medium' as const,
       showGlow: false
     }
+  },
+  email: {
+    type: 'email',
+    name: 'Sign-up',
+    icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
+    component: EmailBlock,
+    adminComponent: EmailBlockAdmin,
+    defaultLabel: 'Sign-up',
+    requiresFeature: 'subscribersEnabled',
+    defaultConfig: {}
   },
   gallery: {
     type: 'gallery',

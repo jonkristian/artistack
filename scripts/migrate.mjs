@@ -31,12 +31,20 @@ db.exec(`CREATE TABLE IF NOT EXISTS __drizzle_migrations (
   created_at NUMERIC
 )`);
 
-const applied = new Set(db.prepare('select hash from __drizzle_migrations').all().map((r) => r.hash));
+const applied = new Set(
+  db
+    .prepare('select hash from __drizzle_migrations')
+    .all()
+    .map((r) => r.hash)
+);
 
 // A pre-clips database already contains everything 0000 would create.
-const hasPreClipsTables = db
-  .prepare("select count(*) c from sqlite_master where type='table' and name in ('settings','media','links','blocks')")
-  .get().c === 4;
+const hasPreClipsTables =
+  db
+    .prepare(
+      "select count(*) c from sqlite_master where type='table' and name in ('settings','media','links','blocks')"
+    )
+    .get().c === 4;
 
 const files = (await readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith('.sql')).sort();
 let ran = 0;
@@ -51,14 +59,20 @@ for (const file of files) {
     console.log(`[migrate] baselining ${file} — schema already present`);
   } else {
     console.log(`[migrate] applying ${file}`);
-    const statements = sql.split('--> statement-breakpoint').map((s) => s.trim()).filter(Boolean);
+    const statements = sql
+      .split('--> statement-breakpoint')
+      .map((s) => s.trim())
+      .filter(Boolean);
     const run = db.transaction(() => {
       for (const statement of statements) db.exec(statement);
     });
     run();
     ran++;
   }
-  db.prepare('insert into __drizzle_migrations (hash, created_at) values (?, ?)').run(hash, Date.now());
+  db.prepare('insert into __drizzle_migrations (hash, created_at) values (?, ?)').run(
+    hash,
+    Date.now()
+  );
 }
 
 console.log(ran ? `[migrate] ${ran} migration(s) applied` : '[migrate] up to date');

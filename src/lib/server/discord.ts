@@ -1,6 +1,8 @@
 import type { OverviewStats, PageViewStats, LinkClickStats } from './analytics';
 import type { SocialStats } from './social-stats';
 import { db } from './db';
+import { getDiscordSettings, updateDiscordSettings } from './settings';
+import type { DiscordSettings } from './schema';
 import { settings } from './schema';
 import { eq } from 'drizzle-orm';
 
@@ -207,12 +209,10 @@ export async function sendDiscordReport(
 }
 
 // Scheduled report sender (to be called by a cron job or scheduler)
-export async function sendScheduledReport(profileData: {
-  discordWebhookUrl: string | null;
-  discordEnabled: boolean | null;
-  discordSchedule: string | null;
-}): Promise<{ success: boolean; error?: string }> {
-  if (!profileData.discordWebhookUrl || !profileData.discordEnabled) {
+export async function sendScheduledReport(
+  discord: DiscordSettings
+): Promise<{ success: boolean; error?: string }> {
+  if (!discord.webhookUrl || !discord.enabled) {
     return { success: false, error: 'Discord not configured or disabled' };
   }
 
@@ -220,8 +220,7 @@ export async function sendScheduledReport(profileData: {
   const { getOverviewStats, getPageViewStats, getLinkClickStats } = await import('./analytics');
   const { getCachedSocialStats } = await import('./social-stats');
 
-  const days =
-    profileData.discordSchedule === 'daily' ? 1 : profileData.discordSchedule === 'weekly' ? 7 : 30;
+  const days = discord.schedule === 'daily' ? 1 : discord.schedule === 'weekly' ? 7 : 30;
 
   const [overview, pageViews, linkClicks, socialStats] = await Promise.all([
     getOverviewStats(),
@@ -231,13 +230,13 @@ export async function sendScheduledReport(profileData: {
   ]);
 
   const title =
-    profileData.discordSchedule === 'daily'
+    discord.schedule === 'daily'
       ? 'Daily Stats Report'
-      : profileData.discordSchedule === 'weekly'
+      : discord.schedule === 'weekly'
         ? 'Weekly Stats Report'
         : 'Monthly Stats Report';
 
-  return sendDiscordReport(profileData.discordWebhookUrl, {
+  return sendDiscordReport(discord.webhookUrl, {
     title,
     overview,
     pageViews,
@@ -251,20 +250,17 @@ export async function sendScheduledReport(profileData: {
  * Gets profile from DB, sends report, updates lastSent timestamp
  */
 export async function sendScheduledDiscordReport(): Promise<{ success: boolean; error?: string }> {
-  const [settingsData] = await db.select().from(settings).limit(1);
+  const discord = await getDiscordSettings();
 
-  if (!settingsData?.discordWebhookUrl || !settingsData.discordEnabled) {
+  if (!discord?.webhookUrl || !discord.enabled) {
     return { success: false, error: 'Discord not configured or disabled' };
   }
 
-  const result = await sendScheduledReport(settingsData);
+  const result = await sendScheduledReport(discord);
 
   if (result.success) {
     // Update lastSent timestamp
-    await db
-      .update(settings)
-      .set({ discordLastSent: new Date() })
-      .where(eq(settings.id, settingsData.id));
+    await updateDiscordSettings({ lastSent: Date.now() });
   }
 
   return result;
