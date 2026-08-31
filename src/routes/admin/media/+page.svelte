@@ -23,6 +23,7 @@
     ACCEPT_AUDIO,
     ACCEPT_DOCUMENT
   } from '$lib/utils/upload';
+  import { page } from '$app/stores';
   import { PhoneUploadDialog } from '$lib/components/dialogs';
   import { MediaDropZone, LibraryToolbar, SelectCheckbox, TagInput } from '$lib/components/ui';
   import { Selection } from '$lib/utils/selection.svelte';
@@ -33,6 +34,18 @@
   let { data }: { data: PageData } = $props();
 
   let fileInput: HTMLInputElement;
+
+  /*
+   * ?upload=1 means someone pressed Upload media elsewhere and expects a file
+   * picker, not a library. Guarded by a flag so it fires once on arrival —
+   * reopening the dialog every time this component re-runs would trap you.
+   */
+  let pickerOpened = false;
+  $effect(() => {
+    if (pickerOpened || $page.url.searchParams.get('upload') !== '1') return;
+    pickerOpened = true;
+    fileInput?.click();
+  });
   let uploading = $state(false);
   /** 0–1 while a chunked upload is in flight; null when the file went in one request. */
   let uploadProgress = $state<number | null>(null);
@@ -45,7 +58,8 @@
     { key: 'source', label: 'Footage' },
     { key: 'music', label: 'Music' },
     { key: 'document', label: 'Documents' },
-    { key: 'render', label: 'Renders' }
+    { key: 'render', label: 'Renders' },
+    { key: 'crop', label: 'Crops' }
   ] as const;
 
   /** Empty means every role; there's no separate "all" value to keep in sync. */
@@ -63,7 +77,15 @@
   );
 
   const shownMedia = $derived(
-    roleFilter.length === 0 ? data.media : data.media.filter((m) => roleFilter.includes(m.role))
+    /*
+     * Crops are hidden until asked for. They're derivatives — a cover shaped
+     * for a cover — so a library that showed them would show most pictures
+     * twice. Reachable through the filter, because they're still files taking
+     * up space and you should be able to find and remove one.
+     */
+    roleFilter.length === 0
+      ? data.media.filter((m) => m.role !== 'crop')
+      : data.media.filter((m) => roleFilter.includes(m.role))
   );
 
   // Pagination
@@ -251,7 +273,9 @@
 
   function formatDate(date: Date | null): string {
     if (!date) return '';
-    return new Intl.DateTimeFormat('en-US', {
+    // The site's locale, not a fixed one — a Norwegian site showing American
+    // dates in its own admin is the setting quietly not working.
+    return new Intl.DateTimeFormat(data.settings?.locale || 'nb-NO', {
       month: 'short',
       day: 'numeric',
       year: 'numeric'

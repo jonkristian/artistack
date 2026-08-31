@@ -4,12 +4,12 @@ import type {
   Profile,
   PublicSettings,
   Link,
-  TourDate,
+  Show,
   Media,
   Product,
   ProfileBlockConfig,
   LinksBlockConfig,
-  TourDatesBlockConfig,
+  ShowsBlockConfig,
   GalleryBlockConfig,
   ImageBlockConfig,
   ProductsBlockConfig,
@@ -21,7 +21,7 @@ export interface BlockComponentProps {
   profile: Profile;
   settings?: PublicSettings | null;
   links: Link[];
-  tourDates: TourDate[];
+  shows: Show[];
   media: Media[];
   products?: Product[];
   locale: string;
@@ -43,7 +43,7 @@ export interface BlockDefinition {
   defaultConfig:
     | ProfileBlockConfig
     | LinksBlockConfig
-    | TourDatesBlockConfig
+    | ShowsBlockConfig
     | GalleryBlockConfig
     | ImageBlockConfig
     | ProductsBlockConfig
@@ -53,7 +53,7 @@ export interface BlockDefinition {
 export type {
   ProfileBlockConfig,
   LinksBlockConfig,
-  TourDatesBlockConfig,
+  ShowsBlockConfig,
   GalleryBlockConfig,
   ImageBlockConfig,
   ProductsBlockConfig,

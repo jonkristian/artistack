@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import ReleasePage from '$lib/pages/ReleasePage.svelte';
+  import CustomPage from '$lib/pages/CustomPage.svelte';
+  import ShowPage from '$lib/pages/ShowPage.svelte';
 
   let { data }: { data: PageData } = $props();
 
@@ -9,16 +11,17 @@
   const profile = $derived(data.profile);
 
   // A release is titled by the work; anything else by the page itself.
-  const heading = $derived('release' in data ? data.release.title : page.title);
+  const release = $derived(data.release);
+  const heading = $derived(release ? release.title : page.title);
 
   const pageTitle = $derived(profile?.name ? `${profile.name} — ${heading}` : heading);
 
   const pageDescription = $derived(
     page.description ??
-      ('release' in data
+      (release
         ? data.isOut
-          ? `Listen to ${data.release.title} by ${profile?.name ?? 'this artist'}.`
-          : `${data.release.title} by ${profile?.name ?? 'this artist'} — out soon.`
+          ? `Listen to ${release.title} by ${profile?.name ?? 'this artist'}.`
+          : `${release.title} by ${profile?.name ?? 'this artist'} — out soon.`
         : `${page.title} — ${profile?.name ?? 'this artist'}.`)
   );
 </script>
@@ -52,17 +55,37 @@
   {@html `<style>html, body { background-color: ${settings?.colorBg ?? '#0c0a14'}; }</style>`}
 </svelte:head>
 
-{#if 'release' in data}
+{#if release}
   <ReleasePage
-    release={data.release}
-    releaseLinks={data.releaseLinks}
-    cover={data.release.coverUrl}
-    isOut={data.isOut}
+    {release}
+    releaseLinks={data.releaseLinks ?? []}
+    cover={release.coverUrl}
+    isOut={data.isOut ?? false}
     published={page.published ?? false}
     {settings}
+    {profile}
     artist={profile?.name ?? ''}
     emailCapture={settings?.subscribersEnabled ?? false}
     source={page.slug}
     preferredPlatform={data.preferredPlatform}
+  />
+{:else if data.show}
+  <ShowPage
+    show={data.show}
+    lineup={data.lineup ?? []}
+    imageShape={data.imageShape}
+    {settings}
+    {profile}
+    media={data.media ?? []}
+    locale={settings?.locale ?? 'nb-NO'}
+  />
+{:else if data.blocks}
+  <CustomPage
+    {profile}
+    {settings}
+    blocks={data.blocks}
+    links={data.links ?? []}
+    shows={data.shows ?? []}
+    media={data.media ?? []}
   />
 {/if}

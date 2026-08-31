@@ -1,4 +1,4 @@
-import type { Profile, TourDate } from '$lib/server/schema';
+import type { Profile, Show } from '$lib/server/schema';
 
 // Click tracking - fire and forget, doesn't block navigation
 export function trackClick(linkId: number) {
@@ -15,13 +15,23 @@ export function trackClick(linkId: number) {
 }
 
 // Add to calendar (ICS file)
-export function addToCalendar(tour: TourDate, profileName: string) {
+export function addToCalendar(
+  tour: Show,
+  profileName: string,
+  lineup: string[] = [],
+  startTime?: string | null
+) {
   const eventDate = new Date(tour.date);
   const formatDate = (d: Date) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
 
   const startDate = new Date(eventDate);
-  if (tour.time) {
-    const [hours, minutes] = tour.time.split(':').map(Number);
+  /*
+   * Doors if there is one, otherwise whatever time was passed in — the first
+   * act's, since the show's own start time is gone and the line-up owns it now.
+   */
+  const start = tour.doorsTime || startTime;
+  if (start) {
+    const [hours, minutes] = start.split(':').map(Number);
     startDate.setHours(hours, minutes, 0, 0);
   } else {
     startDate.setHours(20, 0, 0, 0);
@@ -32,7 +42,7 @@ export function addToCalendar(tour: TourDate, profileName: string) {
   const eventTitle = tour.title || `${profileName} at ${tour.venue.name}`;
   const description = [
     tour.title ? `${profileName} live at ${tour.venue.name}` : `${profileName} live`,
-    tour.lineup ? `Line-up: ${tour.lineup}` : '',
+    lineup.length > 0 ? `Line-up: ${lineup.join(', ')}` : '',
     tour.ticketUrl ? `Tickets: ${tour.ticketUrl}` : ''
   ]
     .filter(Boolean)
@@ -63,6 +73,26 @@ export function addToCalendar(tour: TourDate, profileName: string) {
 }
 
 // Share functionality
+/**
+ * Shares whatever page you're on.
+ *
+ * The URL is always the current one — it's the title and blurb that differ, so
+ * a release or a gig can share itself rather than the artist page's text.
+ */
+export async function sharePage(title: string, text: string, onCopied?: () => void) {
+  const shareData = { title, text, url: window.location.href };
+
+  if (navigator.share && navigator.canShare?.(shareData)) {
+    try {
+      await navigator.share(shareData);
+      return;
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') return;
+    }
+  }
+  copyToClipboard(onCopied);
+}
+
 export async function shareProfile(profile: Profile, onCopied?: () => void) {
   const shareData = {
     title: profile.name,
@@ -108,8 +138,25 @@ export const shapeClasses: Record<string, string> = {
   circle: 'rounded-full',
   rounded: 'rounded-3xl',
   square: 'rounded-none',
+  portrait: 'rounded-none',
+  'portrait-rounded': 'rounded-2xl',
   wide: 'rounded-none',
   'wide-rounded': 'rounded-2xl'
+};
+
+/**
+ * The proportions each shape is cropped to, so a block renders the frame that
+ * was chosen. Without this every size was square and a portrait or landscape
+ * crop was squashed back into it by object-cover.
+ */
+export const shapeAspects: Record<string, string> = {
+  circle: 'aspect-square',
+  rounded: 'aspect-square',
+  square: 'aspect-square',
+  portrait: 'aspect-[4/5]',
+  'portrait-rounded': 'aspect-[4/5]',
+  wide: 'aspect-[16/9]',
+  'wide-rounded': 'aspect-[16/9]'
 };
 
 // Social media icons (SVG paths)

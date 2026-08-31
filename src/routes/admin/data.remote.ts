@@ -1,11 +1,13 @@
 import { error } from '@sveltejs/kit';
 import { getSettings, updateSiteSettings } from '$lib/server/settings';
 import { requireUser } from '$lib/server/guards';
+import { uniqueSlug, createPageRow } from '$lib/server/page-slug';
+import { getNextPosition } from '$lib/server/api';
 import * as v from 'valibot';
 import { form, command } from '$app/server';
 import { db } from '$lib/server/db';
-import { profile, links, tourDates, blocks, settings, pages } from '$lib/server/schema';
-import { eq } from 'drizzle-orm';
+import { profile, links, shows, showActs, acts, blocks, settings, pages } from '$lib/server/schema';
+import { and, eq } from 'drizzle-orm';
 import {
   fetchYouTubeMetadata,
   isYouTubeUrl,
@@ -55,16 +57,13 @@ const venueSchema = v.object({
 });
 
 // For form submission (separate fields that get combined)
-const tourDateFormSchema = v.object({
+const showFormSchema = v.object({
   date: v.pipe(v.string(), v.nonEmpty('Date is required')),
-  time: v.optional(v.string()),
   title: v.optional(v.string()),
   venueName: v.pipe(v.string(), v.nonEmpty('Venue is required')),
   venueCity: v.pipe(v.string(), v.nonEmpty('City is required')),
-  lineup: v.optional(v.string()),
   ticketUrl: v.optional(v.string()),
-  eventUrl: v.optional(v.string()),
-  blockId: v.optional(v.number())
+  eventUrl: v.optional(v.string())
 });
 
 const reorderSchema = v.array(
@@ -81,7 +80,8 @@ const idSchema = v.number();
 // ============================================================================
 
 const addBlockSchema = v.object({
-  type: v.picklist(['profile', 'links', 'tour_dates', 'image', 'gallery']),
+  pageId: v.number(),
+  type: v.picklist(['profile', 'links', 'shows', 'image', 'gallery']),
   label: v.optional(v.string()),
   config: v.optional(v.any())
 });
@@ -196,8 +196,50 @@ async function fetchPlatformMetadata(
   return { thumbnailUrl, label, embedData };
 }
 
-function getNextPosition<T extends { position?: number | null }>(items: T[]): number {
-  return items.reduce((max, item) => Math.max(max, item.position ?? 0), 0) + 1;
+/**
+ * The artist page's id.
+ *
+ * Blocks that get created as a side effect — the links block conjured when a
+ * link arrives with nowhere to go — belong to the front page. They have to say
+ * so: a block with no page is on no page at all now that pages are plural.
+ */
+async function getLandingPageId(): Promise<number> {
+  const [landing] = await db
+    .select({ id: pages.id })
+    .from(pages)
+    .where(eq(pages.type, 'landing'))
+    .limit(1);
+  if (!landing) {
+    error(500, 'The site has no front page.');
+  }
+  return landing.id;
+}
+
+/**
+ * Replace a show's line-up wholesale.
+ *
+ * Rewritten rather than diffed: a line-up is a handful of rows whose order is
+ * the point, and working out which of them moved costs more than writing the
+ * short list again.
+ */
+async function setShowActs(showId: number, lineup: { actId: number; setTime?: string | null }[]) {
+  await db.delete(showActs).where(eq(showActs.showId, showId));
+  if (lineup.length === 0) return;
+
+  // Deduped: the same act twice on one night is a mis-click, and the primary
+  // key would reject it anyway. First occurrence wins, so its set time and
+  // place in the running order are the ones kept.
+  const seen = new Set<number>();
+  const rows = lineup
+    .filter((entry) => (seen.has(entry.actId) ? false : (seen.add(entry.actId), true)))
+    .map((entry, position) => ({
+      showId,
+      actId: entry.actId,
+      position,
+      setTime: entry.setTime ?? null
+    }));
+
+  await db.insert(showActs).values(rows);
 }
 
 async function getOrCreateProfile() {
@@ -212,28 +254,31 @@ async function getOrCreateProfile() {
 // Block Commands
 // ============================================================================
 
-export const addBlock = command(addBlockSchema, async ({ type, label, config }) => {
+export const addBlock = command(addBlockSchema, async ({ pageId, type, label, config }) => {
   await requireUser();
 
-  const existing = await db.select().from(blocks);
-  const position = getNextPosition(existing);
+  const [page] = await db.select({ id: pages.id }).from(pages).where(eq(pages.id, pageId)).limit(1);
+  if (!page) {
+    error(404, 'That page no longer exists.');
+  }
 
   /*
-   * Blocks belong to the artist page. NULL used to mean the same thing, but
-   * every existing block was attached to its `pages` row when pages became the
-   * routing table — leaving new ones NULL would split the data across two
-   * conventions for the same fact.
+   * Position is counted within the page. Measuring it against the whole table
+   * would order a new block by when the site last gained one rather than by
+   * where it sits on the page it belongs to.
+   *
+   * `pageId` is always a real id — NULL used to mean the artist page, but
+   * every block was attached to its `pages` row when pages became the routing
+   * table, and keeping the old convention alive would split one fact across
+   * two spellings.
    */
-  const [landing] = await db
-    .select({ id: pages.id })
-    .from(pages)
-    .where(eq(pages.type, 'landing'))
-    .limit(1);
+  const existing = await db.select().from(blocks).where(eq(blocks.pageId, pageId));
+  const position = getNextPosition(existing);
 
   const [created] = await db
     .insert(blocks)
     .values({
-      pageId: landing?.id ?? null,
+      pageId,
       type,
       label: label || null,
       config: config || null,
@@ -270,9 +315,12 @@ export const updateBlock = command(updateBlockSchema, async ({ id, label, config
 export const deleteBlock = command(deleteBlockSchema, async (id) => {
   await requireUser();
 
-  // Delete associated links and tour dates
+  /*
+   * Links belong to their block, so they go with it. Shows don't — they're the
+   * site's, and a tour dates block is one way of displaying them. Deleting the
+   * block that showed them used to delete the tour.
+   */
   await db.delete(links).where(eq(links.blockId, id));
-  await db.delete(tourDates).where(eq(tourDates.blockId, id));
 
   const [deleted] = await db.delete(blocks).where(eq(blocks.id, id)).returning();
 
@@ -334,15 +382,21 @@ export const addLink = form(linkSchema, async ({ url, blockId, category, label }
 
   // If no blockId provided, find or create a links block
   if (!blockId) {
-    const [existingBlock] = await db.select().from(blocks).where(eq(blocks.type, 'links')).limit(1);
+    const landingId = await getLandingPageId();
+    const [existingBlock] = await db
+      .select()
+      .from(blocks)
+      .where(and(eq(blocks.type, 'links'), eq(blocks.pageId, landingId)))
+      .limit(1);
     if (existingBlock) {
       blockId = existingBlock.id;
     } else {
-      const allBlocks = await db.select().from(blocks);
-      const position = getNextPosition(allBlocks);
+      const pageBlocks = await db.select().from(blocks).where(eq(blocks.pageId, landingId));
+      const position = getNextPosition(pageBlocks);
       const [newBlock] = await db
         .insert(blocks)
         .values({
+          pageId: landingId,
           type: 'links',
           label: 'Links',
           position,
@@ -574,42 +628,124 @@ export const reorderLinks = command(reorderSchema, async (items) => {
   return { success: true };
 });
 
-// ============================================================================
-// Tour Date Forms & Commands
-// ============================================================================
-
-export const addTourDate = form(
-  tourDateFormSchema,
-  async ({ date, time, title, venueName, venueCity, lineup, ticketUrl, eventUrl, blockId }) => {
+/**
+ * Turn a show's landing page on or off.
+ *
+ * One switch: either the show is at an address or it isn't. Switching it off
+ * unpublishes rather than deleting — the slug survives, so a link already in
+ * circulation still points at the same place if it comes back.
+ *
+ * Immediate rather than staged, unlike the fields on the show: this creates a
+ * row that owns a public URL, which isn't something to leave pending.
+ */
+export const setShowPage = command(
+  v.object({ showId: v.number(), enabled: v.boolean() }),
+  async ({ showId, enabled }) => {
     await requireUser();
 
-    // If no blockId provided, find or create a tour_dates block
-    if (!blockId) {
-      const [existingBlock] = await db
-        .select()
-        .from(blocks)
-        .where(eq(blocks.type, 'tour_dates'))
-        .limit(1);
-      if (existingBlock) {
-        blockId = existingBlock.id;
-      } else {
-        const allBlocks = await db.select().from(blocks);
-        const position = getNextPosition(allBlocks);
-        const [newBlock] = await db
-          .insert(blocks)
-          .values({
-            type: 'tour_dates',
-            label: 'Tour Dates',
-            position,
-            visible: true
-          })
-          .returning();
-        blockId = newBlock.id;
-      }
+    const [show] = await db.select().from(shows).where(eq(shows.id, showId)).limit(1);
+    if (!show) error(404, 'That show no longer exists.');
+
+    if (show.pageId) {
+      await db.update(pages).set({ published: enabled }).where(eq(pages.id, show.pageId));
+      return { success: true, pageId: show.pageId };
     }
 
+    if (!enabled) return { success: true, pageId: null };
+
+    /*
+     * Derived from venue and date because a show has no title of its own, and
+     * a venue alone collides the second time you play there. Suffixed rather
+     * than refused — nobody typed this, so an error about it would be about a
+     * choice they didn't make.
+     */
+    const slug = await uniqueSlug(`${show.venue.name} ${show.date}`);
+    const page = await createPageRow({
+      slug,
+      title: show.title || `${show.venue.name}, ${show.venue.city}`,
+      type: 'show',
+      published: true
+    });
+
+    await db.update(shows).set({ pageId: page.id }).where(eq(shows.id, showId));
+
+    return { success: true, pageId: page.id };
+  }
+);
+
+// ============================================================================
+// Acts
+// ============================================================================
+
+/**
+ * Created from wherever an act is first needed, which in practice is halfway
+ * through entering a gig. An existing name returns the existing row rather
+ * than failing: two people typing "The How" mean the same act, and the unique
+ * index would reject the second anyway.
+ */
+export const createAct = command(
+  v.object({ name: v.pipe(v.string(), v.trim(), v.nonEmpty('Give the act a name')) }),
+  async ({ name }) => {
+    await requireUser();
+
+    const [existing] = await db.select().from(acts).where(eq(acts.name, name)).limit(1);
+    if (existing) return { act: existing };
+
+    const [created] = await db.insert(acts).values({ name }).returning();
+    return { act: created };
+  }
+);
+
+export const updateAct = command(
+  v.object({
+    id: v.number(),
+    name: v.optional(v.pipe(v.string(), v.trim(), v.nonEmpty('Give the act a name'))),
+    logoUrl: v.optional(v.nullable(v.string()))
+  }),
+  async ({ id, ...updates }) => {
+    await requireUser();
+
+    const changes: Record<string, unknown> = {};
+    if (updates.name !== undefined) changes.name = updates.name;
+    if (updates.logoUrl !== undefined) changes.logoUrl = updates.logoUrl;
+    if (Object.keys(changes).length === 0) return { success: true };
+
+    await db.update(acts).set(changes).where(eq(acts.id, id));
+    return { success: true };
+  }
+);
+
+export const deleteAct = command(v.object({ id: v.number() }), async ({ id }) => {
+  await requireUser();
+
+  const [act] = await db.select().from(acts).where(eq(acts.id, id)).limit(1);
+  if (!act) error(404, 'That act no longer exists.');
+
+  // The site's own act is referenced by the profile it mirrors; removing it
+  // would leave the line-ups it appears in unable to say who played.
+  if (act.isSelf) {
+    error(400, 'This is your own act and cannot be deleted.');
+  }
+
+  // Its place in any line-up goes with it — a show can't list an act that
+  // doesn't exist, and the running order closes up around the gap.
+  await db.delete(showActs).where(eq(showActs.actId, id));
+  await db.delete(acts).where(eq(acts.id, id));
+
+  return { success: true };
+});
+
+// ============================================================================
+// Show Forms & Commands
+// ============================================================================
+
+export const addShow = form(
+  showFormSchema,
+  async ({ date, title, venueName, venueCity, ticketUrl, eventUrl }) => {
+    await requireUser();
+
     // Get next position
-    const existing = await db.select().from(tourDates);
+    const existing = await db.select().from(shows);
     const position = getNextPosition(existing);
 
     const venue = {
@@ -618,14 +754,11 @@ export const addTourDate = form(
     };
 
     const [created] = await db
-      .insert(tourDates)
+      .insert(shows)
       .values({
-        blockId,
         date,
-        time: time || null,
         title: title || null,
         venue,
-        lineup: lineup || null,
         ticketUrl: ticketUrl || null,
         eventUrl: eventUrl || null,
         soldOut: false,
@@ -633,127 +766,115 @@ export const addTourDate = form(
       })
       .returning();
 
-    return { success: true, tourDate: created };
+    return { success: true, show: created };
   }
 );
 
-export const deleteTourDate = command(idSchema, async (id) => {
+export const deleteShow = command(idSchema, async (id) => {
   await requireUser();
 
-  const [deleted] = await db.delete(tourDates).where(eq(tourDates.id, id)).returning();
+  const [deleted] = await db.delete(shows).where(eq(shows.id, id)).returning();
 
   if (!deleted) {
-    throw new Error('Tour date not found');
+    throw new Error('Show not found');
   }
 
   return { success: true };
 });
 
-const createTourDateSchema = v.object({
+const createShowSchema = v.object({
   date: v.pipe(v.string(), v.nonEmpty('Date is required')),
-  time: v.optional(v.nullable(v.string())),
+  doorsTime: v.optional(v.nullable(v.string())),
   title: v.optional(v.nullable(v.string())),
   venue: venueSchema,
-  lineup: v.optional(v.nullable(v.string())),
+  lineup: v.optional(
+    v.array(v.object({ actId: v.number(), setTime: v.optional(v.nullable(v.string())) }))
+  ),
   ticketUrl: v.optional(v.nullable(v.string())),
   eventUrl: v.optional(v.nullable(v.string())),
   soldOut: v.optional(v.boolean()),
-  blockId: v.optional(v.number())
+  imageUrl: v.optional(v.nullable(v.string()))
 });
 
-export const createTourDate = command(createTourDateSchema, async (data) => {
+export const createShow = command(createShowSchema, async (data) => {
   await requireUser();
 
-  let blockId = data.blockId;
-
-  // If no blockId provided, find or create a tour_dates block
-  if (!blockId) {
-    const [existingBlock] = await db
-      .select()
-      .from(blocks)
-      .where(eq(blocks.type, 'tour_dates'))
-      .limit(1);
-    if (existingBlock) {
-      blockId = existingBlock.id;
-    } else {
-      const allBlocks = await db.select().from(blocks);
-      const position = getNextPosition(allBlocks);
-      const [newBlock] = await db
-        .insert(blocks)
-        .values({
-          type: 'tour_dates',
-          label: 'Tour Dates',
-          position,
-          visible: true
-        })
-        .returning();
-      blockId = newBlock.id;
-    }
-  }
-
-  const existing = await db.select().from(tourDates);
+  const existing = await db.select().from(shows);
   const position = getNextPosition(existing);
 
   const [created] = await db
-    .insert(tourDates)
+    .insert(shows)
     .values({
-      blockId,
       date: data.date,
-      time: data.time || null,
+      doorsTime: data.doorsTime || null,
       title: data.title || null,
       venue: data.venue,
-      lineup: data.lineup || null,
       ticketUrl: data.ticketUrl || null,
       eventUrl: data.eventUrl || null,
       soldOut: data.soldOut || false,
+      imageUrl: data.imageUrl || null,
       position
     })
     .returning();
 
-  return { success: true, tourDate: created };
+  await setShowActs(created.id, data.lineup ?? []);
+
+  return { success: true, show: created };
 });
 
-const updateTourDateSchema = v.object({
+const updateShowSchema = v.object({
   id: v.number(),
   date: v.optional(v.string()),
-  time: v.optional(v.nullable(v.string())),
+  doorsTime: v.optional(v.nullable(v.string())),
   title: v.optional(v.nullable(v.string())),
   venue: v.optional(venueSchema),
-  lineup: v.optional(v.nullable(v.string())),
+  lineup: v.optional(
+    v.array(v.object({ actId: v.number(), setTime: v.optional(v.nullable(v.string())) }))
+  ),
   ticketUrl: v.optional(v.nullable(v.string())),
   eventUrl: v.optional(v.nullable(v.string())),
-  soldOut: v.optional(v.boolean())
+  soldOut: v.optional(v.boolean()),
+  imageUrl: v.optional(v.nullable(v.string()))
 });
 
-export const updateTourDate = command(updateTourDateSchema, async ({ id, ...updates }) => {
+export const updateShow = command(updateShowSchema, async ({ id, ...updates }) => {
   await requireUser();
 
   const updateData: Record<string, unknown> = {};
 
   if (updates.date !== undefined) updateData.date = updates.date;
-  if (updates.time !== undefined) updateData.time = updates.time;
+  if (updates.doorsTime !== undefined) updateData.doorsTime = updates.doorsTime;
   if (updates.title !== undefined) updateData.title = updates.title;
   if (updates.venue !== undefined) updateData.venue = updates.venue;
-  if (updates.lineup !== undefined) updateData.lineup = updates.lineup;
+
   if (updates.ticketUrl !== undefined) updateData.ticketUrl = updates.ticketUrl;
   if (updates.eventUrl !== undefined) updateData.eventUrl = updates.eventUrl;
   if (updates.soldOut !== undefined) updateData.soldOut = updates.soldOut;
+  if (updates.imageUrl !== undefined) updateData.imageUrl = updates.imageUrl;
+
+  /*
+   * The line-up lives in the join table, so changing only a running order or a
+   * set time leaves every column on the show untouched. Treating that as
+   * "nothing to update" failed the publish after the line-up had already been
+   * written.
+   */
+  const lineupChanged = updates.lineup !== undefined;
+  if (lineupChanged) {
+    await setShowActs(id, updates.lineup!);
+  }
 
   if (Object.keys(updateData).length === 0) {
+    if (lineupChanged) return { success: true };
     throw new Error('No fields to update');
   }
 
-  const [updated] = await db
-    .update(tourDates)
-    .set(updateData)
-    .where(eq(tourDates.id, id))
-    .returning();
+  const [updated] = await db.update(shows).set(updateData).where(eq(shows.id, id)).returning();
 
   if (!updated) {
-    throw new Error('Tour date not found');
+    throw new Error('Show not found');
   }
 
-  return { success: true, tourDate: updated };
+  return { success: true, show: updated };
 });
 
 // ============================================================================

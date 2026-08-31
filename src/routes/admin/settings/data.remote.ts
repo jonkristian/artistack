@@ -21,6 +21,8 @@ const settingsSchema = v.object({
   pressKitEnabled: v.optional(v.boolean()),
   clipsEnabled: v.optional(v.boolean()),
   releasesEnabled: v.optional(v.boolean()),
+  pagesEnabled: v.optional(v.boolean()),
+  showsEnabled: v.optional(v.boolean()),
   subscribersEnabled: v.optional(v.boolean()),
   pixelsEnabled: v.optional(v.boolean()),
   metaPixelId: v.optional(v.nullable(v.string())),

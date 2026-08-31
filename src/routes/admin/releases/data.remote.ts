@@ -4,7 +4,7 @@ import { command } from '$app/server';
 import { db } from '$lib/server/db';
 import { releases, pages, links } from '$lib/server/schema';
 import { eq } from 'drizzle-orm';
-import { validateSlug, SLUG_ERROR_MESSAGES, slugify } from '$lib/utils/slug';
+import { claimSlug, createPageRow, toSlug } from '$lib/server/page-slug';
 import { error } from '@sveltejs/kit';
 
 /**
@@ -21,28 +21,16 @@ const createSchema = v.object({
 export const createRelease = command(createSchema, async ({ title, slug, releaseDate }) => {
   await requireUser();
 
-  const candidate = slugify(slug?.trim() || title);
-  const slugError = validateSlug(candidate);
-  if (slugError) {
-    error(400, SLUG_ERROR_MESSAGES[slugError]);
-  }
-
-  const [clash] = await db.select().from(pages).where(eq(pages.slug, candidate)).limit(1);
-  if (clash) {
-    error(400, 'Something already lives at that address.');
-  }
+  const candidate = await claimSlug(slug?.trim() || title);
 
   const date = new Date(releaseDate);
   if (Number.isNaN(date.getTime())) {
     error(400, 'That release date is not a real date.');
   }
 
-  // Draft by default. A release page that goes live the moment it's created
-  // would be discoverable before its links are filled in.
-  const [page] = await db
-    .insert(pages)
-    .values({ slug: candidate, title, type: 'release', published: false })
-    .returning();
+  // Draft by default, like every page: one that goes live the moment it's
+  // created would be discoverable before its links are filled in.
+  const page = await createPageRow({ slug: candidate, title, type: 'release' });
 
   const [release] = await db
     .insert(releases)
@@ -78,9 +66,7 @@ export const updateRelease = command(updateSchema, async (input) => {
   const releaseChanges: Record<string, unknown> = {};
 
   if (input.slug !== undefined) {
-    const candidate = slugify(input.slug);
-    const slugError = validateSlug(candidate);
-    if (slugError) error(400, SLUG_ERROR_MESSAGES[slugError]);
+    const candidate = toSlug(input.slug);
 
     const [clash] = await db.select().from(pages).where(eq(pages.slug, candidate)).limit(1);
     if (clash && clash.id !== release.pageId) {

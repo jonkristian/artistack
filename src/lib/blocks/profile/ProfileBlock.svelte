@@ -1,26 +1,19 @@
 <script lang="ts">
-  import type {
-    Block,
-    Profile,
-    Link,
-    TourDate,
-    Media,
-    ProfileBlockConfig
-  } from '$lib/server/schema';
+  import type { Block, Profile, Link, Show, Media, ProfileBlockConfig } from '$lib/server/schema';
   import { socialIcons } from '$lib/blocks/utils';
 
   let {
     block,
     profile,
     links,
-    tourDates,
+    shows,
     media,
     locale
   }: {
     block: Block;
     profile: Profile;
     links: Link[];
-    tourDates: TourDate[];
+    shows: Show[];
     media: Media[];
     locale: string;
   } = $props();

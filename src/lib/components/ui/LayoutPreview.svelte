@@ -1,13 +1,13 @@
 <script lang="ts">
   import type { Component } from 'svelte';
-  import type { Profile, Settings, Link, TourDate, Block, Media } from '$lib/server/schema';
+  import type { Profile, Settings, Link, Show, Block, Media } from '$lib/server/schema';
 
   let {
     layout: Layout,
     profile,
     settings = null,
     links = [],
-    tourDates = [],
+    shows = [],
     blocks = [],
     media = []
   }: {
@@ -15,14 +15,14 @@
       profile: Profile;
       settings?: Settings | null;
       links: Link[];
-      tourDates: TourDate[];
+      shows: Show[];
       blocks?: Block[];
       media?: Media[];
     }>;
     profile: Partial<Profile> & { name: string };
     settings?: Partial<Settings> | null;
     links?: Link[];
-    tourDates?: TourDate[];
+    shows?: Show[];
     blocks?: Block[];
     media?: Media[];
   } = $props();
@@ -60,14 +60,7 @@
 		--color-icon: {previewSettings.colorIcon};
 	"
 >
-  <Layout
-    profile={previewProfile}
-    settings={previewSettings}
-    {links}
-    {tourDates}
-    {blocks}
-    {media}
-  />
+  <Layout profile={previewProfile} settings={previewSettings} {links} {shows} {blocks} {media} />
 </div>
 
 <style>

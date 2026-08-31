@@ -54,7 +54,11 @@ const addMediaSchema = v.object({
   durationMs: v.optional(v.number()),
   alt: v.optional(v.string()),
   /** Omitted for ordinary uploads, which take the role implied by their type. */
-  role: v.optional(v.picklist(['asset', 'source', 'music', 'render']))
+  role: v.optional(v.picklist(['asset', 'source', 'music', 'render', 'crop'])),
+  /** Set on a crop: the library item it was taken from. */
+  sourceMediaId: v.optional(v.number()),
+  /** Set on a crop: the frame it was taken in, so Edit can restore it. */
+  cropShape: v.optional(v.string())
 });
 
 const updateMediaSchema = v.object({
@@ -86,6 +90,8 @@ export const addMedia = command(addMediaSchema, async (data) => {
       originalSize: data.originalSize,
       durationMs: data.durationMs,
       role: data.role ?? roleForMime(data.mimeType),
+      sourceMediaId: data.sourceMediaId,
+      cropShape: data.cropShape,
       alt: data.alt
     })
     .returning();
@@ -105,6 +111,18 @@ export const updateMedia = command(updateMediaSchema, async ({ id, alt, url }) =
   return { success: true, media: updated };
 });
 
+/** Removes a row's files from disk. Missing files are not an error. */
+async function unlinkMediaFiles(item: typeof media.$inferSelect) {
+  for (const url of [item.url, item.originalUrl, item.thumbnailUrl]) {
+    if (!url) continue;
+    try {
+      await unlink(mediaPath(url));
+    } catch {
+      // Already gone, which is the state we wanted anyway.
+    }
+  }
+}
+
 export const deleteMedia = command(deleteMediaSchema, async (id) => {
   await requireUser();
 
@@ -112,6 +130,18 @@ export const deleteMedia = command(deleteMediaSchema, async (id) => {
   const [item] = await db.select().from(media).where(eq(media.id, id)).limit(1);
 
   if (item) {
+    /*
+     * Crops of this picture go with it. They only exist as versions of it, and
+     * without the source there's nothing to re-crop from — so leaving them
+     * behind leaves files nothing can reach and nothing can edit.
+     */
+    const derivatives = await db.select().from(media).where(eq(media.sourceMediaId, id));
+    for (const crop of derivatives) {
+      await unlinkMediaFiles(crop);
+    }
+    if (derivatives.length) {
+      await db.delete(media).where(eq(media.sourceMediaId, id));
+    }
     // taggings has no foreign key, so it is cleaned up explicitly.
     await clearTags('media', id);
     await db.delete(media).where(eq(media.id, id));
@@ -148,33 +178,7 @@ export const deleteMedia = command(deleteMediaSchema, async (id) => {
       }
     }
 
-    // Try to delete the optimized file
-    try {
-      const filePath = mediaPath(item.url);
-      await unlink(filePath);
-    } catch {
-      // File might not exist, ignore
-    }
-
-    // Try to delete the original file
-    if (item.originalUrl) {
-      try {
-        const originalPath = mediaPath(item.originalUrl);
-        await unlink(originalPath);
-      } catch {
-        // Original might not exist, ignore
-      }
-    }
-
-    // Try to delete the thumbnail file
-    if (item.thumbnailUrl) {
-      try {
-        const thumbPath = mediaPath(item.thumbnailUrl);
-        await unlink(thumbPath);
-      } catch {
-        // Thumbnail might not exist, ignore
-      }
-    }
+    await unlinkMediaFiles(item);
   }
 
   return { success: true };

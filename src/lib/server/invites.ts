@@ -74,7 +74,7 @@ export async function sendInviteEmail(
   name: string,
   url: string
 ): Promise<{ success: boolean; error?: string }> {
-  // The band's name, not the software's — the invite comes from the band.
+  // The act's name, not the software's — the invite comes from the act.
   const [artist] = await db.select({ name: profile.name }).from(profile).limit(1);
   const site = artist?.name || 'Artistack';
   const firstName = name.split(' ')[0] || name;

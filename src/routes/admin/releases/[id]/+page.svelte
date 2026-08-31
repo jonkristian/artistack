@@ -1,6 +1,6 @@
 <script lang="ts">
   import { fieldClass, labelClass } from '$lib/utils/classes';
-  import { ToggleSwitch, MediaPicker, EditorPreview } from '$lib/components/ui';
+  import { ToggleSwitch, MediaPicker, EditorPreview, DateTimePicker } from '$lib/components/ui';
   import { SectionCard } from '$lib/components/cards';
   import { SlugDialog } from '$lib/components/dialogs';
   import { slugify } from '$lib/utils/slug';
@@ -153,7 +153,13 @@
           </div>
           <div>
             <label class={labelClass} for="date">Release date</label>
-            <input id="date" type="date" class={fieldClass} bind:value={release.releaseDate} />
+            <DateTimePicker
+              mode="date"
+              compact
+              value={release.releaseDate}
+              locale={data.settings?.locale || 'nb-NO'}
+              onchange={(v) => (release.releaseDate = v)}
+            />
           </div>
         </div>
 
@@ -386,6 +392,7 @@
           {isOut}
           published={release.published}
           settings={data.settings}
+          profile={data.profile}
           artist={data.profile?.name ?? ''}
           emailCapture={data.settings?.subscribersEnabled ?? false}
           source={release.slug}

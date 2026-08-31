@@ -1,4 +1,11 @@
-import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import {
+  sqliteTable,
+  text,
+  integer,
+  index,
+  uniqueIndex,
+  primaryKey
+} from 'drizzle-orm/sqlite-core';
 import type { ClipRenderConfig, TimedCaption, ClipStatus } from '../clips/types';
 
 // Clip config types live in $lib/clips/types so the admin UI can import the
@@ -87,7 +94,7 @@ export const pages = sqliteTable('pages', {
  * `landing` is the artist page at `/` — exactly one exists and it can't be
  * deleted. The rest are addressed by slug.
  */
-export type PageType = 'landing' | 'release' | 'shop' | 'custom';
+export type PageType = 'landing' | 'release' | 'show' | 'shop' | 'custom';
 
 // Blocks - modular, reorderable page sections
 export const blocks = sqliteTable(
@@ -95,7 +102,7 @@ export const blocks = sqliteTable(
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
     pageId: integer('page_id'), // FK to pages table (null = home page for backwards compat)
-    type: text('type').notNull(), // 'profile', 'links', 'tour_dates', 'image', 'gallery'
+    type: text('type').notNull(), // 'profile', 'links', 'shows', 'image', 'gallery'
     label: text('label'), // user-facing label: 'Social Media', 'Tour 2026'
     config: text('config', { mode: 'json' }).$type<BlockConfig>(),
     position: integer('position').default(0),
@@ -156,25 +163,89 @@ export const links = sqliteTable(
   ]
 );
 
-// Tour dates
-export const tourDates = sqliteTable(
-  'tour_dates',
+// Shows
+/**
+ * The act's shows. Owned by the site, not by a block.
+ *
+ * A show is a fact — a date, a venue, a ticket link — and it's true whether or
+ * not something is rendering it. The tour dates block displays these; it
+ * doesn't hold them, which is what lets two pages list the same shows and what
+ * stops deleting a block from deleting the tour.
+ */
+export const shows = sqliteTable(
+  'shows',
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
-    blockId: integer('block_id').notNull(), // FK to blocks table
     date: text('date').notNull(),
-    time: text('time'), // Show time (e.g., "20:00")
+    /**
+     * When the doors open, if it's been announced. Often half an hour before
+     * anyone plays, and it's the time people actually need to turn up.
+     */
+    doorsTime: text('doors_time'),
     title: text('title'), // Event/show title
     venue: text('venue', { mode: 'json' }).$type<Venue>().notNull(),
-    lineup: text('lineup'), // Other acts (free-form text)
+    /** Poster or flyer. What MediaPicker returns, like a release's cover. */
+    imageUrl: text('image_url'),
+    /**
+     * Its landing page, once it has one. Nullable because most gigs are a line
+     * on the front page and never need an address of their own — unlike a
+     * release, which exists to be linked.
+     */
+    pageId: integer('page_id'),
     ticketUrl: text('ticket_url'),
     eventUrl: text('event_url'), // Link to event page (Facebook, Bandsintown, etc.)
     soldOut: integer('sold_out', { mode: 'boolean' }).default(false),
     position: integer('position').default(0)
   },
+  (table) => [index('shows_date_idx').on(table.date)]
+);
+
+/**
+ * An act. The site's own act is one of these too, flagged rather than special
+ * cased — it plays its own shows, and it opens some and headlines others.
+ *
+ * An act is an entity because things hang off it: a logo, and whatever comes
+ * after. As plain names on each show it couldn't carry any of that, and the
+ * same act on three nights was three unrelated strings.
+ */
+export const acts = sqliteTable('acts', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull().unique(),
+  /** What MediaPicker returns, like a release's cover or a show's poster. */
+  logoUrl: text('logo_url'),
+  /**
+   * The site's own act. At most one row can have this — a partial unique index
+   * enforces it, so it's the database's rule rather than a convention.
+   *
+   * `profile` still owns the artist's name and bio; this is the row that lets
+   * that act appear in a line-up alongside everyone else.
+   */
+  isSelf: integer('is_self', { mode: 'boolean' }).notNull().default(false)
+});
+
+/**
+ * Who played which show, and in what order.
+ *
+ * `position` belongs here rather than on either table: running order is a fact
+ * about the night. The same act opens one show and headlines the next, so
+ * neither the act nor the show can hold it alone.
+ */
+export const showActs = sqliteTable(
+  'show_acts',
+  {
+    showId: integer('show_id').notNull(),
+    actId: integer('act_id').notNull(),
+    position: integer('position').notNull().default(0),
+    /**
+     * When this act goes on. Here rather than on the act, for the same reason
+     * position is: it's a fact about the night. The show's own time is when the
+     * doors are, which isn't when anyone plays.
+     */
+    setTime: text('set_time')
+  },
   (table) => [
-    index('tour_dates_block_id_idx').on(table.blockId),
-    index('tour_dates_date_idx').on(table.date)
+    primaryKey({ columns: [table.showId, table.actId] }),
+    index('show_acts_act_id_idx').on(table.actId)
   ]
 );
 
@@ -197,11 +268,33 @@ export const media = sqliteTable('media', {
    * video/mp4, but only one belongs in a clip's source list.
    */
   role: text('role').$type<MediaRole>().notNull().default('asset'),
+  /**
+   * The picture a crop was taken from. Null for anything that isn't a
+   * derivative — which is almost everything.
+   *
+   * It's what lets Edit reopen the original rather than the crop: without it
+   * each pass cropped a crop, and whatever had been trimmed was unrecoverable.
+   */
+  sourceMediaId: integer('source_media_id'),
+  /**
+   * The frame this crop was taken in — proportions and rounding, as the crop
+   * dialog emits them.
+   *
+   * Kept so Edit can reopen the source *with the same settings*, rather than
+   * starting from the default and making you rebuild a crop you'd already
+   * made. Null for anything that isn't a crop.
+   */
+  cropShape: text('crop_shape'),
   alt: text('alt'),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
 });
 
-export type MediaRole = 'asset' | 'source' | 'music' | 'render' | 'document';
+/**
+ * `crop` is a derivative, not something you'd go looking for: it exists because
+ * a cover or a logo needed a particular shape. It's a row all the same, so the
+ * file it wrote can be found and removed like any other.
+ */
+export type MediaRole = 'asset' | 'source' | 'music' | 'render' | 'document' | 'crop';
 
 /** Default role for a freshly uploaded file, before anything overrides it. */
 export function roleForMime(mimeType: string): MediaRole {
@@ -549,7 +642,15 @@ export interface ProfileBlockConfig extends BaseBlockConfig {
 export interface ImageBlockConfig extends BaseBlockConfig {
   mediaId?: number; // Reference to media library
   imageUrl?: string; // Cropped image URL (from MediaPicker)
-  shape?: 'circle' | 'rounded' | 'square'; // Default: 'rounded'
+  /** Proportions and corners together, as MediaPicker emits them. */
+  shape?:
+    | 'circle'
+    | 'rounded'
+    | 'square'
+    | 'portrait'
+    | 'portrait-rounded'
+    | 'wide'
+    | 'wide-rounded'; // Default: 'rounded'
   alignment?: 'left' | 'center' | 'right'; // Default: 'center'
   size?: 'mini' | 'small' | 'medium' | 'large' | 'full'; // Default: 'medium'
   showGlow?: boolean; // Accent color glow effect
@@ -574,9 +675,15 @@ export interface LinksBlockConfig extends BaseBlockConfig {
   stackOnMobile?: boolean; // default true
 }
 
-export interface TourDatesBlockConfig extends BaseBlockConfig {
+export interface ShowsBlockConfig extends BaseBlockConfig {
   showPastShows?: boolean; // default true
   heading?: string;
+  /**
+   * How many upcoming shows to list. Unset means all of them. The block draws
+   * the site's shows rather than owning a set of its own, so this is how a
+   * page says "just the next few" without a second, shorter list existing.
+   */
+  limit?: number;
 }
 
 export interface GalleryBlockConfig extends BaseBlockConfig {
@@ -597,7 +704,7 @@ export type BlockConfig =
   | EmailBlockConfig
   | ProfileBlockConfig
   | LinksBlockConfig
-  | TourDatesBlockConfig
+  | ShowsBlockConfig
   | GalleryBlockConfig
   | ImageBlockConfig
   | ProductsBlockConfig;
@@ -642,6 +749,10 @@ export type {
   TiktokSettings
 } from './settings';
 
+export type Act = typeof acts.$inferSelect;
+export type NewAct = typeof acts.$inferInsert;
+export type ShowAct = typeof showActs.$inferSelect;
+
 export type Page = typeof pages.$inferSelect;
 export type NewPage = typeof pages.$inferInsert;
 export type Subscriber = typeof subscribers.$inferSelect;
@@ -652,8 +763,8 @@ export type Block = typeof blocks.$inferSelect;
 export type NewBlock = typeof blocks.$inferInsert;
 export type Link = typeof links.$inferSelect;
 export type NewLink = typeof links.$inferInsert;
-export type TourDate = typeof tourDates.$inferSelect;
-export type NewTourDate = typeof tourDates.$inferInsert;
+export type Show = typeof shows.$inferSelect;
+export type NewShow = typeof shows.$inferInsert;
 export type Media = typeof media.$inferSelect;
 export type NewMedia = typeof media.$inferInsert;
 export type Product = typeof products.$inferSelect;

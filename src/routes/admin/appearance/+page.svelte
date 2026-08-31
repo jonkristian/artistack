@@ -6,9 +6,9 @@
   import { toast } from '$lib/stores/toast.svelte';
   import { saveScheme, removeScheme } from './data.remote';
   import type { ThemeSettings } from '$lib/server/settings';
-  import Default from '$lib/themes/Default.svelte';
-  import Simple from '$lib/themes/Simple.svelte';
+  import { resolveTheme } from '$lib/themes';
   import * as draft from '$lib/stores/pageDraft.svelte';
+  import { withResolvedLineups } from '$lib/utils/lineup';
   import type { UnifiedDraftData } from '../publishDraft';
   import type { PageData } from './$types';
 
@@ -85,11 +85,7 @@
     { id: 'simple', name: 'Simple', description: 'Clean, centered layout without card' }
   ];
 
-  const layoutComponents = { default: Default, simple: Simple } as const;
-  const activeLayout = $derived(
-    layoutComponents[(draftData.appearance.layout as keyof typeof layoutComponents) ?? 'default'] ??
-      Default
-  );
+  const activeLayout = $derived(resolveTheme(draftData.appearance.layout));
 
   // Live preview settings (merges draft appearance onto server settings)
   const liveSettings = $derived({
@@ -277,7 +273,7 @@
       profile={draftData.profile}
       settings={liveSettings}
       links={draftData.links}
-      tourDates={draftData.tourDates}
+      shows={withResolvedLineups(draftData.shows ?? [], data.acts ?? [])}
       blocks={draftData.blocks}
       media={data.media}
     />

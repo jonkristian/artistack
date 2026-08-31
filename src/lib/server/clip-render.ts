@@ -20,7 +20,7 @@ const execFileAsync = promisify(execFile);
  * Branded social-clip renderer.
  *
  * A port of The How's `thehow-clip` ffmpeg engine, generalised to take its
- * branding from the site's own settings instead of one band's hardcoded logo
+ * branding from the site's own settings instead of one act's hardcoded logo
  * set and palette. The pipeline and its filter graphs follow the original
  * closely — the ordering, timings and workarounds here were tuned against real
  * phone footage, and the comments record why each one exists. The pipeline runs
@@ -924,7 +924,7 @@ export async function renderClip(
       onLog?.(`Intro: ${introSeconds.toFixed(2)}s (clip ${firstDuration.toFixed(1)}s)`);
     }
 
-    // The big logo's vertical band, kept clear of wherever the caption lands.
+    // The big logo's vertical act, kept clear of wherever the caption lands.
     const logoBand =
       config.captionPosition === 'top' ? 0.62 : config.captionPosition === 'center' ? 0.4 : 0.36;
 
@@ -932,7 +932,7 @@ export async function renderClip(
 
     // ---- 2) normalise each source --------------------------------------
     /**
-     * The bar's bands, sized to the stages that will actually run.
+     * The bar's acts, sized to the stages that will actually run.
      *
      * They used to be fixed waypoints — 55, 70, 78 — so a single-source clip
      * with no outro jumped 15% the instant its sources finished, because two

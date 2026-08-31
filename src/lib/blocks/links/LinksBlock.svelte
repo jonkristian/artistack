@@ -4,7 +4,7 @@
     Profile,
     PublicSettings,
     Link,
-    TourDate,
+    Show,
     Media,
     LinksBlockConfig
   } from '$lib/server/schema';
@@ -19,7 +19,7 @@
     profile,
     settings = null,
     links,
-    tourDates,
+    shows,
     media,
     locale
   }: {
@@ -27,7 +27,7 @@
     profile: Profile;
     settings?: PublicSettings | null;
     links: Link[];
-    tourDates: TourDate[];
+    shows: Show[];
     media: Media[];
     locale: string;
   } = $props();

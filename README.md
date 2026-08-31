@@ -1,6 +1,7 @@
 # Artistack
 
-A self-hosted link-in-bio page for musicians and bands.
+A self-hosted site for musicians and bands — your links, your releases, your
+shows, and the clips you post about them.
 
 ![Artistack Admin Dashboard](screenshots/hero.png)
 
@@ -9,7 +10,11 @@ A self-hosted link-in-bio page for musicians and bands.
 - **Profile** - Logo, photo, bio with live preview
 - **Social Links** - Auto-detected platform icons
 - **Streaming** - Embedded players for Spotify, YouTube, Bandcamp
-- **Tour Dates** - Venue autocomplete, calendar export, ticket links
+- **Releases** - A page per single or album, with buttons to every service, pre-save before the date and per-platform click tracking
+- **Shows** - Venue autocomplete, a line-up of acts with set times, posters, ticket links and calendar export
+- **Acts** - The bands you play with, kept once with their logos, rather than retyped per gig
+- **Landing pages** - A release or a show can have its own address, in the site's own layout
+- **Audience** - A fan list with recorded consent, one-click unsubscribe and CSV export
 - **Stats** - Page views, link clicks, referrers, geography
 - **Integrations** - Discord notifications, Spotify/YouTube stats
 - **Appearance** - Customizable colors and layout

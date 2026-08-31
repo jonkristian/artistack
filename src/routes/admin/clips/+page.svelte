@@ -275,7 +275,9 @@
               {entry.project.name}
             </a>
             <span class="text-xs text-gray-500">
-              {entry.eta ? new Date(entry.eta).toLocaleDateString() : 'paused'}
+              {entry.eta
+                ? new Date(entry.eta).toLocaleDateString(data.settings?.locale || 'nb-NO')
+                : 'paused'}
             </span>
           </li>
         {/each}

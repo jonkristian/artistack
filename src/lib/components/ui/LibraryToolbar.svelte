@@ -5,7 +5,7 @@
    *
    * Media, Clips and Releases all had this as two rows — a header holding only
    * the primary button, then a filter/selection row under it. Two rows for
-   * three controls costs a band of vertical space on every one of these pages,
+   * three controls costs an act of vertical space on every one of these pages,
    * and on a phone it pushed the grid below the fold before a single tile had
    * been drawn.
    *

@@ -4,7 +4,9 @@ import {
   profile,
   settings,
   links,
-  tourDates,
+  shows,
+  acts,
+  showActs,
   media,
   blocks,
   releases,
@@ -31,11 +33,14 @@ export const load: LayoutServerLoad = async ({ request }) => {
     profileData,
     settingsData,
     allLinks,
-    allTourDates,
+    allShows,
+    allActs,
+    allShowActs,
     allMedia,
     allBlocks,
     googleConfig,
-    allReleases
+    allReleases,
+    allPages
   ] = await Promise.all([
     db
       .select()
@@ -46,7 +51,9 @@ export const load: LayoutServerLoad = async ({ request }) => {
     // included, and is serialised into the page.
     getSettings(),
     db.select().from(links).orderBy(asc(links.position)),
-    db.select().from(tourDates).orderBy(asc(tourDates.date)),
+    db.select().from(shows).orderBy(asc(shows.date)),
+    db.select().from(acts).orderBy(asc(acts.name)),
+    db.select().from(showActs).orderBy(asc(showActs.position)),
     db.select().from(media).orderBy(desc(media.createdAt)),
     db.select().from(blocks).orderBy(asc(blocks.position)),
     getGoogleConfig(),
@@ -73,7 +80,14 @@ export const load: LayoutServerLoad = async ({ request }) => {
       })
       .from(releases)
       .innerJoin(pages, eq(pages.id, releases.pageId))
-      .orderBy(desc(releases.releaseDate))
+      .orderBy(desc(releases.releaseDate)),
+    /*
+     * Every page, for the Pages list and so an editor knows which page it's
+     * editing. Loaded here rather than per route: the layout's copy is what
+     * the draft is built from, and a route fetching its own would shadow it
+     * in merged page data.
+     */
+    db.select().from(pages).orderBy(asc(pages.position), asc(pages.id))
   ]);
 
   return {
@@ -84,10 +98,23 @@ export const load: LayoutServerLoad = async ({ request }) => {
     profile: profileData ?? null,
     settings: settingsData ?? null,
     links: allLinks,
-    tourDates: allTourDates,
+    /*
+     * Shows carry their line-up flattened onto them, in running order. The
+     * join is how it's stored; it isn't something the editor should have to
+     * assemble, so one diff decides what to write to both.
+     */
+    shows: allShows.map((show) => ({
+      ...show,
+      lineup: allShowActs
+        .filter((sa) => sa.showId === show.id)
+        .sort((a, b) => a.position - b.position)
+        .map((sa) => ({ actId: sa.actId, setTime: sa.setTime }))
+    })),
+    acts: allActs,
     media: allMedia,
     blocks: allBlocks,
     releases: allReleases,
+    pages: allPages,
     googleConfig
   };
 };

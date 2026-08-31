@@ -5,9 +5,9 @@ import ProfileBlockSettings from './profile/ProfileBlockSettings.svelte';
 import LinksBlock from './links/LinksBlock.svelte';
 import LinksBlockAdmin from './links/LinksBlockAdmin.svelte';
 import LinksBlockSettings from './links/LinksBlockSettings.svelte';
-import TourDatesBlock from './tour-dates/TourDatesBlock.svelte';
-import TourDatesBlockAdmin from './tour-dates/TourDatesBlockAdmin.svelte';
-import TourDatesBlockSettings from './tour-dates/TourDatesBlockSettings.svelte';
+import ShowsBlock from './shows/ShowsBlock.svelte';
+import ShowsBlockAdmin from './shows/ShowsBlockAdmin.svelte';
+import ShowsBlockSettings from './shows/ShowsBlockSettings.svelte';
 import GalleryBlock from './gallery/GalleryBlock.svelte';
 import GalleryBlockAdmin from './gallery/GalleryBlockAdmin.svelte';
 import GalleryBlockSettings from './gallery/GalleryBlockSettings.svelte';
@@ -41,14 +41,14 @@ export const blockRegistry: Record<string, BlockDefinition> = {
     defaultLabel: 'Links',
     defaultConfig: { displayAs: 'rows' as const }
   },
-  tour_dates: {
-    type: 'tour_dates',
-    name: 'Tour Dates',
+  shows: {
+    type: 'shows',
+    name: 'Shows',
     icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z',
-    component: TourDatesBlock,
-    adminComponent: TourDatesBlockAdmin,
-    adminSettingsComponent: TourDatesBlockSettings,
-    defaultLabel: 'Tour Dates',
+    component: ShowsBlock,
+    adminComponent: ShowsBlockAdmin,
+    adminSettingsComponent: ShowsBlockSettings,
+    defaultLabel: 'Shows',
     defaultConfig: {
       showPastShows: true
     }

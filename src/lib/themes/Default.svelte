@@ -1,9 +1,10 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import type {
     Profile,
     PublicSettings,
     Link,
-    TourDate,
+    Show,
     Media,
     Block,
     ImageBlockConfig,
@@ -16,15 +17,24 @@
     profile,
     settings = null,
     links,
-    tourDates,
+    shows,
     blocks = [],
+    children,
     media = []
   }: {
     profile: Profile;
     settings?: PublicSettings | null;
     links: Link[];
-    tourDates: TourDate[];
+    shows: Show[];
     blocks?: Block[];
+    /**
+     * Content in place of the page's blocks.
+     *
+     * A release or a gig gets the same scaffolding as the front page — the
+     * card, the colours, the share button — with its own thing inside, rather
+     * than a second layout that has to be kept looking like this one.
+     */
+    children?: Snippet;
     media?: Media[];
   } = $props();
 
@@ -66,25 +76,31 @@
     ></div>
     <!-- Card content -->
     <div
-      class="relative min-h-screen w-full overflow-hidden rounded-t-3xl px-2 pb-8 sm:min-h-[calc(100vh-4rem)] sm:px-6 sm:shadow-xl {firstBlockFlush()
-        ? ''
-        : 'pt-8'}"
+      class="relative min-h-screen w-full overflow-hidden rounded-t-3xl pb-8 sm:min-h-[calc(100vh-4rem)] sm:px-6 sm:shadow-xl {children
+        ? 'px-4 pt-4 sm:pt-6'
+        : firstBlockFlush()
+          ? 'px-2'
+          : 'px-2 pt-8'}"
       style="background-color: var(--color-card)"
     >
-      {#each visibleBlocks as block (block.id)}
-        {@const def = blockRegistry[block.type]}
-        {@const cfg = (block.config as BaseBlockConfig) ?? {}}
-        {#if def}
-          {@const BlockComponent = def.component}
-          <div
-            class="{spacingTopClasses[cfg.marginTop ?? 'none']} {spacingBottomClasses[
-              cfg.marginBottom ?? 'medium'
-            ]}"
-          >
-            <BlockComponent {block} {profile} {settings} {links} {tourDates} {media} {locale} />
-          </div>
-        {/if}
-      {/each}
+      {#if children}
+        {@render children()}
+      {:else}
+        {#each visibleBlocks as block (block.id)}
+          {@const def = blockRegistry[block.type]}
+          {@const cfg = (block.config as BaseBlockConfig) ?? {}}
+          {#if def}
+            {@const BlockComponent = def.component}
+            <div
+              class="{spacingTopClasses[cfg.marginTop ?? 'none']} {spacingBottomClasses[
+                cfg.marginBottom ?? 'medium'
+              ]}"
+            >
+              <BlockComponent {block} {profile} {settings} {links} {shows} {media} {locale} />
+            </div>
+          {/if}
+        {/each}
+      {/if}
 
       <!-- Share Section -->
       {#if settings?.showShareButton !== false}
@@ -108,7 +124,10 @@
       {/if}
 
       <!-- Press Kit -->
-      {#if settings?.showPressKit}
+      <!-- Not on a release or a gig: the press kit is about the artist, and
+           offering it under one night's line-up is furniture from another
+           page. Share stays — that one is about whatever you're looking at. -->
+      {#if settings?.showPressKit && !children}
         <section class="mt-8 flex justify-center">
           <a
             href="/uploads/press-kit.zip"

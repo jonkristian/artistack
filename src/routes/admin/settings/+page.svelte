@@ -159,254 +159,138 @@
   }
 </script>
 
-<div class="min-h-screen bg-gray-950 p-[clamp(1rem,4vw,1.5rem)]">
-  <div class="max-w-2xl space-y-6">
-    <SectionCard title="General">
-      <div class="space-y-4">
+<div class="max-w-2xl space-y-6">
+  <SectionCard title="General">
+    <div class="space-y-4">
+      <div>
+        <label for="site-title" class={labelClass}> Site Title </label>
+        <input
+          id="site-title"
+          type="text"
+          bind:value={siteTitle}
+          placeholder={data.profile?.name || 'Artist Name'}
+          class={fieldClass}
+        />
+        <p class="mt-2 text-sm text-gray-500">
+          Used for browser tab and PWA. Leave empty to use artist name.
+        </p>
+      </div>
+
+      <div>
+        <label for="locale" class={labelClass}> Date & Time Format </label>
+        <select id="locale" bind:value={locale} class={fieldClass}>
+          {#each locales as l (l.code)}
+            <option value={l.code}>{l.name}</option>
+          {/each}
+        </select>
+        <p class="mt-2 text-sm text-gray-500">
+          Example: <span class="text-gray-400">{currentLocale.example}</span>
+        </p>
+      </div>
+    </div>
+  </SectionCard>
+
+  <SectionCard title="Email / SMTP">
+    <div class="space-y-4">
+      <p class="text-sm text-gray-400">
+        Configure SMTP settings for sending password reset emails.
+      </p>
+
+      <div class="grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr))] gap-4">
         <div>
-          <label for="site-title" class={labelClass}> Site Title </label>
+          <label for="smtp-host" class={labelClass}> SMTP Host </label>
           <input
-            id="site-title"
+            id="smtp-host"
             type="text"
-            bind:value={siteTitle}
-            placeholder={data.profile?.name || 'Artist Name'}
+            bind:value={smtpHost}
+            placeholder="smtp.example.com"
             class={fieldClass}
           />
-          <p class="mt-2 text-sm text-gray-500">
-            Used for browser tab and PWA. Leave empty to use artist name.
-          </p>
         </div>
 
         <div>
-          <label for="locale" class={labelClass}> Date & Time Format </label>
-          <select id="locale" bind:value={locale} class={fieldClass}>
-            {#each locales as l (l.code)}
-              <option value={l.code}>{l.name}</option>
-            {/each}
-          </select>
-          <p class="mt-2 text-sm text-gray-500">
-            Example: <span class="text-gray-400">{currentLocale.example}</span>
-          </p>
+          <label for="smtp-port" class={labelClass}> Port </label>
+          <input
+            id="smtp-port"
+            type="number"
+            bind:value={smtpPort}
+            placeholder="587"
+            class={fieldClass}
+          />
         </div>
       </div>
-    </SectionCard>
 
-    <SectionCard title="Email / SMTP">
-      <div class="space-y-4">
-        <p class="text-sm text-gray-400">
-          Configure SMTP settings for sending password reset emails.
-        </p>
-
-        <div
-          class="grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr))] gap-4"
-        >
-          <div>
-            <label for="smtp-host" class={labelClass}> SMTP Host </label>
-            <input
-              id="smtp-host"
-              type="text"
-              bind:value={smtpHost}
-              placeholder="smtp.example.com"
-              class={fieldClass}
-            />
-          </div>
-
-          <div>
-            <label for="smtp-port" class={labelClass}> Port </label>
-            <input
-              id="smtp-port"
-              type="number"
-              bind:value={smtpPort}
-              placeholder="587"
-              class={fieldClass}
-            />
-          </div>
+      <div class="grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr))] gap-4">
+        <div>
+          <label for="smtp-user" class={labelClass}> Username </label>
+          <input
+            id="smtp-user"
+            type="text"
+            bind:value={smtpUser}
+            placeholder="user@example.com"
+            class={fieldClass}
+          />
         </div>
 
-        <div
-          class="grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr))] gap-4"
-        >
-          <div>
-            <label for="smtp-user" class={labelClass}> Username </label>
-            <input
-              id="smtp-user"
-              type="text"
-              bind:value={smtpUser}
-              placeholder="user@example.com"
-              class={fieldClass}
-            />
-          </div>
-
-          <div>
-            <label for="smtp-password" class={labelClass}> Password </label>
-            <input
-              id="smtp-password"
-              type="password"
-              bind:value={smtpPassword}
-              placeholder="••••••••"
-              class={fieldClass}
-            />
-          </div>
-        </div>
-
-        <div
-          class="grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr))] gap-4"
-        >
-          <div>
-            <label for="smtp-from-address" class={labelClass}> From Address </label>
-            <input
-              id="smtp-from-address"
-              type="email"
-              bind:value={smtpFromAddress}
-              placeholder="noreply@example.com"
-              class={fieldClass}
-            />
-            <p class="mt-1 text-xs text-gray-500">Defaults to username if empty</p>
-          </div>
-
-          <div>
-            <label for="smtp-from-name" class={labelClass}> From Name </label>
-            <input
-              id="smtp-from-name"
-              type="text"
-              bind:value={smtpFromName}
-              placeholder="Artistack"
-              class={fieldClass}
-            />
-          </div>
-        </div>
-
-        <div
-          class="flex items-center justify-between rounded-lg border border-gray-700 bg-gray-800/50 px-4 py-3"
-        >
-          <div>
-            <p class="text-sm font-medium text-gray-300">Use TLS</p>
-            <p class="text-xs text-gray-500">Enable TLS encryption for SMTP connection</p>
-          </div>
-          <ToggleSwitch bind:checked={smtpTls} label="Toggle TLS encryption" size="md" hideLabel />
-        </div>
-
-        <div class="flex items-center gap-4">
-          <button
-            type="button"
-            onclick={handleTestSmtp}
-            disabled={!smtpHost || !smtpUser || !smtpPassword || smtpTestLoading}
-            class="rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {smtpTestLoading ? 'Testing...' : 'Test Connection'}
-          </button>
-
-          {#if smtpTestResult}
-            {#if smtpTestResult.success}
-              <span class="flex items-center gap-1.5 text-sm text-emerald-400">
-                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-                Connection successful
-              </span>
-            {:else}
-              <span class="flex items-center gap-1.5 text-sm text-red-400">
-                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-                {smtpTestResult.error || 'Connection failed'}
-              </span>
-            {/if}
-          {/if}
+        <div>
+          <label for="smtp-password" class={labelClass}> Password </label>
+          <input
+            id="smtp-password"
+            type="password"
+            bind:value={smtpPassword}
+            placeholder="••••••••"
+            class={fieldClass}
+          />
         </div>
       </div>
-    </SectionCard>
 
-    <SectionCard title="Favicon & PWA">
-      <div class="space-y-4">
-        <p class="text-sm text-gray-400">
-          Generate favicon and PWA icons from an image or text initials.
-        </p>
-
-        <div class="grid grid-cols-[auto_1fr] gap-6">
-          <div class="w-36">
-            <span class={labelClass}>Image</span>
-            <MediaPicker
-              value={selectedFaviconUrl}
-              label=""
-              media={data.media ?? []}
-              aspectRatio="1/1"
-              noCrop={true}
-              onselect={(url) => (selectedFaviconUrl = url)}
-            />
-          </div>
-
-          <div class="space-y-3" class:opacity-40={!!selectedFaviconUrl}>
-            <div>
-              <label for="favicon-text" class={labelClass}> Text </label>
-              <input
-                id="favicon-text"
-                type="text"
-                bind:value={faviconText}
-                disabled={!!selectedFaviconUrl}
-                placeholder={data.settings?.siteTitle || data.profile?.name || 'Site Title'}
-                class={fieldClass}
-              />
-              <p class="mt-1 text-sm text-gray-500">Leave empty to use site title.</p>
-            </div>
-
-            <div
-              class="grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr))] gap-4"
-            >
-              <div>
-                <label for="favicon-length" class={labelClass}> Initials </label>
-                <select
-                  id="favicon-length"
-                  bind:value={faviconLength}
-                  disabled={!!selectedFaviconUrl}
-                  class={fieldClass}
-                >
-                  <option value={1}>1 letter</option>
-                  <option value={2}>2 letters</option>
-                </select>
-              </div>
-
-              <div>
-                <label for="favicon-rounded" class={labelClass}> Shape </label>
-                <select
-                  id="favicon-rounded"
-                  bind:value={faviconRounded}
-                  disabled={!!selectedFaviconUrl}
-                  class={fieldClass}
-                >
-                  <option value={false}>Square</option>
-                  <option value={true}>Circle</option>
-                </select>
-              </div>
-            </div>
-          </div>
+      <div class="grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr))] gap-4">
+        <div>
+          <label for="smtp-from-address" class={labelClass}> From Address </label>
+          <input
+            id="smtp-from-address"
+            type="email"
+            bind:value={smtpFromAddress}
+            placeholder="noreply@example.com"
+            class={fieldClass}
+          />
+          <p class="mt-1 text-xs text-gray-500">Defaults to username if empty</p>
         </div>
 
-        <div class="flex items-center gap-4">
-          <button
-            type="button"
-            onclick={handleGenerateFavicon}
-            disabled={isGenerating}
-            class="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {#if isGenerating}
-              Generating...
-            {:else}
-              Generate Favicon
-            {/if}
-          </button>
+        <div>
+          <label for="smtp-from-name" class={labelClass}> From Name </label>
+          <input
+            id="smtp-from-name"
+            type="text"
+            bind:value={smtpFromName}
+            placeholder="Artistack"
+            class={fieldClass}
+          />
+        </div>
+      </div>
 
-          {#if faviconGenerated}
+      <div
+        class="flex items-center justify-between rounded-lg border border-gray-700 bg-gray-800/50 px-4 py-3"
+      >
+        <div>
+          <p class="text-sm font-medium text-gray-300">Use TLS</p>
+          <p class="text-xs text-gray-500">Enable TLS encryption for SMTP connection</p>
+        </div>
+        <ToggleSwitch bind:checked={smtpTls} label="Toggle TLS encryption" size="md" hideLabel />
+      </div>
+
+      <div class="flex items-center gap-4">
+        <button
+          type="button"
+          onclick={handleTestSmtp}
+          disabled={!smtpHost || !smtpUser || !smtpPassword || smtpTestLoading}
+          class="rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {smtpTestLoading ? 'Testing...' : 'Test Connection'}
+        </button>
+
+        {#if smtpTestResult}
+          {#if smtpTestResult.success}
             <span class="flex items-center gap-1.5 text-sm text-emerald-400">
               <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -416,40 +300,144 @@
                   d="M5 13l4 4L19 7"
                 />
               </svg>
-              Favicon generated
+              Connection successful
+            </span>
+          {:else}
+            <span class="flex items-center gap-1.5 text-sm text-red-400">
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+              {smtpTestResult.error || 'Connection failed'}
             </span>
           {/if}
-        </div>
-
-        {#if faviconGenerated}
-          {#key faviconCacheBust}
-            <div
-              class="flex items-center gap-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4"
-            >
-              <!-- shrink-0 or the previews collapse below their own width and
-                   the icons spill under the text beside them. -->
-              <div class="flex shrink-0 gap-2">
-                <img
-                  src="/favicon-32.png?v={faviconCacheBust}"
-                  alt="Favicon 32x32"
-                  class="h-8 w-8 rounded"
-                />
-                <img
-                  src="/icon-192.png?v={faviconCacheBust}"
-                  alt="Icon 192x192"
-                  class="h-8 w-8 rounded"
-                />
-              </div>
-              <div class="min-w-0 text-sm text-gray-400">
-                <p>
-                  Generated files: favicon.ico, apple-touch-icon.png, icon-192.png, icon-512.png
-                </p>
-                <p class="text-xs text-gray-500">PWA manifest available at /manifest.json</p>
-              </div>
-            </div>
-          {/key}
         {/if}
       </div>
-    </SectionCard>
-  </div>
+    </div>
+  </SectionCard>
+
+  <SectionCard title="Favicon & PWA">
+    <div class="space-y-4">
+      <p class="text-sm text-gray-400">
+        Generate favicon and PWA icons from an image or text initials.
+      </p>
+
+      <div class="grid grid-cols-[auto_1fr] gap-6">
+        <div class="w-36">
+          <span class={labelClass}>Image</span>
+          <MediaPicker
+            value={selectedFaviconUrl}
+            label=""
+            media={data.media ?? []}
+            aspectRatio="1/1"
+            noCrop={true}
+            onselect={(url) => (selectedFaviconUrl = url)}
+          />
+        </div>
+
+        <div class="space-y-3" class:opacity-40={!!selectedFaviconUrl}>
+          <div>
+            <label for="favicon-text" class={labelClass}> Text </label>
+            <input
+              id="favicon-text"
+              type="text"
+              bind:value={faviconText}
+              disabled={!!selectedFaviconUrl}
+              placeholder={data.settings?.siteTitle || data.profile?.name || 'Site Title'}
+              class={fieldClass}
+            />
+            <p class="mt-1 text-sm text-gray-500">Leave empty to use site title.</p>
+          </div>
+
+          <div
+            class="grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr))] gap-4"
+          >
+            <div>
+              <label for="favicon-length" class={labelClass}> Initials </label>
+              <select
+                id="favicon-length"
+                bind:value={faviconLength}
+                disabled={!!selectedFaviconUrl}
+                class={fieldClass}
+              >
+                <option value={1}>1 letter</option>
+                <option value={2}>2 letters</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="favicon-rounded" class={labelClass}> Shape </label>
+              <select
+                id="favicon-rounded"
+                bind:value={faviconRounded}
+                disabled={!!selectedFaviconUrl}
+                class={fieldClass}
+              >
+                <option value={false}>Square</option>
+                <option value={true}>Circle</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-4">
+        <button
+          type="button"
+          onclick={handleGenerateFavicon}
+          disabled={isGenerating}
+          class="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {#if isGenerating}
+            Generating...
+          {:else}
+            Generate Favicon
+          {/if}
+        </button>
+
+        {#if faviconGenerated}
+          <span class="flex items-center gap-1.5 text-sm text-emerald-400">
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+            Favicon generated
+          </span>
+        {/if}
+      </div>
+
+      {#if faviconGenerated}
+        {#key faviconCacheBust}
+          <div class="flex items-center gap-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4">
+            <!-- shrink-0 or the previews collapse below their own width and
+                   the icons spill under the text beside them. -->
+            <div class="flex shrink-0 gap-2">
+              <img
+                src="/favicon-32.png?v={faviconCacheBust}"
+                alt="Favicon 32x32"
+                class="h-8 w-8 rounded"
+              />
+              <img
+                src="/icon-192.png?v={faviconCacheBust}"
+                alt="Icon 192x192"
+                class="h-8 w-8 rounded"
+              />
+            </div>
+            <div class="min-w-0 text-sm text-gray-400">
+              <p>Generated files: favicon.ico, apple-touch-icon.png, icon-192.png, icon-512.png</p>
+              <p class="text-xs text-gray-500">PWA manifest available at /manifest.json</p>
+            </div>
+          </div>
+        {/key}
+      {/if}
+    </div>
+  </SectionCard>
 </div>

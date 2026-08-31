@@ -17,7 +17,7 @@ import { getSettings } from './settings';
  *
  * Two levels, matching the two roles:
  *   requireUser  — signed in at all. Content work: the page, media, clips.
- *   requireAdmin — the things that let you reach outside the band or change who
+ *   requireAdmin — the things that let you reach outside the act or change who
  *                  is in it: integration secrets, SMTP, site settings, users.
  *
  * requireFeature is the load-function counterpart, for sections that can be
@@ -54,7 +54,12 @@ export async function requireAdmin() {
 }
 
 /** Feature flags that gate a whole admin section. */
-type FeatureFlag = 'clipsEnabled' | 'releasesEnabled' | 'subscribersEnabled';
+type FeatureFlag =
+  | 'clipsEnabled'
+  | 'releasesEnabled'
+  | 'subscribersEnabled'
+  | 'pagesEnabled'
+  | 'showsEnabled';
 
 /**
  * Route guard for an optional section: signed in, and the feature switched on.
@@ -71,7 +76,7 @@ export async function requireFeature(request: Request, feature: FeatureFlag) {
 
   const siteSettings = await getSettings();
   if (!siteSettings?.[feature]) {
-    throw redirect(302, '/admin/integrations');
+    throw redirect(302, '/admin/settings/integrations');
   }
 
   return { user: session.user, settings: siteSettings };

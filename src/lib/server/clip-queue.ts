@@ -396,7 +396,7 @@ const COVERAGE_GRACE_MINUTES = 30;
 
 /**
  * How many platforms a release is expected to reach. A constant rather than a
- * setting: it changes when the band adds a platform to the posting workflow,
+ * setting: it changes when the act adds a platform to the posting workflow,
  * which is a code change anyway, not something to tune from the admin.
  */
 export const EXPECTED_PLATFORMS = 4;

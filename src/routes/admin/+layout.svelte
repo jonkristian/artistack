@@ -11,7 +11,7 @@
   import { editorPreview } from '$lib/stores/editorPreview.svelte';
   import { publishAllChanges, buildDraftFromServerData } from './publishDraft';
   import type { UnifiedDraftData } from './publishDraft';
-  import type { Link } from '$lib/server/schema';
+  import type { Link, Block } from '$lib/server/schema';
   import type { LayoutData } from './$types';
 
   let { children, data }: { children: any; data: LayoutData } = $props();
@@ -37,13 +37,71 @@
   /*
    * Per-section dirty indicators for nav dots.
    *
-   * Links are shared: a link belongs either to a block on the artist page or to
-   * a release, so the dot has to look at who owns the changed ones rather than
-   * at the collection as a whole. Otherwise editing a Spotify URL on a release
-   * lights up Dashboard.
+   * Everything a page is made of resolves to the page it's on: a block says so
+   * directly, and a link says which block it's on, so it resolves through that.
+   * Without this, editing anything at all lit whichever section happened to own
+   * the collection — the reason a Spotify URL on a release used to light up the
+   * front page.
+   *
+   * Shows aren't here. They belong to the site rather than to a page, so they
+   * light Shows wherever they're displayed.
+   *
+   * Compared per page as a whole rather than by walking the diff, because
+   * reordering is a change to a page too, and a diff reports that as one flag
+   * for the collection without saying which page moved.
    */
-  const changedLinkOwners = $derived.by(() => {
-    if (!draft.hasChanges('links')) return { block: false, release: false };
+  const changedPageIds = $derived.by(() => {
+    const snapBlocks = draft.getSnapshot<Block[]>('blocks') ?? [];
+    const snapLinks = draft.getSnapshot<Link[]>('links') ?? [];
+
+    const fingerprint = (blocks: Block[], links: Link[], pageId: number) => {
+      const onPage = blocks.filter((b) => b.pageId === pageId);
+      const blockIds = new Set(onPage.map((b) => b.id));
+      return JSON.stringify([
+        onPage,
+        links.filter((l) => l.blockId != null && blockIds.has(l.blockId))
+      ]);
+    };
+
+    // Both sides: a page can gain its first block or lose its last.
+    const candidates = new Set<number>();
+    for (const block of [...snapBlocks, ...draftData.blocks]) {
+      if (block.pageId != null) candidates.add(block.pageId);
+    }
+
+    const changed = new Set<number>();
+    for (const pageId of candidates) {
+      if (
+        fingerprint(snapBlocks, snapLinks, pageId) !==
+        fingerprint(draftData.blocks, draftData.links, pageId)
+      ) {
+        changed.add(pageId);
+      }
+    }
+    return changed;
+  });
+
+  const landingPageId = $derived(data.pages.find((p) => p.type === 'landing')?.id ?? null);
+  const customPageIds = $derived(
+    new Set(data.pages.filter((p) => p.type === 'custom').map((p) => p.id))
+  );
+
+  /*
+   * The profile belongs to the front page: it's what the profile block shows,
+   * and that block only exists there.
+   */
+  const homeDirty = $derived(
+    draft.hasChanges('profile') || (landingPageId != null && changedPageIds.has(landingPageId))
+  );
+  const showsDirty = $derived(draft.hasChanges('shows'));
+  const pagesDirty = $derived([...changedPageIds].some((id) => customPageIds.has(id)));
+
+  /*
+   * A release's links hang off the release, not off a block, so they never
+   * appear in a page's fingerprint and have to be counted separately.
+   */
+  const releaseLinksDirty = $derived.by(() => {
+    if (!draft.hasChanges('links')) return false;
 
     const diff = draft.computeCollectionDiff<Link>('links');
     const snapshot = draft.getSnapshot<Link[]>('links') ?? [];
@@ -53,20 +111,11 @@
       ...diff.deleted.map((id) => snapshot.find((l) => l.id === id))
     ].filter((l): l is Link => Boolean(l));
 
-    return {
-      block: touched.some((l) => l.releaseId == null),
-      release: touched.some((l) => l.releaseId != null)
-    };
+    return touched.some((l) => l.releaseId != null);
   });
 
-  const dashboardDirty = $derived(
-    draft.hasChanges('profile') ||
-      draft.hasChanges('blocks') ||
-      draft.hasChanges('tourDates') ||
-      changedLinkOwners.block
-  );
   const appearanceDirty = $derived(draft.hasChanges('appearance'));
-  const releasesDirty = $derived(draft.hasChanges('releases') || changedLinkOwners.release);
+  const releasesDirty = $derived(draft.hasChanges('releases') || releaseLinksDirty);
 
   // Local updating state for minimum spinner duration
   let isUpdating = $state(false);
@@ -96,25 +145,58 @@
    * and the nav is the only place they'd learn the page exists at all.
    *
    * Clips is separate: it's opt-in for everyone, not a matter of role.
+   *
+   * `group` splits the rail into three acts, separated by a rule: the
+   * overview, the things you make, and the site itself. Stats sits in the last
+   * of those rather than near the top — it's where you go for detail once the
+   * dashboard has told you something is worth looking at.
+   *
+   * Within the middle act: the two that are always there lead, so the top of
+   * the rail is in the same place on every site — order them the other way and
+   * the second item is Releases here, Clips there, Media somewhere else. The
+   * optional sections follow, and Pages comes last.
+   *
+   * Pages is off by default and last when it's on, because it's the remainder.
+   * Home, releases and the shop are pages too, but each is either the only one
+   * of its kind or a set worth its own section — which covers a music site
+   * entirely. What's left is the occasional about or contact, and a site with
+   * none of those shouldn't carry a section for them.
    */
   const navItems = $derived(
     [
-      { href: '/admin', label: 'Dashboard', icon: 'home' },
-      { href: '/admin/stats', label: 'Stats', icon: 'chart' },
-      { href: '/admin/media', label: 'Media', icon: 'image' },
+      { href: '/admin', label: 'Dashboard', icon: 'grid', group: 'overview' },
+      { href: '/admin/home', label: 'Home', icon: 'home', group: 'make' },
+      { href: '/admin/media', label: 'Media', icon: 'image', group: 'make' },
       ...(data.settings?.releasesEnabled
-        ? [{ href: '/admin/releases', label: 'Releases', icon: 'disc' }]
+        ? [{ href: '/admin/releases', label: 'Releases', icon: 'disc', group: 'make' }]
+        : []),
+      ...(data.settings?.showsEnabled
+        ? [{ href: '/admin/shows', label: 'Shows', icon: 'calendar', group: 'make' }]
         : []),
       ...(data.settings?.clipsEnabled
-        ? [{ href: '/admin/clips', label: 'Clips', icon: 'film' }]
+        ? [{ href: '/admin/clips', label: 'Clips', icon: 'film', group: 'make' }]
         : []),
       ...(data.settings?.subscribersEnabled
-        ? [{ href: '/admin/subscribers', label: 'Audience', icon: 'mail' }]
+        ? [{ href: '/admin/subscribers', label: 'Audience', icon: 'mail', group: 'make' }]
         : []),
-      { href: '/admin/appearance', label: 'Appearance', icon: 'palette', adminOnly: true },
-      { href: '/admin/integrations', label: 'Integrations', icon: 'plug', adminOnly: true },
-      { href: '/admin/users', label: 'Users', icon: 'users', adminOnly: true },
-      { href: '/admin/settings', label: 'Settings', icon: 'settings', adminOnly: true }
+      ...(data.settings?.pagesEnabled
+        ? [{ href: '/admin/pages', label: 'Pages', icon: 'document', group: 'make' }]
+        : []),
+      {
+        href: '/admin/appearance',
+        label: 'Appearance',
+        icon: 'palette',
+        group: 'site',
+        adminOnly: true
+      },
+      { href: '/admin/stats', label: 'Stats', icon: 'chart', group: 'site' },
+      {
+        href: '/admin/settings',
+        label: 'Settings',
+        icon: 'settings',
+        group: 'site',
+        adminOnly: true
+      }
     ].filter((item) => !item.adminOnly || data.user.role === 'admin')
   );
 
@@ -134,9 +216,22 @@
     );
   });
 
+  /**
+   * A section stays lit while you're inside it, the same way `pageLabel` keeps
+   * reporting the section from a nested route. Matching the path exactly would
+   * unlight the whole rail the moment you opened a page or a release.
+   *
+   * `/admin` is exact on purpose — every path starts with it.
+   */
+  function isNavActive(href: string): boolean {
+    return href === '/admin' ? currentPath === '/admin' : currentPath.startsWith(href);
+  }
+
   // Map nav hrefs to their dirty state
   function isNavDirty(href: string): boolean {
-    if (href === '/admin') return dashboardDirty;
+    if (href === '/admin/home') return homeDirty;
+    if (href === '/admin/shows') return showsDirty;
+    if (href === '/admin/pages') return pagesDirty;
     if (href === '/admin/appearance') return appearanceDirty;
     if (href === '/admin/releases') return releasesDirty;
     return false;
@@ -335,16 +430,29 @@
     <!-- Navigation -->
     <nav class="flex-1 p-3">
       <ul class="space-y-1">
-        {#each navItems as item (item.href)}
+        {#each navItems as item, i (item.href)}
+          {#if i > 0 && navItems[i - 1].group !== item.group}
+            <li class="mt-3! mb-2 border-t border-gray-800" aria-hidden="true"></li>
+          {/if}
           <li>
             <a
               href={item.href}
-              class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors {currentPath ===
-              item.href
+              class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors {isNavActive(
+                item.href
+              )
                 ? 'bg-gray-800 text-white'
                 : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'}"
             >
-              {#if item.icon === 'home'}
+              {#if item.icon === 'grid'}
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.5"
+                    d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
+                  />
+                </svg>
+              {:else if item.icon === 'home'}
                 <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     stroke-linecap="round"
@@ -407,22 +515,22 @@
                     d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"
                   />
                 </svg>
-              {:else if item.icon === 'plug'}
+              {:else if item.icon === 'calendar'}
                 <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
                     stroke-width="1.5"
-                    d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
                   />
                 </svg>
-              {:else if item.icon === 'users'}
+              {:else if item.icon === 'document'}
                 <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
                     stroke-width="1.5"
-                    d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                   />
                 </svg>
               {:else if item.icon === 'settings'}

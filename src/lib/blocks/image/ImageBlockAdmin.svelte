@@ -15,15 +15,10 @@
   const currentShape = $derived(config.shape ?? 'rounded');
 
   function handleSelect(url: string | null, shape?: Shape) {
-    // Only accept the shapes that ImageBlockConfig supports
-    const validShape =
-      shape && ['circle', 'rounded', 'square'].includes(shape)
-        ? (shape as 'circle' | 'rounded' | 'square')
-        : currentShape;
     block.config = {
       ...config,
       imageUrl: url ?? undefined,
-      shape: validShape
+      shape: shape ?? currentShape
     };
   }
 </script>
@@ -34,7 +29,7 @@
     label="Image"
     {media}
     aspectRatio="1/1"
-    shapes={['circle', 'rounded', 'square']}
+    aspects={['circle', 'square', 'portrait', 'landscape']}
     defaultShape={currentShape}
     onselect={handleSelect}
   />

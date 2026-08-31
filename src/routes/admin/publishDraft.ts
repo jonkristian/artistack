@@ -1,5 +1,5 @@
 import * as draft from '$lib/stores/pageDraft.svelte';
-import type { Profile, Block, Link, TourDate } from '$lib/server/schema';
+import type { Profile, Block, Link, Show } from '$lib/server/schema';
 import {
   addBlock as serverAddBlock,
   updateBlock as serverUpdateBlock,
@@ -9,9 +9,9 @@ import {
   updateLink as serverUpdateLink,
   deleteLink as serverDeleteLink,
   reorderLinks as serverReorderLinks,
-  createTourDate as serverCreateTourDate,
-  updateTourDate as serverUpdateTourDate,
-  deleteTourDate as serverDeleteTourDate,
+  createShow as serverCreateShow,
+  updateShow as serverUpdateShow,
+  deleteShow as serverDeleteShow,
   saveProfile as serverSaveProfile
 } from './data.remote';
 import { updateAppearance } from './appearance/data.remote';
@@ -35,7 +35,7 @@ export type UnifiedDraftData = {
   profile: Profile;
   blocks: Block[];
   links: Link[];
-  tourDates: TourDate[];
+  shows: ShowDraft[];
   appearance: AppearanceData;
   releases: ReleaseDraft[];
 };
@@ -51,6 +51,18 @@ export type UnifiedDraftData = {
  * compared by JSON round-trip — a Date would stringify differently after a
  * clone and read as dirty when nothing had changed.
  */
+/**
+ * A show and its line-up, flattened into one draft row.
+ *
+ * The join between shows and acts exists so running order can belong to the
+ * night rather than to either end of it; that isn't something the editor
+ * should carry, and keeping it out means one diff decides what to write to
+ * both tables.
+ */
+export type LineupEntry = { actId: number; setTime: string | null };
+
+export type ShowDraft = Show & { lineup: LineupEntry[] };
+
 export type ReleaseDraft = {
   id: number;
   pageId: number;
@@ -94,7 +106,7 @@ export function buildDraftFromServerData(data: {
   profile: Profile | null;
   blocks: Block[];
   links: Link[];
-  tourDates: TourDate[];
+  shows: ShowDraft[];
   releases?: {
     id: number;
     pageId: number;
@@ -126,7 +138,7 @@ export function buildDraftFromServerData(data: {
     profile: data.profile ?? ({ id: 1, name: 'Artist Name' } as Profile),
     blocks: data.blocks ?? [],
     links: data.links ?? [],
-    tourDates: data.tourDates ?? [],
+    shows: data.shows ?? [],
     releases: (data.releases ?? []).map((r) => ({
       ...r,
       published: r.published ?? false,
@@ -180,8 +192,14 @@ export async function publishAllChanges(draftData: UnifiedDraftData) {
     }
 
     for (const block of blockDiff.added) {
+      if (block.pageId == null) {
+        // The editor sets this from the page it's editing. Reaching the server
+        // without it would land the block on no page at all.
+        throw new Error('A new block arrived with no page to belong to.');
+      }
       const result = await serverAddBlock({
-        type: block.type as 'profile' | 'links' | 'tour_dates' | 'image' | 'gallery',
+        pageId: block.pageId,
+        type: block.type as 'profile' | 'links' | 'shows' | 'image' | 'gallery',
         label: block.label ?? undefined,
         config: block.config ?? undefined
       });
@@ -204,11 +222,27 @@ export async function publishAllChanges(draftData: UnifiedDraftData) {
     }
 
     if (blockDiff.reordered || blockDiff.added.length > 0) {
-      const reorderData = draftData.blocks
-        .map((b, i) => ({
-          id: b.id < 0 ? (blockIdMap.get(b.id) ?? b.id) : b.id,
-          position: i
-        }))
+      /*
+       * Numbered within each page rather than across the draft. The blocks of
+       * every page share one array here, so indexing the array itself would
+       * give the second page's first block a position after the first page's
+       * last — and reordering one page would renumber the others.
+       */
+      const byPage = new Map<number, Block[]>();
+      for (const block of draftData.blocks) {
+        if (block.pageId == null) continue;
+        const list = byPage.get(block.pageId);
+        if (list) list.push(block);
+        else byPage.set(block.pageId, [block]);
+      }
+
+      const reorderData = [...byPage.values()]
+        .flatMap((pageBlocks) =>
+          pageBlocks.map((b, i) => ({
+            id: b.id < 0 ? (blockIdMap.get(b.id) ?? b.id) : b.id,
+            position: i
+          }))
+        )
         .filter((b) => b.id > 0);
       await serverReorderBlocks(reorderData);
     }
@@ -275,27 +309,27 @@ export async function publishAllChanges(draftData: UnifiedDraftData) {
     }
   }
 
-  // --- Tour Dates ---
-  if (draft.hasChanges('tourDates')) {
-    const tdDiff = draft.computeCollectionDiff<TourDate>('tourDates');
+  // --- Shows ---
+  if (draft.hasChanges('shows')) {
+    const tdDiff = draft.computeCollectionDiff<ShowDraft>('shows');
 
-    const originalTourDates = draft.getSnapshot<TourDate[]>('tourDates') ?? [];
+    /*
+     * No block to reconcile against any more. A show outlives whatever was
+     * displaying it, so deleting one is unconditional — there's no cascade to
+     * have got there first — and creating one needs no owner.
+     */
     for (const id of tdDiff.deleted) {
-      // Skip tour dates whose block was already deleted (cascade-deleted by server)
-      const originalTd = originalTourDates.find((t) => t.id === id);
-      if (originalTd && deletedBlockIds.has(originalTd.blockId)) continue;
-      await serverDeleteTourDate(id);
+      await serverDeleteShow(id);
     }
 
     for (const td of tdDiff.added) {
-      const blockId = td.blockId < 0 ? (blockIdMap.get(td.blockId) ?? td.blockId) : td.blockId;
-      await serverCreateTourDate({
-        blockId,
+      await serverCreateShow({
         date: td.date,
-        time: td.time ?? undefined,
+        doorsTime: td.doorsTime ?? undefined,
         title: td.title ?? undefined,
         venue: td.venue,
-        lineup: td.lineup ?? undefined,
+        lineup: td.lineup,
+        imageUrl: td.imageUrl ?? undefined,
         ticketUrl: td.ticketUrl ?? undefined,
         eventUrl: td.eventUrl ?? undefined,
         soldOut: td.soldOut ?? false
@@ -305,21 +339,23 @@ export async function publishAllChanges(draftData: UnifiedDraftData) {
     for (const { id, changes } of tdDiff.updated) {
       const hasChanges =
         changes.date !== undefined ||
-        changes.time !== undefined ||
+        changes.doorsTime !== undefined ||
         changes.title !== undefined ||
         changes.venue !== undefined ||
         changes.lineup !== undefined ||
+        changes.imageUrl !== undefined ||
         changes.ticketUrl !== undefined ||
         changes.eventUrl !== undefined ||
         changes.soldOut !== undefined;
       if (hasChanges) {
-        await serverUpdateTourDate({
+        await serverUpdateShow({
           id,
           date: changes.date,
-          time: changes.time,
+          doorsTime: changes.doorsTime,
           title: changes.title,
           venue: changes.venue,
-          lineup: changes.lineup,
+          lineup: changes.lineup ?? undefined,
+          imageUrl: changes.imageUrl,
           ticketUrl: changes.ticketUrl,
           eventUrl: changes.eventUrl,
           soldOut: changes.soldOut ?? undefined

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Block, Media, ImageBlockConfig } from '$lib/server/schema';
-  import { shapeClasses } from '$lib/blocks/utils';
+  import { shapeClasses, shapeAspects } from '$lib/blocks/utils';
 
   let {
     block,
@@ -24,37 +24,45 @@
     }[alignment]
   );
 
+  /*
+   * Width only. Height used to be pinned to match — every size was a square
+   * box — so a portrait or landscape crop was cropped a second time by
+   * object-cover on the way in. The proportions come from the shape instead.
+   */
   const sizeClass = $derived(
     {
-      mini: 'h-16 w-16',
-      small: 'h-24 w-24',
-      medium: 'h-40 w-40',
-      large: 'h-56 w-56',
+      mini: 'w-16',
+      small: 'w-24',
+      medium: 'w-40',
+      large: 'w-56',
       full: 'w-full'
     }[size]
   );
 
-  const shapeClass = $derived(shapeClasses[shape] || 'rounded-2xl');
+  const shapeClass = $derived(shapeClasses[shape] ?? 'rounded-2xl');
+  const aspectClass = $derived(shapeAspects[shape] ?? 'aspect-square');
   const isFullWidth = $derived(size === 'full');
 </script>
 
 {#if config.imageUrl}
   <section class={isFullWidth ? '-mx-2 sm:-mx-6' : ''}>
     <div class="flex {alignmentClass}">
-      <div class="relative {sizeClass}">
+      <div class="relative {sizeClass} {aspectClass}">
         {#if showGlow}
           <div
             class="absolute -inset-4 blur-2xl {shape === 'circle' ? 'rounded-full' : ''}"
             style="background: var(--color-accent); opacity: 0.25"
           ></div>
         {/if}
+        <!-- Full width runs edge to edge, so it keeps its corners square and
+             loses the shadow — but it still uses the shape's proportions
+             rather than a hardcoded 16/9. -->
         <img
           src={config.imageUrl}
           alt=""
           class="relative h-full w-full {isFullWidth ? '' : shapeClass} object-cover {isFullWidth
             ? ''
             : 'shadow-lg'}"
-          style={isFullWidth ? 'aspect-ratio: 16/9' : ''}
         />
       </div>
     </div>

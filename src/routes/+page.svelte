@@ -1,14 +1,14 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import Default from '$lib/themes/Default.svelte';
-  import Simple from '$lib/themes/Simple.svelte';
+  import { resolveTheme } from '$lib/themes';
+  import SiteBackground from '$lib/pages/SiteBackground.svelte';
 
   let { data }: { data: PageData } = $props();
 
   const profile = $derived(data.profile);
   const settings = $derived(data.settings);
   const links = $derived(data.links);
-  const tourDates = $derived(data.tourDates);
+  const shows = $derived(data.shows);
   const blocks = $derived(data.blocks ?? []);
   const media = $derived(data.media ?? []);
 
@@ -18,15 +18,7 @@
     profile?.bio ?? `Check out ${profile?.name ?? 'this artist'} - links, music, and more.`
   );
 
-  // Layout components registry - add new layouts here
-  const layouts = {
-    default: Default,
-    simple: Simple
-  } as const;
-
-  const Layout = $derived(
-    layouts[(settings?.layout as keyof typeof layouts) ?? 'default'] ?? Default
-  );
+  const Layout = $derived(resolveTheme(settings?.layout));
 </script>
 
 <svelte:head>
@@ -56,7 +48,7 @@
 	"
 >
   {#if profile}
-    <Layout {profile} {settings} {links} {tourDates} {blocks} {media} />
+    <Layout {profile} {settings} {links} {shows} {blocks} {media} />
   {:else}
     <!-- Empty State -->
     <main

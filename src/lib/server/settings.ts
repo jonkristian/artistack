@@ -53,6 +53,8 @@ const features = v.object({
   pressKitMediaIds: v.array(v.number()),
   clips: v.boolean(),
   releases: v.boolean(),
+  pages: v.boolean(),
+  shows: v.boolean(),
   subscribers: v.boolean(),
   pixels: v.boolean()
 });
@@ -172,6 +174,8 @@ export const SETTING_KEYS = {
       pressKitMediaIds: [] as number[],
       clips: false,
       releases: false,
+      pages: false,
+      shows: false,
       subscribers: false,
       pixels: false
     }
@@ -395,6 +399,8 @@ export type Settings = SiteSettings &
     pressKitMediaIds: number[];
     clipsEnabled: boolean;
     releasesEnabled: boolean;
+    pagesEnabled: boolean;
+    showsEnabled: boolean;
     subscribersEnabled: boolean;
     pixelsEnabled: boolean;
   };
@@ -415,6 +421,8 @@ export async function getSettings(): Promise<Settings> {
     pressKitMediaIds: f.pressKitMediaIds,
     clipsEnabled: f.clips,
     releasesEnabled: f.releases,
+    pagesEnabled: f.pages,
+    showsEnabled: f.shows,
     subscribersEnabled: f.subscribers,
     pixelsEnabled: f.pixels
   };
@@ -452,6 +460,8 @@ const FIELD_ROUTES: Record<string, [SettingKey, string]> = {
   pressKitMediaIds: ['features', 'pressKitMediaIds'],
   clipsEnabled: ['features', 'clips'],
   releasesEnabled: ['features', 'releases'],
+  pagesEnabled: ['features', 'pages'],
+  showsEnabled: ['features', 'shows'],
   subscribersEnabled: ['features', 'subscribers'],
   pixelsEnabled: ['features', 'pixels'],
   // mail

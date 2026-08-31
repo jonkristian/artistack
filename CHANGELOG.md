@@ -1,5 +1,26 @@
-# 1.3.0 (30-08-2026)
+# 1.3.0 (31-08-2026)
 
+- Shows are their own section: a gig is a fact about the band, not something a block owns, so deleting a block no longer deletes the tour
+- Every show is edited on its own page, with a poster, tickets and a line-up
+- A line-up is a list of acts in running order, each with the time they're on — drag to reorder
+- Acts are real: one row per band, so the same act on three nights is one thing you can rename or give a logo to, and its logo shows in the line-up
+- Your own band is flagged as yours, and can't be deleted from under the shows it played
+- Acts are created, renamed and given logos from inside a show — there's no separate screen to visit first
+- Doors is its own field, distinct from when anyone plays; the show page only mentions doors when there is one, and takes the start from the first act
+- A show can have its own landing page, on a switch: on means visible, off means nobody can reach it, and the address survives being switched off
+- Show and release pages use the site's layout, so a change in Appearance reaches the things you send people to, not just the front page
+- The press kit no longer appears under a gig or a release — it's about the artist
+- Home is its own section again, so the dashboard is free to be an overview: what's coming, what's waiting on you, and thirty days of views
+- The navigation is three bands — the dashboard, the things you make, and the site itself — with Integrations and Users under Settings and Stats beside them
+- Ordinary pages are off by default: a music site is its front page, its releases and its shop
+- Custom pages render, so a page you create is a page people can reach
+- Fixed the crop tool baking black bars into every image whose shape didn't match the frame
+- Crops can be portrait or landscape, and rounding is a separate switch rather than one of the shapes
+- Editing a crop reopens the original with the frame you used, so a second pass no longer crops the crop
+- Cropped images are in the media library, so deleting a picture takes its crops with it instead of leaving files nothing can reach
+- Dates and times follow the language you picked, not the browser's — no more American dates or AM/PM on a Norwegian site
+- Fixed blocks being created with no page, and the front page rendering every block in the database
+- Fixed a show's line-up failing to save when it was the only thing changed
 - Release pages: give a single or album its own address, with buttons to every service it's on
 - Pages are addressed flat — thehow.band/i-will-be-me rather than a prefix — and reserved names are refused when you pick one
 - A release page shows a pre-save button until the release date passes, then platform buttons

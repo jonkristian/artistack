@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Media, MediaRole } from '$lib/server/schema';
-  import { ImageModal, type Shape } from '$lib/components/dialogs';
+  import { ImageModal, type Shape, type Aspect } from '$lib/components/dialogs';
   import { addMedia } from '../../../routes/admin/media/data.remote';
   import { invalidateAll } from '$app/navigation';
   import { toast } from '$lib/stores/toast.svelte';
@@ -23,7 +23,7 @@
     label: string;
     media: Media[];
     aspectRatio?: string;
-    shapes?: Shape[];
+    aspects?: Aspect[];
     defaultShape?: Shape;
     noCrop?: boolean;
     onselect?: (url: string | null, shape?: Shape) => void;
@@ -51,7 +51,7 @@
     label,
     media,
     aspectRatio = '16/9',
-    shapes = ['circle', 'rounded', 'square'],
+    aspects = ['circle', 'square', 'portrait', 'landscape'],
     defaultShape = 'rounded',
     noCrop = false,
     onselect,
@@ -67,6 +67,17 @@
   }: Props = $props();
 
   let pendingFile = $state<File | null>(null);
+  /*
+   * The library row a pending crop came from, so the crop can record it and
+   * Edit can go back to it later rather than reopening the crop.
+   */
+  let cropSourceId = $state<number | null>(null);
+  /*
+   * The frame to open the crop dialog with. Normally the caller's default, but
+   * editing an existing crop reopens the one it was made in — otherwise every
+   * edit started from scratch and you had to rebuild the crop you already had.
+   */
+  let editingShape = $state<Shape | null>(null);
   let originalFile = $state<File | null>(null);
   let uploading = $state(false);
   /** 0–1 while a chunked upload is in flight; null when the size didn't need chunking. */
@@ -113,6 +124,9 @@
   // clip studio's music picker shouldn't list stills.
   const filteredMedia = $derived(
     media.filter((m) => {
+      // Derivatives of things already here — offering them back would show
+      // the same picture twice, once cropped for something else.
+      if (m.role === 'crop') return false;
       if (excludeRoles.includes(m.role)) return false;
       if (m.mimeType.startsWith('video/')) return acceptsVideo;
       if (m.mimeType.startsWith('audio/')) return acceptsAudio;
@@ -139,10 +153,18 @@
    * Uploads to the server and records the row in the media library.
    * Callers own the `uploading` flag, since some of them wrap several uploads.
    */
-  async function uploadToLibrary(file: File): Promise<{ url: string; id: number } | null> {
+  async function uploadToLibrary(
+    file: File,
+    role?: 'crop',
+    sourceMediaId?: number,
+    cropShape?: Shape
+  ): Promise<{ url: string; id: number } | null> {
     try {
       const result = await uploadToServer(file, 'media', (f) => (uploadProgress = f));
       const added = await addMedia({
+        role,
+        sourceMediaId,
+        cropShape,
         filename: file.name,
         url: result.url,
         originalUrl: result.originalUrl,
@@ -219,6 +241,8 @@
     }
 
     originalFile = file;
+    cropSourceId = null;
+    editingShape = null;
     pendingFile = file;
   }
 
@@ -270,6 +294,10 @@
       const res = await fetch(item.url);
       const blob = await res.blob();
       const file = new File([blob], item.filename, { type: item.mimeType });
+      // Crop from the source picture, not from a crop of it: if this item is
+      // itself a crop, go back to what it came from.
+      cropSourceId = item.sourceMediaId ?? item.id;
+      editingShape = (item.cropShape as Shape | null) ?? null;
       pendingFile = file;
     } catch (err) {
       console.error('Failed to load image for cropping:', err);
@@ -292,13 +320,23 @@
     uploading = true;
 
     try {
-      // Keep the uncropped original in the library alongside the crop.
+      // Keep the uncropped original in the library alongside the crop, and
+      // use it as the crop's source so Edit can return to it.
+      let sourceId = cropSourceId ?? undefined;
       if (fileToAddToLibrary) {
-        await uploadToLibrary(fileToAddToLibrary);
+        const original = await uploadToLibrary(fileToAddToLibrary);
+        if (original) sourceId = original.id;
       }
 
-      const { url } = await uploadToServer(croppedFile, 'cropped');
-      if (onselect) onselect(url, selectedShape);
+      /*
+       * Through the library, not straight to disk. A crop used to be written
+       * as a file nothing had a row for, so nothing could find it again:
+       * deleting the original left it behind, and replacing a cover orphaned
+       * the one before it. It's a row now, marked `crop` so it stays out of
+       * the way.
+       */
+      const added = await uploadToLibrary(croppedFile, 'crop', sourceId, selectedShape);
+      if (added && onselect) onselect(added.url, selectedShape);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Upload failed');
     } finally {
@@ -310,16 +348,35 @@
   function handleCropCancel() {
     pendingFile = null;
     originalFile = null;
+    cropSourceId = null;
+    editingShape = null;
   }
 
   function handleRemove() {
     if (onselect) onselect(null);
   }
 
+  /**
+   * Reopens the picture the current one was cropped from, not the crop.
+   *
+   * Editing the crop meant every pass cropped a crop — losing a little more
+   * quality each time, and permanently, since whatever had been trimmed was no
+   * longer in the file being reopened.
+   */
   async function handleEdit() {
     if (!value) return;
+
+    const current = media.find((m) => m.url === value);
+    const source = current?.sourceMediaId
+      ? media.find((m) => m.id === current.sourceMediaId)
+      : undefined;
+
+    cropSourceId = source?.id ?? current?.sourceMediaId ?? current?.id ?? null;
+    editingShape = (current?.cropShape as Shape | null) ?? null;
+    const target = source?.url ?? value;
+
     try {
-      const res = await fetch(value);
+      const res = await fetch(target);
       const blob = await res.blob();
       const file = new File([blob], 'edit.jpg', { type: blob.type });
       pendingFile = file;
@@ -378,13 +435,19 @@
             </div>
           {:else}
             <div class="flex gap-2">
-              <button
-                type="button"
-                onclick={handleEdit}
-                class="rounded bg-violet-600 px-3 py-1.5 text-sm font-medium text-white"
-              >
-                Edit
-              </button>
+              <!-- Nothing to edit where nothing is cropped: a poster or a clip
+                   goes in as it is, so Edit would open a crop tool whose
+                   result this picker has nowhere to keep. Replace it or remove
+                   it instead. -->
+              {#if !noCrop}
+                <button
+                  type="button"
+                  onclick={handleEdit}
+                  class="rounded bg-violet-600 px-3 py-1.5 text-sm font-medium text-white"
+                >
+                  Edit
+                </button>
+              {/if}
               <button
                 type="button"
                 onclick={() => {
@@ -684,8 +747,8 @@
 {#if !multiple}
   <ImageModal
     file={pendingFile}
-    {shapes}
-    {defaultShape}
+    {aspects}
+    defaultShape={editingShape ?? defaultShape}
     onconfirm={handleCropConfirm}
     oncancel={handleCropCancel}
   />

@@ -5,134 +5,232 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1787476361043,
+      "when": 1700000000000,
       "tag": "0000_baseline_pre_clips",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "6",
-      "when": 1787476370921,
+      "when": 1700000001000,
       "tag": "0001_clips_and_tags",
       "breakpoints": true
     },
     {
       "idx": 2,
       "version": "6",
-      "when": 1787566934714,
+      "when": 1700000002000,
       "tag": "0002_clips_discord_webhook",
       "breakpoints": true
     },
     {
       "idx": 3,
       "version": "6",
-      "when": 1787567690186,
+      "when": 1700000003000,
       "tag": "0003_clip_posts",
       "breakpoints": true
     },
     {
       "idx": 4,
       "version": "6",
-      "when": 1787570396597,
+      "when": 1700000004000,
       "tag": "0004_preview_expiry",
       "breakpoints": true
     },
     {
       "idx": 5,
       "version": "6",
-      "when": 1787573780141,
+      "when": 1700000005000,
       "tag": "0005_clip_published_webhook",
       "breakpoints": true
     },
     {
       "idx": 6,
       "version": "6",
-      "when": 1787582273353,
+      "when": 1700000006000,
       "tag": "0006_publish_coverage",
       "breakpoints": true
     },
     {
       "idx": 7,
       "version": "6",
-      "when": 1787583114276,
+      "when": 1700000007000,
       "tag": "0007_user_invites",
       "breakpoints": true
     },
     {
       "idx": 8,
       "version": "6",
-      "when": 1787585236710,
+      "when": 1700000008000,
       "tag": "0008_drop_expected_platforms",
       "breakpoints": true
     },
     {
       "idx": 9,
       "version": "6",
-      "when": 1787585912735,
+      "when": 1700000009000,
       "tag": "0009_announced_at",
       "breakpoints": true
     },
     {
       "idx": 10,
       "version": "6",
-      "when": 1787595437230,
+      "when": 1700000010000,
       "tag": "0010_scheduled_release",
       "breakpoints": true
     },
     {
       "idx": 11,
       "version": "6",
-      "when": 1788081587549,
+      "when": 1700000011000,
       "tag": "0011_releases",
       "breakpoints": true
     },
     {
       "idx": 12,
       "version": "6",
-      "when": 1788086278829,
+      "when": 1700000012000,
       "tag": "0012_typed_pages",
       "breakpoints": true
     },
     {
       "idx": 13,
       "version": "6",
-      "when": 1788086278829,
+      "when": 1700000013000,
       "tag": "0013_releases_enabled",
       "breakpoints": true
     },
     {
       "idx": 14,
       "version": "6",
-      "when": 1788087137643,
+      "when": 1700000014000,
       "tag": "0014_release_cover_url",
       "breakpoints": true
     },
     {
       "idx": 15,
       "version": "6",
-      "when": 1788090295600,
+      "when": 1700000015000,
       "tag": "0015_subscribers",
       "breakpoints": true
     },
     {
       "idx": 16,
       "version": "6",
-      "when": 1788092284121,
+      "when": 1700000016000,
       "tag": "0016_link_click_device",
       "breakpoints": true
     },
     {
       "idx": 17,
       "version": "6",
-      "when": 1788096120604,
+      "when": 1700000017000,
       "tag": "0017_provider_config_to_settings",
       "breakpoints": true
     },
     {
       "idx": 18,
       "version": "6",
-      "when": 1788096278670,
+      "when": 1700000018000,
       "tag": "0018_ad_pixels",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1700000019000,
+      "tag": "0019_split_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1700000020000,
+      "tag": "0020_settings_key_value",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1700000021000,
+      "tag": "0021_split_settings_by_subject",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1700000022000,
+      "tag": "0022_fix_favicon_generated_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1700000023000,
+      "tag": "0023_shows_without_blocks",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1700000024000,
+      "tag": "0024_show_image_and_lineup",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1700000025000,
+      "tag": "0025_bands",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1700000026000,
+      "tag": "0026_bands_become_acts",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1700000027000,
+      "tag": "0027_act_set_time",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1700000028000,
+      "tag": "0028_show_pages",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1700000029000,
+      "tag": "0029_media_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1700000030000,
+      "tag": "0030_crop_shape",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1700000031000,
+      "tag": "0031_show_doors_time",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1700000032000,
+      "tag": "0032_drop_show_time",
       "breakpoints": true
     }
   ]

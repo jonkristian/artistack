@@ -1,11 +1,61 @@
-<script lang="ts">
-  import { onDestroy } from 'svelte';
+<script lang="ts" module>
+  /**
+   * The frame a crop is taken in.
+   *
+   * Proportions and corners are separate choices, so they're separate controls:
+   * one list of both made 'square' and 'rounded' look like alternatives, when a
+   * square is rounded or it isn't. They're still emitted as a single `Shape`,
+   * because that's what callers store and render from.
+   *
+   * In a module script because these are exported — an `export function` in an
+   * instance script is a component accessor, not a module export.
+   */
+  export type Shape =
+    | 'circle'
+    | 'rounded'
+    | 'square'
+    | 'portrait'
+    | 'portrait-rounded'
+    | 'wide'
+    | 'wide-rounded';
 
-  export type Shape = 'circle' | 'rounded' | 'square' | 'wide' | 'wide-rounded';
+  /** What proportions the crop is taken in. */
+  export type Aspect = 'circle' | 'square' | 'portrait' | 'landscape';
+
+  export function toShape(aspect: Aspect, rounded: boolean): Shape {
+    if (aspect === 'circle') return 'circle';
+    if (aspect === 'square') return rounded ? 'rounded' : 'square';
+    if (aspect === 'portrait') return rounded ? 'portrait-rounded' : 'portrait';
+    return rounded ? 'wide-rounded' : 'wide';
+  }
+
+  export function fromShape(shape: Shape): { aspect: Aspect; rounded: boolean } {
+    switch (shape) {
+      case 'circle':
+        return { aspect: 'circle', rounded: true };
+      case 'rounded':
+        return { aspect: 'square', rounded: true };
+      case 'square':
+        return { aspect: 'square', rounded: false };
+      case 'portrait':
+        return { aspect: 'portrait', rounded: false };
+      case 'portrait-rounded':
+        return { aspect: 'portrait', rounded: true };
+      case 'wide':
+        return { aspect: 'landscape', rounded: false };
+      case 'wide-rounded':
+        return { aspect: 'landscape', rounded: true };
+    }
+  }
+</script>
+
+<script lang="ts">
+  import { onDestroy, untrack } from 'svelte';
+  import ToggleSwitch from '$lib/components/ui/ToggleSwitch.svelte';
 
   interface Props {
     file: File | null;
-    shapes?: Shape[];
+    aspects?: Aspect[];
     defaultShape?: Shape;
     onconfirm: (croppedFile: File, shape: Shape) => void;
     oncancel: () => void;
@@ -13,34 +63,48 @@
 
   let {
     file,
-    shapes = ['circle', 'rounded', 'square'],
+    aspects = ['circle', 'square', 'portrait', 'landscape'],
     defaultShape = 'rounded',
     onconfirm,
     oncancel
   }: Props = $props();
 
-  let shape = $derived<Shape>(defaultShape);
+  /*
+   * Read once. The effect below re-seeds both whenever a new file arrives,
+   * which is the only time the starting frame should change — reacting to the
+   * prop as well would reset the frame mid-crop.
+   */
+  let aspect = $state<Aspect>(untrack(() => fromShape(defaultShape).aspect));
+  let rounded = $state(untrack(() => fromShape(defaultShape).rounded));
 
-  // Determine aspect from shape
-  const isWideShape = $derived(shape === 'wide' || shape === 'wide-rounded');
+  // A circle is round by definition, so the toggle has nothing to say about it.
+  const shape = $derived<Shape>(toShape(aspect, aspect === 'circle' ? true : rounded));
+
+  /*
+   * What gets written, per shape. Bigger than the frame on screen, which is
+   * only a viewport — the file should stand up on a retina display and as a
+   * share image.
+   */
+  const OUTPUT_SIZES: Record<Aspect, { w: number; h: number }> = {
+    circle: { w: 512, h: 512 },
+    square: { w: 512, h: 512 },
+    portrait: { w: 1024, h: 1280 },
+    landscape: { w: 1280, h: 720 }
+  };
 
   const shapeClass = $derived(
-    shape === 'circle'
-      ? 'rounded-full'
-      : shape === 'rounded'
-        ? 'rounded-3xl'
-        : shape === 'wide-rounded'
-          ? 'rounded-xl'
-          : 'rounded-none'
+    aspect === 'circle' ? 'rounded-full' : rounded ? 'rounded-2xl' : 'rounded-none'
   );
 
-  // Shape button config
-  const shapeConfig: Record<Shape, { label: string; class: string }> = {
-    circle: { label: 'Circle', class: 'h-5 w-5 rounded-full' },
-    rounded: { label: 'Rounded', class: 'h-5 w-5 rounded-lg' },
-    square: { label: 'Square', class: 'h-5 w-5' },
-    wide: { label: 'Wide', class: 'h-4 w-7' },
-    'wide-rounded': { label: 'Wide rounded', class: 'h-4 w-7 rounded' }
+  /*
+   * Each icon is the shape it selects, exaggerated a little so square and
+   * portrait aren't a two-pixel difference at this size.
+   */
+  const aspectConfig: Record<Aspect, { label: string; class: string }> = {
+    circle: { label: 'Circle', class: 'h-4 w-4 rounded-full' },
+    square: { label: 'Square', class: 'h-4 w-4 rounded-[2px]' },
+    portrait: { label: 'Portrait', class: 'h-5 w-3.5 rounded-[2px]' },
+    landscape: { label: 'Landscape', class: 'h-3 w-5 rounded-[2px]' }
   };
 
   let dialogEl: HTMLDialogElement;
@@ -64,9 +128,20 @@
   let initialOffsetX = 0;
   let initialOffsetY = 0;
 
-  // Crop dimensions based on shape - use functions to get current values
-  const getCropWidth = () => (shape === 'wide' || shape === 'wide-rounded' ? 320 : 280);
-  const getCropHeight = () => (shape === 'wide' || shape === 'wide-rounded' ? 180 : 280);
+  /*
+   * The frame's proportions, per shape. Landscape and portrait are both normal
+   * for a poster or a banner — a square-only crop meant choosing which half of
+   * a wide photo to lose.
+   */
+  const CROP_SIZES: Record<Aspect, { w: number; h: number }> = {
+    circle: { w: 280, h: 280 },
+    square: { w: 280, h: 280 },
+    portrait: { w: 224, h: 280 },
+    landscape: { w: 320, h: 180 }
+  };
+
+  const getCropWidth = () => CROP_SIZES[aspect].w;
+  const getCropHeight = () => CROP_SIZES[aspect].h;
   const CROP_WIDTH = $derived(getCropWidth());
   const CROP_HEIGHT = $derived(getCropHeight());
   const MIN_SCALE = 1;
@@ -85,7 +160,9 @@
       scale = 1;
       offsetX = 0;
       offsetY = 0;
-      shape = defaultShape;
+      const initial = fromShape(defaultShape);
+      aspect = initial.aspect;
+      rounded = initial.rounded;
       dialogEl?.showModal();
     }
   });
@@ -95,22 +172,35 @@
     if (imageUrl) URL.revokeObjectURL(imageUrl);
   });
 
-  // Handle shape change - called directly from button click
-  function selectShape(newShape: Shape) {
-    if (newShape === shape) return;
-    shape = newShape;
-    // Reset scale/offset to fit in new dimensions if image is loaded
+  /**
+   * Changing proportions re-fits the image, since the frame it has to fill is
+   * a different shape. Rounding doesn't — it's only the corners.
+   */
+  function selectAspect(next: Aspect) {
+    if (next === aspect) return;
+    aspect = next;
     if (loaded && naturalWidth && naturalHeight) {
-      // Use setTimeout to let derived values update first
+      // Let the derived crop dimensions update before measuring against them.
       setTimeout(() => resetToFit(), 0);
     }
   }
 
-  // Function to reset scale/offset to fit image in crop area
+  /**
+   * Start with the crop frame filled, not with the whole image inside it.
+   *
+   * `Math.max` is cover; `Math.min` was contain, which left the rest of the
+   * canvas untouched. Nothing paints a background, so that empty area is
+   * transparent — and transparency flattens to black the moment it's written
+   * as JPEG. A landscape photo cropped square came back with black bars baked
+   * into the file.
+   *
+   * Cropping is for choosing part of an image. Keeping all of it is what
+   * `noCrop` is for.
+   */
   function resetToFit() {
     const scaleX = CROP_WIDTH / naturalWidth;
     const scaleY = CROP_HEIGHT / naturalHeight;
-    scale = Math.min(scaleX, scaleY);
+    scale = Math.max(scaleX, scaleY);
 
     const scaledWidth = naturalWidth * scale;
     const scaledHeight = naturalHeight * scale;
@@ -186,11 +276,11 @@
     const centerX = (CROP_WIDTH / 2 - offsetX) / scale;
     const centerY = (CROP_HEIGHT / 2 - offsetY) / scale;
 
-    // Clamp scale - allow fitting full image
+    // Can't zoom out past a filled frame, or the gap becomes black on save.
     const minScaleX = CROP_WIDTH / naturalWidth;
     const minScaleY = CROP_HEIGHT / naturalHeight;
-    const minScaleToFit = Math.min(minScaleX, minScaleY);
-    newScale = Math.max(minScaleToFit, Math.min(MAX_SCALE, newScale));
+    const minScaleToCover = Math.max(minScaleX, minScaleY);
+    newScale = Math.max(minScaleToCover, Math.min(MAX_SCALE, newScale));
 
     // Update scale
     scale = newScale;
@@ -225,9 +315,7 @@
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Output size based on shape
-    const outputWidth = isWideShape ? 1280 : 512;
-    const outputHeight = isWideShape ? 720 : 512;
+    const { w: outputWidth, h: outputHeight } = OUTPUT_SIZES[aspect];
     canvas.width = outputWidth;
     canvas.height = outputHeight;
 
@@ -330,23 +418,35 @@
     </div>
 
     <!-- Shape selector -->
-    {#if shapes.length > 1}
-      <div class="mt-4 flex justify-center gap-2">
-        {#each shapes as opt (opt)}
-          {@const config = shapeConfig[opt]}
-          <button
-            type="button"
-            onclick={() => selectShape(opt)}
-            class="flex h-10 w-10 items-center justify-center rounded-lg transition-colors {shape ===
-            opt
-              ? 'bg-violet-600 text-white'
-              : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}"
-            aria-label={config.label}
-            title={config.label}
-          >
-            <div class="{config.class} border-2 border-current"></div>
-          </button>
-        {/each}
+    {#if aspects.length > 1}
+      <div class="mt-5 flex flex-wrap items-center justify-center gap-4">
+        <!-- A segmented control: these are four values of one property, so
+             they share a track rather than floating as separate buttons. -->
+        <div class="flex items-center gap-1 rounded-lg bg-gray-800 p-1">
+          {#each aspects as opt (opt)}
+            {@const config = aspectConfig[opt]}
+            <button
+              type="button"
+              onclick={() => selectAspect(opt)}
+              class="flex h-8 w-8 items-center justify-center rounded-md transition-colors {aspect ===
+              opt
+                ? 'bg-violet-600 text-white'
+                : 'text-gray-500 hover:bg-gray-700 hover:text-gray-200'}"
+              aria-label={config.label}
+              aria-pressed={aspect === opt}
+              title={config.label}
+            >
+              <div class="{config.class} border-2 border-current"></div>
+            </button>
+          {/each}
+        </div>
+
+        <!-- Rounding is a different property, so it gets the switch the rest of
+             the admin uses rather than a fifth thing that looks like an aspect.
+             Absent for a circle, which has nothing to round. -->
+        {#if aspect !== 'circle'}
+          <ToggleSwitch checked={rounded} label="Rounded" onchange={(v) => (rounded = v)} />
+        {/if}
       </div>
     {/if}
 

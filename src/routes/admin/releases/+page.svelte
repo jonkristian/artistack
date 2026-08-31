@@ -1,10 +1,11 @@
 <script lang="ts">
   import { fieldClass, labelClass, tileGridClass } from '$lib/utils/classes';
   import { goto, invalidateAll } from '$app/navigation';
+  import { page } from '$app/stores';
   import { toast } from '$lib/stores/toast.svelte';
   import { slugify } from '$lib/utils/slug';
   import { SectionCard } from '$lib/components/cards';
-  import { LibraryToolbar, SelectCheckbox } from '$lib/components/ui';
+  import { LibraryToolbar, SelectCheckbox, DateTimePicker } from '$lib/components/ui';
   import { Selection } from '$lib/utils/selection.svelte';
   import * as draft from '$lib/stores/pageDraft.svelte';
   import { buildDraftFromServerData, fromDateInput, type UnifiedDraftData } from '../publishDraft';
@@ -15,7 +16,13 @@
 
   let { data }: { data: PageData } = $props();
 
-  let creating = $state(false);
+  /*
+   * Opened by ?new=1 so the dashboard's "New release" lands on the form rather
+   * than on the list with the form still shut. Read once, not as an effect: it
+   * describes how you arrived, and shouldn't reopen the form if you close it
+   * and the URL hasn't changed.
+   */
+  let creating = $state($page.url.searchParams.get('new') === '1');
   let saving = $state(false);
   let title = $state('');
   let releaseDate = $state('');
@@ -183,13 +190,13 @@
               />
             </div>
             <div>
-              <label class={labelClass} for="release-date">Release date</label>
-              <input
-                id="release-date"
-                type="date"
-                class={fieldClass}
-                bind:value={releaseDate}
-                required
+              <span class={labelClass}>Release date</span>
+              <DateTimePicker
+                mode="date"
+                compact
+                value={releaseDate}
+                locale={data.settings?.locale || 'nb-NO'}
+                onchange={(v) => (releaseDate = v)}
               />
             </div>
           </div>
