@@ -71,10 +71,10 @@ export async function renderEmail(input: {
   /**
    * The line an inbox shows beside the subject.
    *
-   * Without one, clients scrape the first readable text and you get "THE HOW
-   * Thank you Order AS-…" as the preview. Neither project had this; it's the
-   * cheapest thing you can do to make a message look like it was written on
-   * purpose.
+   * Without one, clients scrape the first readable text and you get the site
+   * name, then "Thank you", then the order reference, run together as the
+   * preview. It's the cheapest thing you can do to make a message look like it
+   * was written on purpose.
    */
   preview?: string;
   body: string;

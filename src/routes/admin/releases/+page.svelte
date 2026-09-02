@@ -187,7 +187,7 @@
                 id="release-title"
                 class={fieldClass}
                 bind:value={title}
-                placeholder="I Will Be Me"
+                placeholder="Your next single"
                 required
               />
             </div>

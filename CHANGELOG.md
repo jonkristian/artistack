@@ -3,9 +3,8 @@
 - Shows are their own section: a gig is a fact about the band, not something a block owns, so deleting a block no longer deletes the tour
 - Every show is edited on its own page, with a poster, tickets and a line-up
 - A line-up is a list of acts in running order, each with the time they're on — drag to reorder
-- Acts are real: one row per band, so the same act on three nights is one thing you can rename or give a logo to, and its logo shows in the line-up
+- Acts are real: one row per band, so the same act on three nights is one thing you can rename or give a logo to, and its logo shows in the line-up — all edited from inside a show, with no separate screen to visit first
 - Your own band is flagged as yours, and can't be deleted from under the shows it played
-- Acts are created, renamed and given logos from inside a show — there's no separate screen to visit first
 - Doors is its own field, distinct from when anyone plays; the show page only mentions doors when there is one, and takes the start from the first act
 - A show can have its own landing page, on a switch: on means visible, off means nobody can reach it, and the address survives being switched off
 - Show and release pages use the site's layout, so a change in Appearance reaches the things you send people to, not just the front page
@@ -16,7 +15,6 @@
 - Custom pages render, so a page you create is a page people can reach
 - Shop: sell records, shirts and downloads from your own site, with stock on the things that run out
 - The basket and the whole checkout live in a panel over whatever you're reading, reached from a floating count that only appears once something is in it — buying a shirt never navigates you away from the page you came for
-- Closing the order confirmation dismisses it for good, rather than having it reappear on the next click or reload
 - Products are shown as a cover with the name and price over it, with a details button for sizes and pressing notes
 - A shop block chooses two, three or four products per row; phones always show two, because a name laid over an 80px tile can't be read
 - Products are tagged with the same vocabulary clips and media already share, rather than a category of their own — so a shop block can show just the records or just the shirts, and "what is tagged merch" means one thing across the site
@@ -25,10 +23,8 @@
 - Buyers can be added to the fan list from checkout, with a plain opt-out beside the email field. Only once a payment actually goes through, and never for someone who has unsubscribed before
 - Options: a product can come in sizes, colours or formats, each with its own stock, so you sell out of one without touching the rest. You name what varies, and the buyer is asked for it by that name — chosen in the product's details, carried through the basket, and printed on the order and the receipt
 - The basket opens as a window above the button rather than a full-height sidebar, and is a sheet up from the bottom on a phone
-- Fixed the basket panel drawing with no colours at all: it's painted by the layout, and the site's palette was declared inside the page, so nothing it drew alongside the page could see it. The palette is declared once now, and panels are lifted off the page with an edge rather than a card colour that a theme is free to make identical to its background
 - Appearance warns when a colour is too faint to read against the background, and says nothing otherwise. Only text, muted text and the accent: how far a panel sits from the page is a style choice, not a mistake
 - Button text is now black or white depending on how light the Accent is, on the site and in emails alike, instead of always white: a pale accent used to give you white on white
-- The Card colour is labelled Panels, which is what it actually paints
 - Payment goes through Vipps or PayPal. Vipps needs a registered company at their end; PayPal's sandbox needs nothing but a PayPal login, so the whole checkout can be walked before you have a merchant account anywhere
 - Money is reserved when someone buys and taken when you post the parcel; a download is charged and handed over straight away
 - Downloads arrive on an unguessable link that stops working if the order is refunded
@@ -44,18 +40,13 @@
 - A file someone has to pay for is no longer served from /uploads, so the download link is the only way to reach it
 - A Shop block, so a few things for sale can sit on the front page or any other — it draws the shop rather than keeping a second list
 - A test checkout that takes no money, for walking the shop before you have a payment account: the order, the stock and the receipt are real, only the money is imaginary
-- Fixed the editor preview hiding blocks that depend on a feature — the sign-up form was invisible there even with the fan list on — and formatting prices and dates in the wrong language
-- Fixed the sign-up block failing to save: the list of block types the server accepts was a second copy that had drifted, and it never gained the sign-up block. It's derived from the registry now, so a block that exists can always be added
-- Fixed the views chart's readout being black on a dark page. Its styles lived on the stats page, so the dashboard never got them; they belong to the chart and moved there with it. Hovering a day now shows that day's count on both screens
 - Fixed the crop tool baking black bars into every image whose shape didn't match the frame
 - Crops can be portrait or landscape, and rounding is a separate switch rather than one of the shapes
 - Editing a crop reopens the original with the frame you used, so a second pass no longer crops the crop
 - Cropped images are in the media library, so deleting a picture takes its crops with it instead of leaving files nothing can reach
 - Dates and times follow the language you picked, not the browser's — no more American dates or AM/PM on a Norwegian site. Releases, Audience and the views chart were still ignoring it and now don't
-- Fixed blocks being created with no page, and the front page rendering every block in the database
-- Fixed a show's line-up failing to save when it was the only thing changed
 - Release pages: give a single or album its own address, with buttons to every service it's on
-- Pages are addressed flat — thehow.band/i-will-be-me rather than a prefix — and reserved names are refused when you pick one
+- Pages are addressed flat — yoursite.com/a-release rather than behind a prefix — and reserved names are refused when you pick one
 - A release page shows a pre-save button until the release date passes, then platform buttons
 - Cover art is the link preview, so pasting a release into Discord or WhatsApp shows the sleeve without setting anything up
 - Clicks are counted per platform, with device and country, and shown on the release itself
@@ -75,7 +66,6 @@
 - Fixed platform names reading as Apple_music and Youtube
 - Fixed the first-run setup card appearing on a site that was already set up
 - Adding a streaming link now offers only services you can listen on, not ticketing or social
-- Settings are stored one per row, so a new setting no longer needs a database change
 
 # 1.2.0 (25-08-2026)
 

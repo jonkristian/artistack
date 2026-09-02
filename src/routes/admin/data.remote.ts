@@ -681,7 +681,7 @@ export const setShowPage = command(
 /**
  * Created from wherever an act is first needed, which in practice is halfway
  * through entering a gig. An existing name returns the existing row rather
- * than failing: two people typing "The How" mean the same act, and the unique
+ * than failing: two people typing the same band's name mean the same act, and the unique
  * index would reject the second anyway.
  */
 export const createAct = command(

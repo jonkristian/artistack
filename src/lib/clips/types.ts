@@ -11,7 +11,7 @@ export interface TimedCaption {
   start: number;
   end: number;
   text: string;
-  /** Big and centred instead of lower-third (thehow's `!` prefix). */
+  /** Big and centred instead of lower-third — the `!` prefix in a caption. */
   headline?: boolean;
 }
 
