@@ -2,7 +2,9 @@ import { requireAdmin } from '$lib/server/guards';
 import {
   updateDiscordSettings as saveDiscordSettings,
   updateClipSettings as saveClipSettings,
-  updateClipPublishingSettings as savePublishing
+  updateClipPublishingSettings as savePublishing,
+  getSetting,
+  setSetting
 } from '$lib/server/settings';
 import * as v from 'valibot';
 import { command } from '$app/server';
@@ -205,3 +207,70 @@ export const testDiscordWebhook = command(testWebhookSchema, async (data) => {
     return { success: false, message: 'Failed to send test message' };
   }
 });
+
+/**
+ * Payment credentials.
+ *
+ * The two real secrets are write-only from the browser's side: they're never
+ * loaded into the page, and an empty field here means "leave what's stored"
+ * rather than "clear it". Without that, opening this screen and saving anything
+ * would wipe them — which is exactly how these forms usually break.
+ */
+const paymentSettingsSchema = v.object({
+  testMode: v.boolean(),
+  testCheckout: v.boolean(),
+  vippsClientId: v.nullable(v.string()),
+  vippsMerchantSerialNumber: v.nullable(v.string()),
+  /** Blank means unchanged. Clearing is done with the button, not the field. */
+  vippsClientSecret: v.optional(v.string()),
+  vippsSubscriptionKey: v.optional(v.string()),
+  paypalClientId: v.nullable(v.string()),
+  paypalClientSecret: v.optional(v.string())
+});
+
+export const updatePaymentSettings = command(paymentSettingsSchema, async (data) => {
+  await requireAdmin();
+
+  const current = await getSetting('payments');
+
+  await setSetting('payments', {
+    testMode: data.testMode,
+    testCheckout: data.testCheckout,
+    vippsClientId: data.vippsClientId || null,
+    vippsMerchantSerialNumber: data.vippsMerchantSerialNumber || null,
+    vippsClientSecret: data.vippsClientSecret?.trim()
+      ? data.vippsClientSecret.trim()
+      : current.vippsClientSecret,
+    vippsSubscriptionKey: data.vippsSubscriptionKey?.trim()
+      ? data.vippsSubscriptionKey.trim()
+      : current.vippsSubscriptionKey,
+    paypalClientId: data.paypalClientId || null,
+    paypalClientSecret: data.paypalClientSecret?.trim()
+      ? data.paypalClientSecret.trim()
+      : current.paypalClientSecret
+  });
+
+  return { success: true };
+});
+
+/** Forget one provider's credentials, which the form deliberately can't do. */
+export const clearPaymentCredentials = command(
+  v.picklist(['vipps', 'paypal']),
+  async (provider) => {
+    await requireAdmin();
+
+    await setSetting(
+      'payments',
+      provider === 'vipps'
+        ? {
+            vippsClientId: null,
+            vippsClientSecret: null,
+            vippsSubscriptionKey: null,
+            vippsMerchantSerialNumber: null
+          }
+        : { paypalClientId: null, paypalClientSecret: null }
+    );
+
+    return { success: true };
+  }
+);

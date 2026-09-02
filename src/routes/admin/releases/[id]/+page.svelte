@@ -244,7 +244,12 @@
                   <span class="w-28 shrink-0 truncate text-sm text-gray-300">
                     {link.label ?? platformLabel(link.platform)}
                   </span>
-                  <input class="{fieldClass} flex-1" bind:value={link.url} />
+                  <!-- Sizing on a wrapper: `fieldClass` already has `w-full`,
+                       and two width utilities on one element are resolved by
+                       stylesheet order, not by the order written here. -->
+                  <div class="min-w-0 flex-1">
+                    <input class={fieldClass} bind:value={link.url} />
+                  </div>
                   <button
                     type="button"
                     class="shrink-0 px-2 text-sm text-gray-500 transition hover:text-red-400"

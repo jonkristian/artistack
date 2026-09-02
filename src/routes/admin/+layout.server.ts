@@ -1,3 +1,4 @@
+import { tagsForMany, listTags } from '$lib/server/tags';
 import { redirect } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import {
@@ -6,6 +7,8 @@ import {
   links,
   shows,
   acts,
+  products,
+  orders,
   showActs,
   media,
   blocks,
@@ -16,7 +19,7 @@ import { user } from '$lib/server/auth-schema';
 import { auth } from '$lib/server/auth';
 import { getGoogleConfig } from '$lib/server/social-stats';
 import { getSettings } from '$lib/server/settings';
-import { asc, desc, eq } from 'drizzle-orm';
+import { asc, desc, eq, and, ne } from 'drizzle-orm';
 import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = async ({ request }) => {
@@ -35,6 +38,8 @@ export const load: LayoutServerLoad = async ({ request }) => {
     allLinks,
     allShows,
     allActs,
+    allProducts,
+    ordersAwaitingPost,
     allShowActs,
     allMedia,
     allBlocks,
@@ -53,6 +58,16 @@ export const load: LayoutServerLoad = async ({ request }) => {
     db.select().from(links).orderBy(asc(links.position)),
     db.select().from(shows).orderBy(asc(shows.date)),
     db.select().from(acts).orderBy(asc(acts.name)),
+    db.select().from(products).orderBy(asc(products.position)),
+    /*
+     * Orders with money reserved and nothing posted. In the layout because the
+     * nav shows the count — a reservation lapses if it's left, and it's the one
+     * thing in the admin that rots while you're looking at another screen.
+     */
+    db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(and(eq(orders.paymentStatus, 'authorised'), ne(orders.fulfilment, 'shipped'))),
     db.select().from(showActs).orderBy(asc(showActs.position)),
     db.select().from(media).orderBy(desc(media.createdAt)),
     db.select().from(blocks).orderBy(asc(blocks.position)),
@@ -90,6 +105,20 @@ export const load: LayoutServerLoad = async ({ request }) => {
     db.select().from(pages).orderBy(asc(pages.position), asc(pages.id))
   ]);
 
+  /*
+   * Tags are a second query rather than a join: `taggings` is polymorphic, so
+   * there's nothing to join through, and one lookup for the list beats one per
+   * product.
+   */
+  const productTags = await tagsForMany(
+    'product',
+    allProducts.map((p) => p.id)
+  );
+  const productsWithTags = allProducts.map((p) => ({ ...p, tags: productTags.get(p.id) ?? [] }));
+
+  /** The whole vocabulary, for the tag input's suggestions. */
+  const allTags = await listTags();
+
   return {
     user: {
       ...session.user,
@@ -111,6 +140,9 @@ export const load: LayoutServerLoad = async ({ request }) => {
         .map((sa) => ({ actId: sa.actId, setTime: sa.setTime }))
     })),
     acts: allActs,
+    products: productsWithTags,
+    tags: allTags,
+    ordersAwaitingPost: ordersAwaitingPost.length,
     media: allMedia,
     blocks: allBlocks,
     releases: allReleases,

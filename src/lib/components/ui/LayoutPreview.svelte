@@ -1,6 +1,14 @@
 <script lang="ts">
   import type { Component } from 'svelte';
-  import type { Profile, Settings, Link, Show, Block, Media } from '$lib/server/schema';
+  import type {
+    Profile,
+    Settings,
+    Link,
+    Show,
+    Block,
+    Media,
+    ProductWithTags
+  } from '$lib/server/schema';
 
   let {
     layout: Layout,
@@ -9,7 +17,8 @@
     links = [],
     shows = [],
     blocks = [],
-    media = []
+    media = [],
+    products = []
   }: {
     layout: Component<{
       profile: Profile;
@@ -18,6 +27,7 @@
       shows: Show[];
       blocks?: Block[];
       media?: Media[];
+      products?: ProductWithTags[];
     }>;
     profile: Partial<Profile> & { name: string };
     settings?: Partial<Settings> | null;
@@ -25,6 +35,8 @@
     shows?: Show[];
     blocks?: Block[];
     media?: Media[];
+    /** For a shop block, which draws the shop rather than owning a list. */
+    products?: ProductWithTags[];
   } = $props();
 
   // Build a complete profile object with defaults for preview
@@ -45,7 +57,17 @@
     colorIcon: settings?.colorIcon ?? '#a1a1aa',
     layout: settings?.layout ?? 'default',
     showShareButton: settings?.showShareButton ?? true,
-    showPressKit: settings?.showPressKit ?? false
+    showPressKit: settings?.showPressKit ?? false,
+    /*
+     * Feature flags belong in the preview because blocks read them. A block
+     * that hides itself when its feature is off — the sign-up form, the shop —
+     * was hiding itself here too, so the preview showed an empty space where
+     * the page would show the block.
+     */
+    subscribersEnabled: settings?.subscribersEnabled ?? false,
+    shopEnabled: settings?.shopEnabled ?? false,
+    /** Prices and dates are formatted with it; without it they read American. */
+    locale: settings?.locale ?? 'nb-NO'
   } as Settings);
 </script>
 
@@ -60,7 +82,15 @@
 		--color-icon: {previewSettings.colorIcon};
 	"
 >
-  <Layout profile={previewProfile} settings={previewSettings} {links} {shows} {blocks} {media} />
+  <Layout
+    profile={previewProfile}
+    settings={previewSettings}
+    {links}
+    {shows}
+    {blocks}
+    {media}
+    {products}
+  />
 </div>
 
 <style>

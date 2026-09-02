@@ -8,7 +8,8 @@
     generateFavicon,
     generateFaviconFromInitials,
     updateSmtpSettings,
-    testSmtp
+    testSmtp,
+    sendEmailSamples
   } from './data.remote';
   import { invalidateAll } from '$app/navigation';
 
@@ -51,6 +52,31 @@
   let smtpTls = $state(true);
   let smtpTestLoading = $state(false);
   let smtpTestResult = $state<{ success: boolean; error?: string } | null>(null);
+  let samplesLoading = $state(false);
+  let samplesResult = $state<{ to: string; sent: string[]; failed: string[] } | null>(null);
+
+  /**
+   * One of every email, to your own address.
+   *
+   * Answers two questions at once — whether mail leaves at all, and what it
+   * looks like in your colours — by calling the same senders a real order does.
+   * Nothing is written down: no sale, no address on the fan list.
+   */
+  async function handleSendSamples() {
+    samplesLoading = true;
+    samplesResult = null;
+    try {
+      samplesResult = await sendEmailSamples({});
+    } catch (err) {
+      samplesResult = {
+        to: '',
+        sent: [],
+        failed: [err instanceof Error ? err.message : 'Could not send the samples']
+      };
+    } finally {
+      samplesLoading = false;
+    }
+  }
 
   // Sync from data.settings on load
   let syncedSettingsId: number | null = null;
@@ -289,6 +315,15 @@
           {smtpTestLoading ? 'Testing...' : 'Test Connection'}
         </button>
 
+        <button
+          type="button"
+          onclick={handleSendSamples}
+          disabled={!smtpHost || !smtpUser || !smtpPassword || samplesLoading}
+          class="rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {samplesLoading ? 'Sending…' : 'Send me a sample of each'}
+        </button>
+
         {#if smtpTestResult}
           {#if smtpTestResult.success}
             <span class="flex items-center gap-1.5 text-sm text-emerald-400">
@@ -315,6 +350,22 @@
               {smtpTestResult.error || 'Connection failed'}
             </span>
           {/if}
+        {/if}
+
+        {#if samplesResult}
+          <!-- The count, not the names. Listing every email sent says nothing
+               you didn't already know from pressing the button, and takes four
+               lines to say it. What went wrong still gets named. -->
+          <div class="basis-full text-sm">
+            {#if samplesResult.sent.length > 0}
+              <p class="text-emerald-400">
+                Sent {samplesResult.sent.length} to {samplesResult.to}
+              </p>
+            {/if}
+            {#if samplesResult.failed.length > 0}
+              <p class="text-red-400">Could not send: {samplesResult.failed.join(', ')}</p>
+            {/if}
+          </div>
         {/if}
       </div>
     </div>

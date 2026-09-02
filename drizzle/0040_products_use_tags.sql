@@ -1,0 +1,12 @@
+-- Products use tags, not a category of their own.
+--
+-- `category` was free text on the product, which meant a second vocabulary
+-- living beside the one clips and media already share — with its own spelling
+-- mistakes and no way to ask "what is tagged X" across kinds. `taggings` is
+-- polymorphic and was built for exactly this; products become another entity
+-- type in it and nothing new is needed to store them.
+--
+-- Dropped rather than backfilled: the column existed for a matter of hours,
+-- was never offered anywhere but one text field, and nothing has shipped that
+-- could be holding data worth keeping.
+ALTER TABLE `products` DROP COLUMN `category`;

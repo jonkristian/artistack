@@ -1,4 +1,5 @@
 <script lang="ts">
+  import BlockHeading from '../BlockHeading.svelte';
   import type { Block, Profile, Link, Show, Media, GalleryBlockConfig } from '$lib/server/schema';
 
   let {
@@ -32,14 +33,7 @@
 
 {#if blockMedia.length > 0}
   <section>
-    {#if config.heading}
-      <h2
-        class="mb-3 text-[10px] font-semibold tracking-widest uppercase"
-        style="color: var(--color-accent)"
-      >
-        {config.heading}
-      </h2>
-    {/if}
+    <BlockHeading heading={config.heading} />
 
     {#if displayAs === 'grid'}
       <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">

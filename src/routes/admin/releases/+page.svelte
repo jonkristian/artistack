@@ -1,7 +1,7 @@
 <script lang="ts">
   import { fieldClass, labelClass, tileGridClass } from '$lib/utils/classes';
   import { goto, invalidateAll } from '$app/navigation';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { toast } from '$lib/stores/toast.svelte';
   import { slugify } from '$lib/utils/slug';
   import { SectionCard } from '$lib/components/cards';
@@ -22,7 +22,7 @@
    * describes how you arrived, and shouldn't reopen the form if you close it
    * and the URL hasn't changed.
    */
-  let creating = $state($page.url.searchParams.get('new') === '1');
+  let creating = $state(page.url.searchParams.get('new') === '1');
   let saving = $state(false);
   let title = $state('');
   let releaseDate = $state('');
@@ -74,7 +74,9 @@
   function formatDate(value: string): string {
     const date = fromDateInput(value);
     if (!date) return value;
-    return new Intl.DateTimeFormat('nb-NO', {
+    // The site's language, not a fixed Norwegian: this screen was showing
+    // Norwegian dates whatever had been chosen in Settings.
+    return new Intl.DateTimeFormat(data.settings?.locale || 'nb-NO', {
       day: 'numeric',
       month: 'short',
       year: 'numeric'

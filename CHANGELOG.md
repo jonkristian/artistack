@@ -1,4 +1,4 @@
-# 1.3.0 (31-08-2026)
+# 1.3.0 (02-09-2026)
 
 - Shows are their own section: a gig is a fact about the band, not something a block owns, so deleting a block no longer deletes the tour
 - Every show is edited on its own page, with a poster, tickets and a line-up
@@ -14,11 +14,44 @@
 - The navigation is three bands — the dashboard, the things you make, and the site itself — with Integrations and Users under Settings and Stats beside them
 - Ordinary pages are off by default: a music site is its front page, its releases and its shop
 - Custom pages render, so a page you create is a page people can reach
+- Shop: sell records, shirts and downloads from your own site, with stock on the things that run out
+- The basket and the whole checkout live in a panel over whatever you're reading, reached from a floating count that only appears once something is in it — buying a shirt never navigates you away from the page you came for
+- Closing the order confirmation dismisses it for good, rather than having it reappear on the next click or reload
+- Products are shown as a cover with the name and price over it, with a details button for sizes and pressing notes
+- A shop block chooses two, three or four products per row; phones always show two, because a name laid over an 80px tile can't be read
+- Products are tagged with the same vocabulary clips and media already share, rather than a category of their own — so a shop block can show just the records or just the shirts, and "what is tagged merch" means one thing across the site
+- Checkout suggests addresses as you type and fills in the postcode, city and country from the one you pick — using the Google key you already have for venue lookups, from the server, so the key never reaches the page
+- The checkout form is four fields instead of eight: what the lookup answers isn't asked again, and the note is behind a link. Everything is still reachable by hand for an address the lookup can't find
+- Buyers can be added to the fan list from checkout, with a plain opt-out beside the email field. Only once a payment actually goes through, and never for someone who has unsubscribed before
+- Options: a product can come in sizes, colours or formats, each with its own stock, so you sell out of one without touching the rest. You name what varies, and the buyer is asked for it by that name — chosen in the product's details, carried through the basket, and printed on the order and the receipt
+- The basket opens as a window above the button rather than a full-height sidebar, and is a sheet up from the bottom on a phone
+- Fixed the basket panel drawing with no colours at all: it's painted by the layout, and the site's palette was declared inside the page, so nothing it drew alongside the page could see it. The palette is declared once now, and panels are lifted off the page with an edge rather than a card colour that a theme is free to make identical to its background
+- Appearance warns when a colour is too faint to read against the background, and says nothing otherwise. Only text, muted text and the accent: how far a panel sits from the page is a style choice, not a mistake
+- Button text is now black or white depending on how light the Accent is, on the site and in emails alike, instead of always white: a pale accent used to give you white on white
+- The Card colour is labelled Panels, which is what it actually paints
+- Payment goes through Vipps or PayPal. Vipps needs a registered company at their end; PayPal's sandbox needs nothing but a PayPal login, so the whole checkout can be walked before you have a merchant account anywhere
+- Money is reserved when someone buys and taken when you post the parcel; a download is charged and handed over straight away
+- Downloads arrive on an unguessable link that stops working if the order is refunded
+- An order keeps the name and price of what was bought, so a receipt stays true after a rename, a price change or a deletion
+- Payment credentials are stored as secrets and never sent to the browser, not even on the settings screen that edits them
+- Orders screen: what's been bought, who it goes to, and what's still waiting to be posted — marking one posted is what charges the card. Orders sits under Shop in the navigation while you're in it, carrying a count of what's waiting, so a reservation about to lapse is visible from anywhere in the admin
+- A receipt email carrying the download links, so a buyer keeps them after the tab is closed
+- Every email the site sends — receipt, invite, password reset — uses one layout in your own colours, with a preview line in the inbox, a privacy link, and a button that stays a button in Outlook. Two of them had the default palette typed in, so anyone who changed their colours got somebody else's
+- Fixed email failing outright when SMTP was configured without a From address: it fell back to the username, and a username is only sometimes an email address
+- Settings can post you one of every email, so you can see how they look after changing a colour without waiting for a real order. It sends through the same code a real order does, so what you see is what a buyer gets
+- An invitation nobody used gets one reminder a week later, with a fresh link — most people mean to set a password and let the email slide down the inbox. Once only, so it's a nudge rather than nagging
+- An order shows a picture of what was bought, so it can be found on a shelf rather than read off a list
+- A file someone has to pay for is no longer served from /uploads, so the download link is the only way to reach it
+- A Shop block, so a few things for sale can sit on the front page or any other — it draws the shop rather than keeping a second list
+- A test checkout that takes no money, for walking the shop before you have a payment account: the order, the stock and the receipt are real, only the money is imaginary
+- Fixed the editor preview hiding blocks that depend on a feature — the sign-up form was invisible there even with the fan list on — and formatting prices and dates in the wrong language
+- Fixed the sign-up block failing to save: the list of block types the server accepts was a second copy that had drifted, and it never gained the sign-up block. It's derived from the registry now, so a block that exists can always be added
+- Fixed the views chart's readout being black on a dark page. Its styles lived on the stats page, so the dashboard never got them; they belong to the chart and moved there with it. Hovering a day now shows that day's count on both screens
 - Fixed the crop tool baking black bars into every image whose shape didn't match the frame
 - Crops can be portrait or landscape, and rounding is a separate switch rather than one of the shapes
 - Editing a crop reopens the original with the frame you used, so a second pass no longer crops the crop
 - Cropped images are in the media library, so deleting a picture takes its crops with it instead of leaving files nothing can reach
-- Dates and times follow the language you picked, not the browser's — no more American dates or AM/PM on a Norwegian site
+- Dates and times follow the language you picked, not the browser's — no more American dates or AM/PM on a Norwegian site. Releases, Audience and the views chart were still ignoring it and now don't
 - Fixed blocks being created with no page, and the front page rendering every block in the database
 - Fixed a show's line-up failing to save when it was the only thing changed
 - Release pages: give a single or album its own address, with buttons to every service it's on
@@ -30,6 +63,7 @@
 - Turn Releases on in Integrations; it stays hidden for sites that aren't music
 - Fan list: a sign-up form on release pages, and a block you can put on any page
 - Every sign-up records consent and carries a one-click unsubscribe link
+- A receipt tells a buyer they're on the fan list and how to leave it, when they are — and says nothing when they aren't
 - Audience section lists everyone with where they signed up, and exports plain CSV including unsubscribes
 - Ad pixels for Meta and TikTok, with a server-side conversion when someone opens a streaming link
 - Save a colour scheme by name and switch between them; applying one is an edit like any other, so Undo puts the old colours back

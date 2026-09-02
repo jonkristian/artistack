@@ -6,6 +6,7 @@
     Link,
     Show,
     Media,
+    ProductWithTags,
     Block,
     ImageBlockConfig,
     BaseBlockConfig
@@ -20,7 +21,8 @@
     shows,
     blocks = [],
     children,
-    media = []
+    media = [],
+    products = []
   }: {
     profile: Profile;
     settings?: PublicSettings | null;
@@ -36,6 +38,8 @@
      */
     children?: Snippet;
     media?: Media[];
+    /** For the shop block, which draws the shop rather than owning a list. */
+    products?: ProductWithTags[];
   } = $props();
 
   const locale = $derived(settings?.locale || 'nb-NO');
@@ -96,7 +100,16 @@
                 cfg.marginBottom ?? 'medium'
               ]}"
             >
-              <BlockComponent {block} {profile} {settings} {links} {shows} {media} {locale} />
+              <BlockComponent
+                {block}
+                {profile}
+                {settings}
+                {links}
+                {shows}
+                {media}
+                {products}
+                {locale}
+              />
             </div>
           {/if}
         {/each}

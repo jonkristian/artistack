@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
 
   let { children }: { children: any } = $props();
 
@@ -19,7 +19,7 @@
     { href: '/admin/settings/users', label: 'Users' }
   ];
 
-  const currentPath = $derived($page.url.pathname);
+  const currentPath = $derived(page.url.pathname);
 </script>
 
 <div class="min-h-screen bg-gray-950 p-[clamp(1rem,4vw,1.5rem)]">

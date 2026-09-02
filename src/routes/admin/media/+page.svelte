@@ -23,7 +23,7 @@
     ACCEPT_AUDIO,
     ACCEPT_DOCUMENT
   } from '$lib/utils/upload';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { PhoneUploadDialog } from '$lib/components/dialogs';
   import { MediaDropZone, LibraryToolbar, SelectCheckbox, TagInput } from '$lib/components/ui';
   import { Selection } from '$lib/utils/selection.svelte';
@@ -42,7 +42,7 @@
    */
   let pickerOpened = false;
   $effect(() => {
-    if (pickerOpened || $page.url.searchParams.get('upload') !== '1') return;
+    if (pickerOpened || page.url.searchParams.get('upload') !== '1') return;
     pickerOpened = true;
     fileInput?.click();
   });

@@ -1,4 +1,5 @@
 import type { BlockDefinition } from './types';
+import type { BlockType } from './kinds';
 import ProfileBlock from './profile/ProfileBlock.svelte';
 import ProfileBlockAdmin from './profile/ProfileBlockAdmin.svelte';
 import ProfileBlockSettings from './profile/ProfileBlockSettings.svelte';
@@ -16,8 +17,11 @@ import EmailBlockAdmin from './email/EmailBlockAdmin.svelte';
 import ImageBlock from './image/ImageBlock.svelte';
 import ImageBlockAdmin from './image/ImageBlockAdmin.svelte';
 import ImageBlockSettings from './image/ImageBlockSettings.svelte';
+import ProductsBlock from './products/ProductsBlock.svelte';
+import ProductsBlockAdmin from './products/ProductsBlockAdmin.svelte';
+import ProductsBlockSettings from './products/ProductsBlockSettings.svelte';
 
-export const blockRegistry: Record<string, BlockDefinition> = {
+export const blockRegistry: Record<BlockType, BlockDefinition> = {
   profile: {
     type: 'profile',
     name: 'Profile',
@@ -77,6 +81,20 @@ export const blockRegistry: Record<string, BlockDefinition> = {
     defaultLabel: 'Sign-up',
     requiresFeature: 'subscribersEnabled',
     defaultConfig: {}
+  },
+  products: {
+    type: 'products',
+    name: 'Shop',
+    icon: 'M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z',
+    component: ProductsBlock,
+    adminComponent: ProductsBlockAdmin,
+    adminSettingsComponent: ProductsBlockSettings,
+    defaultLabel: 'Shop',
+    requiresFeature: 'shopEnabled',
+    defaultConfig: {
+      displayAs: 'grid' as const,
+      showPrice: true
+    }
   },
   gallery: {
     type: 'gallery',

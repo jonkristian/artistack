@@ -1,5 +1,6 @@
+import type { BlockType } from '$lib/blocks/kinds';
 import * as draft from '$lib/stores/pageDraft.svelte';
-import type { Profile, Block, Link, Show } from '$lib/server/schema';
+import type { Profile, Block, Link, Show, Product, ProductWithTags } from '$lib/server/schema';
 import {
   addBlock as serverAddBlock,
   updateBlock as serverUpdateBlock,
@@ -16,6 +17,7 @@ import {
 } from './data.remote';
 import { updateAppearance } from './appearance/data.remote';
 import { updateRelease as serverUpdateRelease } from './releases/data.remote';
+import { updateProduct as serverUpdateProduct } from './shop/data.remote';
 
 // ===== Types =====
 
@@ -36,6 +38,7 @@ export type UnifiedDraftData = {
   blocks: Block[];
   links: Link[];
   shows: ShowDraft[];
+  products: ProductWithTags[];
   appearance: AppearanceData;
   releases: ReleaseDraft[];
 };
@@ -107,6 +110,7 @@ export function buildDraftFromServerData(data: {
   blocks: Block[];
   links: Link[];
   shows: ShowDraft[];
+  products: ProductWithTags[];
   releases?: {
     id: number;
     pageId: number;
@@ -139,6 +143,7 @@ export function buildDraftFromServerData(data: {
     blocks: data.blocks ?? [],
     links: data.links ?? [],
     shows: data.shows ?? [],
+    products: data.products ?? [],
     releases: (data.releases ?? []).map((r) => ({
       ...r,
       published: r.published ?? false,
@@ -199,7 +204,7 @@ export async function publishAllChanges(draftData: UnifiedDraftData) {
       }
       const result = await serverAddBlock({
         pageId: block.pageId,
-        type: block.type as 'profile' | 'links' | 'shows' | 'image' | 'gallery',
+        type: block.type as BlockType,
         label: block.label ?? undefined,
         config: block.config ?? undefined
       });
@@ -306,6 +311,33 @@ export async function publishAllChanges(draftData: UnifiedDraftData) {
         .filter((l) => l.blockId === blockId && l.id > 0)
         .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
       await serverReorderLinks(blockLinks.map((l, i) => ({ id: l.id, position: i })));
+    }
+  }
+
+  // --- Products ---
+  if (draft.hasChanges('products')) {
+    const productDiff = draft.computeCollectionDiff<ProductWithTags>('products');
+
+    /*
+     * Only changed fields are sent, which is what keeps stock safe: a sale
+     * decrements it on the server, and publishing a page you happened to have
+     * open would otherwise write back the number you loaded before the sale.
+     */
+    for (const { id, changes } of productDiff.updated) {
+      if (Object.keys(changes).length === 0) continue;
+
+      /*
+       * Tags go over as names. The draft holds whole tags so it can compare
+       * them without a rename reading as an edit, but the server resolves names
+       * to ids itself — that's what keeps one vocabulary rather than letting a
+       * client invent tag ids.
+       */
+      const { tags, ...fields } = changes as Partial<ProductWithTags>;
+      await serverUpdateProduct({
+        id,
+        ...fields,
+        ...(tags ? { tags: tags.map((t) => t.name) } : {})
+      });
     }
   }
 

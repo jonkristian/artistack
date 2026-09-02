@@ -232,6 +232,69 @@
       "when": 1700000032000,
       "tag": "0032_drop_show_time",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1700000033000,
+      "tag": "0033_shop_catalogue",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1700000034000,
+      "tag": "0034_cart",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "6",
+      "when": 1700000035000,
+      "tag": "0035_orders",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1700000036000,
+      "tag": "0036_order_item_file",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1700000037000,
+      "tag": "0037_product_variants",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1700000038000,
+      "tag": "0038_order_marketing",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1700000039000,
+      "tag": "0039_variant_label",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1700000040000,
+      "tag": "0040_products_use_tags",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1700000041000,
+      "tag": "0041_invite_reminder",
+      "breakpoints": true
     }
   ]
 }

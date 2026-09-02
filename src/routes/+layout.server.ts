@@ -1,3 +1,4 @@
+import { tagsForMany } from '$lib/server/tags';
 import { db } from '$lib/server/db';
 import {
   profile,
@@ -8,17 +9,19 @@ import {
   showActs,
   blocks,
   media,
-  pages
+  pages,
+  products
 } from '$lib/server/schema';
 import { auth } from '$lib/server/auth';
 import { eq, asc, and, isNull } from 'drizzle-orm';
+import { findCart, getCartLines, cartTotal } from '$lib/server/cart';
 import { ensureBlocksExist } from '$lib/server/setup';
 import { getMetaSettings, getTiktokSettings, getSettings } from '$lib/server/settings';
 
 // Track if setup has been run
 let setupComplete = false;
 
-export async function load({ request }) {
+export async function load({ request, cookies }) {
   // Ensure blocks exist (only runs once on first request)
   if (!setupComplete) {
     await ensureBlocksExist();
@@ -89,6 +92,39 @@ export async function load({ request }) {
     : [];
   const allMedia = await db.select().from(media);
 
+  /*
+   * The shop, for any page carrying a shop block. Skipped entirely when the
+   * shop is off, so a site that doesn't sell anything doesn't pay for a query
+   * and a cart lookup on every request.
+   *
+   * The existing cart only — never created here. Making one to render a page
+   * would set a cookie for every visitor who never buys anything.
+   */
+  const shopProducts = siteSettings?.shopEnabled
+    ? await db
+        .select()
+        .from(products)
+        .where(eq(products.visible, true))
+        .orderBy(asc(products.position))
+    : [];
+
+  /*
+   * With their tags, which is what a shop block filters on. A second query
+   * rather than a join, because `taggings` is polymorphic and has nothing to
+   * join through.
+   */
+  const productTags = await tagsForMany(
+    'product',
+    shopProducts.map((p) => p.id)
+  );
+  const taggedProducts = shopProducts.map((p) => ({
+    ...p,
+    tags: productTags.get(p.id) ?? []
+  }));
+
+  const cart = siteSettings?.shopEnabled ? await findCart(cookies) : null;
+  const cartLines = cart ? await getCartLines(cart.id) : [];
+
   return {
     profile: artistProfile ?? null,
     settings: siteSettings ?? null,
@@ -99,6 +135,8 @@ export async function load({ request }) {
     shows: showsWithLineup,
     blocks: allBlocks,
     media: allMedia,
+    products: taggedProducts,
+    cart: { lines: cartLines, total: cartTotal(cartLines) },
     user: session?.user ?? null
   };
 }

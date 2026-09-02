@@ -105,6 +105,8 @@ export const userInvite = sqliteTable(
     token: text('token').notNull().unique(),
     expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
     acceptedAt: integer('accepted_at', { mode: 'timestamp_ms' }),
+    /** When the single automatic nudge went out. Null means it hasn't. */
+    remindedAt: integer('reminded_at', { mode: 'timestamp_ms' }),
     invitedBy: text('invited_by'),
     createdAt: integer('created_at', { mode: 'timestamp_ms' })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)

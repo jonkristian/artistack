@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { authClient } from '$lib/auth-client';
   import { goto, invalidateAll } from '$app/navigation';
   import { onMount, tick, untrack } from 'svelte';
@@ -94,6 +94,7 @@
     draft.hasChanges('profile') || (landingPageId != null && changedPageIds.has(landingPageId))
   );
   const showsDirty = $derived(draft.hasChanges('shows'));
+  const shopDirty = $derived(draft.hasChanges('products'));
   const pagesDirty = $derived([...changedPageIds].some((id) => customPageIds.has(id)));
 
   /*
@@ -128,7 +129,7 @@
    */
   let navOpen = $state(false);
 
-  const currentPath = $derived($page.url.pathname);
+  const currentPath = $derived(page.url.pathname);
 
   // Navigating is the end of the drawer's job, so it closes itself rather than
   // making every link remember to.
@@ -170,6 +171,29 @@
       ...(data.settings?.releasesEnabled
         ? [{ href: '/admin/releases', label: 'Releases', icon: 'disc', group: 'make' }]
         : []),
+      ...(data.settings?.shopEnabled
+        ? [
+            {
+              href: '/admin/shop',
+              label: 'Shop',
+              icon: 'bag',
+              group: 'make',
+              /*
+               * Only shown while you're in the shop. Orders is the shop's other
+               * half rather than a section of its own, and a rail that listed
+               * every screen would be a sitemap.
+               */
+              children: [
+                {
+                  href: '/admin/shop/orders',
+                  label: 'Orders',
+                  icon: 'receipt',
+                  count: data.ordersAwaitingPost ?? 0
+                }
+              ]
+            }
+          ]
+        : []),
       ...(data.settings?.showsEnabled
         ? [{ href: '/admin/shows', label: 'Shows', icon: 'calendar', group: 'make' }]
         : []),
@@ -210,9 +234,16 @@
   const pageLabel = $derived.by(() => {
     if (currentPath === '/admin') return null;
     if (currentPath.startsWith('/admin/profile')) return 'Profile';
+    /*
+     * Deepest first, so /admin/shop/orders reports "Orders" rather than "Shop".
+     * A nested route still reports its section when it has no entry of its own
+     * — a clip editor is "Clips".
+     */
+    const candidates = navItems.flatMap((item) => [item, ...(item.children ?? [])]);
     return (
-      navItems.find((item) => item.href !== '/admin' && currentPath.startsWith(item.href))?.label ??
-      null
+      candidates
+        .filter((item) => item.href !== '/admin' && currentPath.startsWith(item.href))
+        .sort((a, b) => b.href.length - a.href.length)[0]?.label ?? null
     );
   });
 
@@ -231,6 +262,7 @@
   function isNavDirty(href: string): boolean {
     if (href === '/admin/home') return homeDirty;
     if (href === '/admin/shows') return showsDirty;
+    if (href === '/admin/shop') return shopDirty;
     if (href === '/admin/pages') return pagesDirty;
     if (href === '/admin/appearance') return appearanceDirty;
     if (href === '/admin/releases') return releasesDirty;
@@ -515,6 +547,15 @@
                     d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"
                   />
                 </svg>
+              {:else if item.icon === 'bag'}
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.5"
+                    d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
+                  />
+                </svg>
               {:else if item.icon === 'calendar'}
                 <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -554,6 +595,83 @@
                 <span class="h-2 w-2 rounded-full bg-purple-500"></span>
               {/if}
             </a>
+
+            <!-- Indented under the parent, and only while you're in it. The
+                 count is here rather than on a toolbar because a reserved
+                 payment lapses if it's left, and this is the one place you see
+                 it from anywhere in the admin. -->
+            {#if item.children && isNavActive(item.href)}
+              <!-- ml-2.5 is not arbitrary: it puts the branch's vertical
+                   stroke at 22px, which is dead centre under the parent's icon.
+                   A descender that starts anywhere else reads as an indent
+                   rather than as a line coming down from something. -->
+              <ul class="mt-1 ml-2.5 space-y-1">
+                {#each item.children as child (child.href)}
+                  <li>
+                    <a
+                      href={child.href}
+                      class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors {currentPath.startsWith(
+                        child.href
+                      )
+                        ? 'bg-gray-800 text-white'
+                        : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'}"
+                    >
+                      <!-- The branch: down, then right. Dimmer than the row it
+                           belongs to, because it says where this sits rather
+                           than what it is, and it shouldn't compete with the
+                           icon next to it. -->
+                      <svg
+                        class="h-4 w-4 shrink-0 text-gray-500"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M6 4v7a3 3 0 003 3h8m0 0l-3-3m3 3l-3 3"
+                        />
+                      </svg>
+
+                      {#if child.icon === 'receipt'}
+                        <!--
+                          A receipt, not a parcel. The archive box glyph is 18%
+                          wider than it is tall, so at this size it reads as
+                          squashed next to a rail of upright icons — that's the
+                          shape, not the drawing. This one is square, which sits
+                          evenly beside the arrow, and it's what an order is
+                          before it's anything you post.
+
+                          Framed rather than a bare page, so it doesn't collide
+                          with the document Pages already uses.
+                        -->
+                        <svg
+                          class="h-4 w-4 shrink-0"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="1.5"
+                            d="M9 8h6m-6 4h6m-6 4h3M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"
+                          />
+                        </svg>
+                      {/if}
+
+                      <span class="flex-1">{child.label}</span>
+
+                      {#if child.count > 0}
+                        <span class="text-xs text-amber-400">{child.count}</span>
+                      {/if}
+                    </a>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
           </li>
         {/each}
       </ul>

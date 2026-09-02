@@ -8,7 +8,9 @@
 
   function formatDate(date: Date | null): string {
     if (!date) return '—';
-    return new Intl.DateTimeFormat('nb-NO', {
+    // The site's language, not a fixed Norwegian: this screen was showing
+    // Norwegian dates whatever had been chosen in Settings.
+    return new Intl.DateTimeFormat(data.settings?.locale || 'nb-NO', {
       day: 'numeric',
       month: 'short',
       year: 'numeric'

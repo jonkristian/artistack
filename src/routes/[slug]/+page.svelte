@@ -3,6 +3,7 @@
   import ReleasePage from '$lib/pages/ReleasePage.svelte';
   import CustomPage from '$lib/pages/CustomPage.svelte';
   import ShowPage from '$lib/pages/ShowPage.svelte';
+  import ShopPage from '$lib/pages/ShopPage.svelte';
 
   let { data }: { data: PageData } = $props();
 
@@ -79,6 +80,13 @@
     media={data.media ?? []}
     locale={settings?.locale ?? 'nb-NO'}
   />
+{:else if data.products}
+  <ShopPage
+    products={data.products ?? []}
+    {settings}
+    {profile}
+    locale={settings?.locale ?? 'nb-NO'}
+  />
 {:else if data.blocks}
   <CustomPage
     {profile}
@@ -87,5 +95,6 @@
     links={data.links ?? []}
     shows={data.shows ?? []}
     media={data.media ?? []}
+    products={data.products ?? []}
   />
 {/if}

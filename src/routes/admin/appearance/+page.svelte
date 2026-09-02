@@ -2,6 +2,7 @@
   import { untrack } from 'svelte';
   import { ColorWheel, EditorPreview, LayoutPreview, ToggleSwitch } from '$lib/components/ui';
   import { SectionCard } from '$lib/components/cards';
+  import PaletteCheck from '$lib/components/admin/PaletteCheck.svelte';
   import { fieldClass } from '$lib/utils/classes';
   import { toast } from '$lib/stores/toast.svelte';
   import { saveScheme, removeScheme } from './data.remote';
@@ -110,7 +111,7 @@
           <ColorWheel
             value={draftData.appearance.colorCard}
             onchange={(c) => (draftData.appearance.colorCard = c)}
-            label="Card"
+            label="Panels"
             open={openPicker === 'card'}
             ontoggle={(o) => (openPicker = o ? 'card' : null)}
           />
@@ -143,6 +144,10 @@
             ontoggle={(o) => (openPicker = o ? 'icon' : null)}
           />
         </div>
+
+        <!-- Says nothing while the palette works. It's here rather than beside
+             one swatch because every problem it catches is about a pair. -->
+        <PaletteCheck palette={draftData.appearance} />
       </SectionCard>
 
       <div class="mt-6">

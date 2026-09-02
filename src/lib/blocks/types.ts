@@ -1,4 +1,5 @@
 import type { Component } from 'svelte';
+import type { BlockType } from './kinds';
 import type {
   Block,
   Profile,
@@ -6,7 +7,7 @@ import type {
   Link,
   Show,
   Media,
-  Product,
+  ProductWithTags,
   ProfileBlockConfig,
   LinksBlockConfig,
   ShowsBlockConfig,
@@ -23,12 +24,13 @@ export interface BlockComponentProps {
   links: Link[];
   shows: Show[];
   media: Media[];
-  products?: Product[];
+  products?: ProductWithTags[];
   locale: string;
 }
 
 export interface BlockDefinition {
-  type: string;
+  /** Its key in the registry, and what gets stored on the row. */
+  type: BlockType;
   name: string;
   icon: string;
   component: Component<BlockComponentProps>;
@@ -39,7 +41,7 @@ export interface BlockDefinition {
    * Only offered when this setting is on. A sign-up block on a site with the
    * fan list switched off is a form that quietly posts into a 404.
    */
-  requiresFeature?: 'clipsEnabled' | 'releasesEnabled' | 'subscribersEnabled';
+  requiresFeature?: 'clipsEnabled' | 'releasesEnabled' | 'subscribersEnabled' | 'shopEnabled';
   defaultConfig:
     | ProfileBlockConfig
     | LinksBlockConfig

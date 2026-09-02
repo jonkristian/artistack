@@ -1,7 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { subscribers, settings } from '$lib/server/schema';
-import { eq } from 'drizzle-orm';
+import { addSubscriber } from '$lib/server/subscribers';
 import { isBot, getClientIP, lookupCountry } from '$lib/server/tracking';
 import type { RequestHandler } from './$types';
 import { getSettings } from '$lib/server/settings';
@@ -50,33 +48,14 @@ export const POST: RequestHandler = async ({ request }) => {
 
   const ip = getClientIP(request);
   const country = ip ? await lookupCountry(ip) : null;
-  const now = new Date();
 
-  const [existing] = await db
-    .select()
-    .from(subscribers)
-    .where(eq(subscribers.email, email))
-    .limit(1);
-
-  if (existing) {
-    // Signing up again after unsubscribing is a fresh consent, and has to be
-    // recorded as one. An address already on the list is left alone.
-    if (existing.unsubscribedAt) {
-      await db
-        .update(subscribers)
-        .set({ unsubscribedAt: null, consentAt: now, source, country })
-        .where(eq(subscribers.id, existing.id));
-    }
-    return json({ success: true });
-  }
-
-  await db.insert(subscribers).values({
+  await addSubscriber({
     email,
     name,
     source,
     country,
-    consentAt: now,
-    token: crypto.randomUUID()
+    // A sign-up form is somebody asking, which outranks an old refusal.
+    revivesUnsubscribed: true
   });
 
   return json({ success: true });

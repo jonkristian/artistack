@@ -1,4 +1,5 @@
 <script lang="ts">
+  import BlockHeading from '../BlockHeading.svelte';
   import type { Block, Profile, Link, Show, Media, ShowsBlockConfig } from '$lib/server/schema';
   import { addToCalendar } from '$lib/blocks/utils';
   import { getPlatformInfoFromUrl } from '$lib/utils/platforms';
@@ -46,22 +47,16 @@
 </script>
 
 {#if upcomingShows.length > 0 || (showPast && pastShows.length > 0)}
-  <section class="mb-5">
-    {#if config.heading}
-      <h2
-        class="mb-3 text-[10px] font-semibold tracking-widest uppercase"
-        style="color: var(--color-accent)"
-      >
-        {config.heading}
-      </h2>
-    {:else if upcomingShows.length > 0}
-      <h2
-        class="mb-3 text-[10px] font-semibold tracking-widest uppercase"
-        style="color: var(--color-accent)"
-      >
-        Upcoming Shows
-      </h2>
-    {/if}
+  <!-- No bottom margin of its own. The theme already spaces every block by its
+       `marginBottom` setting — pb-8 by default — and this added a further 20px
+       on top, so shows sat further from whatever followed than anything else
+       did. -->
+  <section>
+    <!-- Falls back to naming itself, which only this block does: a list of
+         gigs with no label reads as a stray table. -->
+    <BlockHeading
+      heading={config.heading || (upcomingShows.length > 0 ? 'Upcoming Shows' : null)}
+    />
     <div class="space-y-2">
       {#each upcomingShows as tour (tour.id)}
         {@const eventInfo = tour.eventUrl ? getPlatformInfoFromUrl(tour.eventUrl) : null}

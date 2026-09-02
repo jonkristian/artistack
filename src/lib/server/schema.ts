@@ -7,6 +7,7 @@ import {
   primaryKey
 } from 'drizzle-orm/sqlite-core';
 import type { ClipRenderConfig, TimedCaption, ClipStatus } from '../clips/types';
+import type { BlockType } from '$lib/blocks/kinds';
 
 // Clip config types live in $lib/clips/types so the admin UI can import the
 // defaults at runtime; re-exported here so server code has one import site.
@@ -102,7 +103,12 @@ export const blocks = sqliteTable(
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
     pageId: integer('page_id'), // FK to pages table (null = home page for backwards compat)
-    type: text('type').notNull(), // 'profile', 'links', 'shows', 'image', 'gallery'
+    /*
+     * Named in $lib/blocks/kinds rather than restated here — a second copy of
+     * that list is what let it drift in the first place. Typed like every other
+     * enum column in this file, so a lookup against the registry type-checks.
+     */
+    type: text('type').$type<BlockType>().notNull(),
     label: text('label'), // user-facing label: 'Social Media', 'Tour 2026'
     config: text('config', { mode: 'json' }).$type<BlockConfig>(),
     position: integer('position').default(0),
@@ -336,7 +342,7 @@ export const tags = sqliteTable('tags', {
 });
 
 /** What a tag is attached to. Add a kind here when a new table becomes taggable. */
-export type TaggableType = 'clip' | 'media';
+export type TaggableType = 'clip' | 'media' | 'product';
 
 /**
  * Tag-to-content join.
@@ -587,15 +593,59 @@ export const subscribers = sqliteTable(
 );
 
 // Products - simple shop items (merch, music, etc.)
+/**
+ * `physical` is posted, `digital` is delivered. It decides what a sale needs
+ * afterwards — an address and a parcel, or a download — so everything from
+ * stock to the order screen turns on it.
+ */
+export type ProductType = 'physical' | 'digital';
+
+/**
+ * One option, and how many are left.
+ *
+ * A name and a count is the whole of it. No price — a large costs what a small
+ * costs, and an option that could be priced separately is really a second
+ * product wearing a disguise. What the options are *of* is `variantLabel` on
+ * the product, since it's one answer for the whole list.
+ */
+export type ProductVariant = {
+  name: string;
+  /** Null is unlimited, the same as a product's own stock. */
+  stock: number | null;
+};
+
 export const products = sqliteTable('products', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull(),
   description: text('description'),
   price: integer('price'), // cents/øre (null = "contact for price")
   currency: text('currency').default('NOK'),
-  mediaId: integer('media_id'), // product image (FK to media)
+  type: text('type').$type<ProductType>().notNull().default('physical'),
+  /** Null is unlimited — what a download is, and what made-to-order can be. */
+  stock: integer('stock'),
+  /**
+   * Sizes, and how many of each. `[{ name: 'M', stock: 12 }, …]`.
+   *
+   * JSON rather than a table: a variant has no identity worth keeping — nobody
+   * links to one or needs it to outlive the product. Empty or null means the
+   * product has none and `stock` above is the count, which is most products.
+   */
+  variants: text('variants', { mode: 'json' }).$type<ProductVariant[]>(),
+  /**
+   * What the options are options of — "Size", "Colour", "Format".
+   *
+   * Shown as the heading when someone is asked to choose. Null for a product
+   * with none, where "Options" does well enough.
+   */
+  variantLabel: text('variant_label'),
+  /** What MediaPicker returns, like a release's cover or a show's poster. */
+  imageUrl: text('image_url'),
+  /**
+   * What a digital sale delivers. Separate from the picture: a record sleeve
+   * isn't the record.
+   */
+  fileUrl: text('file_url'),
   externalUrl: text('external_url'), // link to Bandcamp, Shopify, BigCartel, etc.
-  category: text('category'), // simple text: 'merch', 'music', 'digital'
   visible: integer('visible', { mode: 'boolean' }).default(true),
   featured: integer('featured', { mode: 'boolean' }).default(false),
   position: integer('position').default(0),
@@ -693,8 +743,23 @@ export interface GalleryBlockConfig extends BaseBlockConfig {
 }
 
 export interface ProductsBlockConfig extends BaseBlockConfig {
-  displayAs?: 'grid' | 'list' | 'featured'; // default 'grid'
-  category?: string; // filter by category
+  /**
+   * How many across on a wide screen. Phones get two whatever this says — four
+   * tiles on a 375px screen is 80px each, and a name laid over that can't be
+   * read.
+   *
+   * Replaced a `displayAs` of 'grid' | 'list' | 'featured', which only ever
+   * drew a grid. An option that does nothing is worse than one that isn't
+   * there.
+   */
+  columns?: 2 | 3 | 4; // default 3
+  /**
+   * A tag slug, or unset for everything.
+   *
+   * The slug rather than the name, so renaming a tag doesn't quietly empty a
+   * block that was filtering on it.
+   */
+  tag?: string;
   limit?: number; // max products to show
   showPrice?: boolean; // default true
   heading?: string;
@@ -767,7 +832,163 @@ export type Show = typeof shows.$inferSelect;
 export type NewShow = typeof shows.$inferInsert;
 export type Media = typeof media.$inferSelect;
 export type NewMedia = typeof media.$inferInsert;
+/**
+ * A basket, before it becomes an order.
+ *
+ * Held by an unguessable token in a cookie, because nobody signs in to buy a
+ * t-shirt — the same approach as a clip's preview token and a subscriber's
+ * unsubscribe link.
+ */
+export const carts = sqliteTable(
+  'carts',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    token: text('token').notNull().unique(),
+    createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+    /** What the sweep reads: a cart still being added to shouldn't age out. */
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
+  },
+  (table) => [index('carts_updated_at_idx').on(table.updatedAt)]
+);
+
+/**
+ * One row per product in a cart — the primary key says so, so adding the same
+ * thing twice raises the quantity rather than making a second line.
+ *
+ * No price is stored. A cart shows what the thing costs now; what gets charged
+ * is settled at checkout. Copying it here would let a cart sit open across a
+ * price change and pay the old one.
+ */
+export const cartItems = sqliteTable(
+  'cart_items',
+  {
+    cartId: integer('cart_id').notNull(),
+    productId: integer('product_id').notNull(),
+    /*
+     * Part of the key, so two sizes of the same shirt are two lines.
+     *
+     * Empty string rather than null for a product with no sizes: SQLite treats
+     * every null in a key as distinct, so a nullable column here would quietly
+     * stop the key working for the common case.
+     */
+    variant: text('variant').notNull().default(''),
+    quantity: integer('quantity').notNull().default(1)
+  },
+  (table) => [
+    primaryKey({ columns: [table.cartId, table.productId, table.variant] }),
+    index('cart_items_product_id_idx').on(table.productId)
+  ]
+);
+
+/**
+ * What the provider says about the money.
+ *
+ * `authorised` and `captured` are distinct because the money is reserved at
+ * checkout and taken when the parcel goes out — charging before you've posted
+ * something is both bad practice and awkward to unwind.
+ */
+export type PaymentStatus =
+  | 'pending'
+  | 'authorised'
+  | 'captured'
+  | 'failed'
+  | 'cancelled'
+  | 'refunded';
+
+/** What you've done about it, which is a different question from the money. */
+export type Fulfilment = 'none' | 'packed' | 'shipped' | 'delivered';
+
+export const orders = sqliteTable(
+  'orders',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    /**
+     * Ours, not the provider's: it goes out in the payment request, comes back
+     * on the webhook, and is what someone quotes at you in an email.
+     */
+    reference: text('reference').notNull().unique(),
+
+    buyerName: text('buyer_name').notNull(),
+    buyerEmail: text('buyer_email').notNull(),
+    buyerPhone: text('buyer_phone'),
+
+    /** Null when there's nothing to post. */
+    addressLine: text('address_line'),
+    postcode: text('postcode'),
+    city: text('city'),
+    country: text('country'),
+
+    provider: text('provider').notNull(),
+    /** The provider's id for the payment, for reconciling and refunding. */
+    providerReference: text('provider_reference'),
+    paymentStatus: text('payment_status').$type<PaymentStatus>().notNull().default('pending'),
+    fulfilment: text('fulfilment').$type<Fulfilment>().notNull().default('none'),
+
+    amount: integer('amount').notNull(),
+    currency: text('currency').notNull(),
+
+    note: text('note'),
+    /**
+     * Whether they were happy to hear about new releases and merch.
+     *
+     * Recorded at checkout, acted on only once the money arrives — the law this
+     * relies on is about existing customers, and an abandoned payment doesn't
+     * make one.
+     */
+    marketingOptIn: integer('marketing_opt_in', { mode: 'boolean' }).notNull().default(false),
+    createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
+  },
+  (table) => [index('orders_payment_status_idx').on(table.paymentStatus)]
+);
+
+/**
+ * The lines of an order, with the name and price copied onto them.
+ *
+ * Not a join to the live product: an order has to stay truthful after a rename,
+ * a price change or a deletion. A receipt that can't say what was bought, or
+ * that quietly restates today's price, isn't a receipt.
+ */
+export const orderItems = sqliteTable(
+  'order_items',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    orderId: integer('order_id').notNull(),
+    /** For stock, and for linking back while the product still exists. */
+    productId: integer('product_id'),
+    name: text('name').notNull(),
+    unitPrice: integer('unit_price').notNull(),
+    quantity: integer('quantity').notNull().default(1),
+    /** Copied like the name and price, so a receipt still says which size. */
+    variant: text('variant'),
+    type: text('type').$type<ProductType>().notNull(),
+    /**
+     * The file this line entitles someone to, copied like the name and price.
+     * Reading it off the live product would break a download the day that
+     * product is deleted. Null for anything physical.
+     */
+    fileUrl: text('file_url'),
+    /** Unguessable, and only for a download. Issued once the money is in. */
+    downloadToken: text('download_token')
+  },
+  (table) => [index('order_items_order_id_idx').on(table.orderId)]
+);
+
+export type Order = typeof orders.$inferSelect;
+export type OrderItem = typeof orderItems.$inferSelect;
+
+export type Cart = typeof carts.$inferSelect;
+export type CartItem = typeof cartItems.$inferSelect;
+
 export type Product = typeof products.$inferSelect;
+/**
+ * A product with its tags attached.
+ *
+ * Tags live in `taggings`, so they arrive as a second query rather than as
+ * columns. Carried as whole tags rather than names, so a draft can compare them
+ * without a rename looking like an edit.
+ */
+export type ProductWithTags = Product & { tags: import('./tags').Tag[] };
 export type NewProduct = typeof products.$inferInsert;
 export type Integration = typeof integrations.$inferSelect;
 export type NewIntegration = typeof integrations.$inferInsert;

@@ -25,7 +25,7 @@ export const load: PageServerLoad = async ({ params, url, parent, cookies }) => 
     redirect(301, '/');
   }
 
-  const { user } = await parent();
+  const { user, settings: siteSettings } = await parent();
 
   /*
    * Drafts stay reachable for whoever is logged in, so a page can be built and
@@ -143,6 +143,27 @@ export const load: PageServerLoad = async ({ params, url, parent, cookies }) => 
     };
   }
 
+  if (page.type === 'shop') {
+    /*
+     * Switched off means gone, not just missing from the menu. The page row
+     * survives being switched off so its address is still yours, but a shop
+     * that renders with a basket leading nowhere is worse than a 404.
+     */
+    if (!siteSettings?.shopEnabled) {
+      error(404, 'Page not found');
+    }
+
+    /*
+     * Products and the basket come from the layout, which loads them for any
+     * page that might carry a shop block. Querying them again here would be the
+     * same two queries producing the same two answers.
+     */
+    return {
+      ...shared,
+      shareImage: page.shareImageUrl ? absolute(page.shareImageUrl) : null
+    };
+  }
+
   if (page.type === 'custom') {
     /*
      * The page's own blocks. The root layout supplies the profile, links and
@@ -162,7 +183,7 @@ export const load: PageServerLoad = async ({ params, url, parent, cookies }) => 
     };
   }
 
-  // 'shop' has no renderer yet. A row can exist — the admin can create one —
-  // but until something can draw it, it isn't a public page.
+  // Every type above has a renderer. Anything else is a row written by a
+  // version of the app that knew how to draw it and this one doesn't.
   error(404, 'Page not found');
 };

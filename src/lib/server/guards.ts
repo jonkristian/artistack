@@ -59,7 +59,8 @@ type FeatureFlag =
   | 'releasesEnabled'
   | 'subscribersEnabled'
   | 'pagesEnabled'
-  | 'showsEnabled';
+  | 'showsEnabled'
+  | 'shopEnabled';
 
 /**
  * Route guard for an optional section: signed in, and the feature switched on.

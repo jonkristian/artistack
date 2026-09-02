@@ -6,7 +6,9 @@
     saveGoogleConfig,
     updateDiscordSettings,
     updatePublishSettings,
-    testDiscordWebhook
+    testDiscordWebhook,
+    updatePaymentSettings,
+    clearPaymentCredentials
   } from './data.remote';
   import { updateSettings } from '../data.remote';
   import { invalidateAll } from '$app/navigation';
@@ -66,6 +68,7 @@
   let releasesEnabled = $state(false);
   let pagesEnabled = $state(false);
   let showsEnabled = $state(false);
+  let shopEnabled = $state(false);
   let subscribersEnabled = $state(false);
   let pixelsEnabled = $state(false);
   let metaPixelId = $state('');
@@ -105,6 +108,7 @@
       releasesEnabled = data.settings.releasesEnabled ?? false;
       pagesEnabled = data.settings.pagesEnabled ?? false;
       showsEnabled = data.settings.showsEnabled ?? false;
+      shopEnabled = data.settings.shopEnabled ?? false;
       subscribersEnabled = data.settings.subscribersEnabled ?? false;
       pixelsEnabled = data.settings.pixelsEnabled ?? false;
       metaPixelId = data.pixels?.metaPixelId ?? '';
@@ -271,6 +275,12 @@
     await invalidateAll();
   }
 
+  async function toggleShop() {
+    shopEnabled = !shopEnabled;
+    await updateSettings({ shopEnabled });
+    await invalidateAll();
+  }
+
   async function toggleShows() {
     showsEnabled = !showsEnabled;
     await updateSettings({ showsEnabled });
@@ -297,6 +307,89 @@
       publishHour: data.clips?.publishHour ?? 10,
       publishSecret: data.clips?.publishSecret || null
     });
+    await invalidateAll();
+  }
+
+  /*
+   * Payments. Seeded once like everything else here, and the two secret fields
+   * start empty on purpose — the server never sends them, and leaving one blank
+   * means "keep what's stored". The placeholder is what says whether there is
+   * anything stored.
+   */
+  let paymentTestMode = $state(untrack(() => data.payments?.testMode ?? true));
+  let testCheckout = $state(untrack(() => data.payments?.testCheckout ?? false));
+  let vippsClientId = $state(untrack(() => data.payments?.vippsClientId ?? ''));
+  let vippsMerchantSerialNumber = $state(
+    untrack(() => data.payments?.vippsMerchantSerialNumber ?? '')
+  );
+  let vippsClientSecret = $state('');
+  let vippsSubscriptionKey = $state('');
+  let paypalClientId = $state(untrack(() => data.payments?.paypalClientId ?? ''));
+  let paypalClientSecret = $state('');
+  let savingPayments = $state(false);
+  let paymentResult = $state<{ success: boolean; message: string } | null>(null);
+
+  const vippsConfigured = $derived(
+    !!data.payments?.hasVippsClientSecret &&
+      !!data.payments?.hasVippsSubscriptionKey &&
+      !!data.payments?.vippsClientId &&
+      !!data.payments?.vippsMerchantSerialNumber
+  );
+
+  const paypalConfigured = $derived(
+    !!data.payments?.paypalClientId && !!data.payments?.hasPaypalClientSecret
+  );
+
+  async function savePayments() {
+    savingPayments = true;
+    paymentResult = null;
+    try {
+      await updatePaymentSettings({
+        testMode: paymentTestMode,
+        testCheckout,
+        vippsClientId: vippsClientId || null,
+        vippsMerchantSerialNumber: vippsMerchantSerialNumber || null,
+        vippsClientSecret,
+        vippsSubscriptionKey,
+        paypalClientId: paypalClientId || null,
+        paypalClientSecret
+      });
+      // Cleared so a saved secret isn't left sitting in the DOM.
+      vippsClientSecret = '';
+      vippsSubscriptionKey = '';
+      paypalClientSecret = '';
+      paymentResult = { success: true, message: 'Payment settings saved' };
+      await invalidateAll();
+    } catch (err) {
+      paymentResult = {
+        success: false,
+        message: err instanceof Error ? err.message : 'Could not save'
+      };
+    } finally {
+      savingPayments = false;
+    }
+  }
+
+  async function forget(provider: 'vipps' | 'paypal') {
+    const label = provider === 'vipps' ? 'Vipps' : 'PayPal';
+    if (
+      !confirm(
+        `Forget the ${label} credentials? Checkout through it stops until they are entered again.`
+      )
+    )
+      return;
+
+    await clearPaymentCredentials(provider);
+    if (provider === 'vipps') {
+      vippsClientId = '';
+      vippsMerchantSerialNumber = '';
+      vippsClientSecret = '';
+      vippsSubscriptionKey = '';
+    } else {
+      paypalClientId = '';
+      paypalClientSecret = '';
+    }
+    paymentResult = { success: true, message: `${label} credentials forgotten` };
     await invalidateAll();
   }
 </script>
@@ -330,7 +423,7 @@
         </div>
         <div>
           <h2 class="font-semibold text-white">Google APIs</h2>
-          <p class="text-xs text-gray-500">YouTube stats & venue autocomplete</p>
+          <p class="text-xs text-gray-500">YouTube stats, venue and address lookup</p>
         </div>
       </div>
       {#if data.googleConfig?.apiKey}
@@ -382,7 +475,11 @@
         <label class="flex items-center justify-between">
           <div>
             <span class="text-sm text-white">Places API</span>
-            <p class="text-xs text-gray-500">Venue autocomplete for tour dates</p>
+            <!-- Both, because switching it off silently removes the checkout
+                 one too and that is worth knowing before you do it. -->
+            <p class="text-xs text-gray-500">
+              Venue autocomplete on shows, and address autocomplete at checkout
+            </p>
           </div>
           <ToggleSwitch
             bind:checked={googlePlacesEnabled}
@@ -906,6 +1003,264 @@
           Every sign-up records when consent was given and carries a one-click unsubscribe link, so
           a mailing can honour it without anyone logging in.
         </p>
+      {/if}
+    </section>
+
+    <!-- Shop Toggle -->
+    <section class="mt-6 rounded-xl border border-gray-800 bg-gray-900 p-5">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600/20">
+            <svg
+              class="h-5 w-5 text-violet-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.5"
+                d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
+              />
+            </svg>
+          </div>
+          <div>
+            <h3 class="font-semibold text-white">Shop</h3>
+            <p class="text-xs text-gray-500">Merch and downloads, at their own address</p>
+          </div>
+        </div>
+        <ToggleSwitch
+          checked={shopEnabled}
+          label="Toggle the shop"
+          onchange={toggleShop}
+          size="md"
+          hideLabel
+        />
+      </div>
+
+      {#if !shopEnabled}
+        <p class="mt-3 text-xs text-gray-500">
+          Adds a Shop section and a page at /shop. Items can be posted or downloaded, with stock for
+          the ones that run out, and a basket that checks out through Vipps.
+        </p>
+      {:else}
+        <!-- Credentials live inside the shop panel rather than in one of their
+             own: they are the shop, and a payment section with the shop turned
+             off would be a form that does nothing. -->
+        <div class="mt-5 space-y-4 border-t border-gray-800 pt-5">
+          <!-- First, because it's the one that works without an account
+               anywhere. -->
+          <div class="flex items-center justify-between gap-3 rounded-lg bg-gray-800/50 p-3">
+            <div>
+              <p class="text-sm text-white">Test checkout</p>
+              <p class="text-xs text-gray-500">
+                Adds a checkout that takes no money, so you can walk the shop before you have a
+                payment account. The order, the stock and the receipt are real.
+              </p>
+            </div>
+            <ToggleSwitch
+              checked={testCheckout}
+              label="Offer a checkout that takes no money"
+              onchange={(value) => (testCheckout = value)}
+              size="md"
+              hideLabel
+            />
+          </div>
+
+          {#if testCheckout}
+            <p class="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-400">
+              Anyone can buy anything for free while this is on. Turn it off before you tell people
+              about the shop.
+            </p>
+          {/if}
+
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <h4 class="text-sm font-medium text-white">Vipps</h4>
+              <p class="text-xs text-gray-500">
+                {vippsConfigured
+                  ? 'Ready to take payments'
+                  : 'Needs a registered company (ENK, DA or AS) at their end'}
+              </p>
+            </div>
+            {#if vippsConfigured}
+              <span
+                class="rounded bg-green-500/15 px-2 py-1 text-[11px] font-medium text-green-400"
+              >
+                Connected
+              </span>
+            {/if}
+          </div>
+
+          <div class="flex items-center justify-between gap-3 rounded-lg bg-gray-800/50 p-3">
+            <div>
+              <p class="text-sm text-white">Test mode</p>
+              <p class="text-xs text-gray-500">
+                Runs against the provider's test environment. Nothing is really charged. PayPal's
+                sandbox needs only a PayPal login, so the whole flow can be tried before you have a
+                merchant account anywhere.
+              </p>
+            </div>
+            <ToggleSwitch
+              checked={paymentTestMode}
+              label="Use the Vipps test environment"
+              onchange={(value) => (paymentTestMode = value)}
+              size="md"
+              hideLabel
+            />
+          </div>
+
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label for="vipps-client-id" class={labelClass}>Client ID</label>
+              <input
+                id="vipps-client-id"
+                type="text"
+                bind:value={vippsClientId}
+                class={fieldClass}
+                placeholder="From the Vipps portal"
+              />
+            </div>
+            <div>
+              <label for="vipps-msn" class={labelClass}>Merchant serial number</label>
+              <input
+                id="vipps-msn"
+                type="text"
+                bind:value={vippsMerchantSerialNumber}
+                class={fieldClass}
+                placeholder="123456"
+              />
+            </div>
+            <div>
+              <label for="vipps-client-secret" class={labelClass}>Client secret</label>
+              <!-- Never sent to the browser, so the field starts empty and the
+                   placeholder is the only thing that says whether one is set. -->
+              <input
+                id="vipps-client-secret"
+                type="password"
+                bind:value={vippsClientSecret}
+                class={fieldClass}
+                autocomplete="off"
+                placeholder={data.payments?.hasVippsClientSecret
+                  ? '•••••••• (unchanged)'
+                  : 'Required'}
+              />
+            </div>
+            <div>
+              <label for="vipps-subscription-key" class={labelClass}>Subscription key</label>
+              <input
+                id="vipps-subscription-key"
+                type="password"
+                bind:value={vippsSubscriptionKey}
+                class={fieldClass}
+                autocomplete="off"
+                placeholder={data.payments?.hasVippsSubscriptionKey
+                  ? '•••••••• (unchanged)'
+                  : 'Required'}
+              />
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-3">
+            <p class="flex-1 text-xs text-gray-500">
+              Webhook: <code class="text-gray-400">/api/payments/vipps/webhook</code>
+            </p>
+            {#if data.payments?.hasVippsClientSecret || data.payments?.hasVippsSubscriptionKey}
+              <button
+                type="button"
+                onclick={() => forget('vipps')}
+                class="text-xs text-gray-500 transition-colors hover:text-red-400"
+              >
+                Forget these
+              </button>
+            {/if}
+          </div>
+
+          <div class="space-y-4 border-t border-gray-800 pt-5">
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <h4 class="text-sm font-medium text-white">PayPal</h4>
+                <p class="text-xs text-gray-500">
+                  {paypalConfigured
+                    ? 'Ready to take payments'
+                    : 'Sandbox credentials need nothing but a PayPal login'}
+                </p>
+              </div>
+              {#if paypalConfigured}
+                <span
+                  class="rounded bg-green-500/15 px-2 py-1 text-[11px] font-medium text-green-400"
+                >
+                  Connected
+                </span>
+              {/if}
+            </div>
+
+            <div class="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label for="paypal-client-id" class={labelClass}>Client ID</label>
+                <input
+                  id="paypal-client-id"
+                  type="text"
+                  bind:value={paypalClientId}
+                  class={fieldClass}
+                  placeholder="From developer.paypal.com"
+                />
+              </div>
+              <div>
+                <label for="paypal-client-secret" class={labelClass}>Client secret</label>
+                <!-- Never sent to the browser, so the field starts empty and the
+                     placeholder is the only thing that says whether one is set. -->
+                <input
+                  id="paypal-client-secret"
+                  type="password"
+                  bind:value={paypalClientSecret}
+                  class={fieldClass}
+                  autocomplete="off"
+                  placeholder={data.payments?.hasPaypalClientSecret
+                    ? '•••••••• (unchanged)'
+                    : 'Required'}
+                />
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3">
+              <p class="flex-1 text-xs text-gray-500">
+                Webhook: <code class="text-gray-400">/api/payments/paypal/webhook</code>
+              </p>
+              {#if data.payments?.hasPaypalClientSecret}
+                <button
+                  type="button"
+                  onclick={() => forget('paypal')}
+                  class="text-xs text-gray-500 transition-colors hover:text-red-400"
+                >
+                  Forget these
+                </button>
+              {/if}
+            </div>
+          </div>
+
+          <div class="border-t border-gray-800 pt-5">
+            <p class="mb-3 text-xs text-gray-500">
+              Whichever provider you use, money is reserved when someone buys and taken when you
+              mark the order posted. Downloads are charged and delivered straight away.
+            </p>
+            <button
+              type="button"
+              onclick={savePayments}
+              disabled={savingPayments}
+              class="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-500 disabled:opacity-50"
+            >
+              {savingPayments ? 'Saving…' : 'Save payment settings'}
+            </button>
+          </div>
+
+          {#if paymentResult}
+            <p class="text-xs {paymentResult.success ? 'text-green-400' : 'text-red-400'}">
+              {paymentResult.message}
+            </p>
+          {/if}
+        </div>
       {/if}
     </section>
 

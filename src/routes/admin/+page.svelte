@@ -201,6 +201,7 @@
         </div>
         <div class="mt-3">
           <ViewsChart
+            locale={data.settings?.locale || 'nb-NO'}
             viewsByDay={data.pageViews.viewsByDay}
             previousViewsByDay={data.previousPeriodViews}
           />

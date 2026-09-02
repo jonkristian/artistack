@@ -7,6 +7,7 @@ import { sendScheduledDiscordReport } from './discord';
 import { refreshAllSocialStats } from './social-stats';
 import { recoverStaleJobs, processQueue } from './render-queue';
 import { runReleaseTick, checkPublishCoverage } from './clip-queue';
+import { remindStaleInvites } from './invites';
 import { env } from '$env/dynamic/private';
 import { desc } from 'drizzle-orm';
 
@@ -76,6 +77,18 @@ async function runScheduledTasks(): Promise<void> {
         await runReleaseTick(origin);
       } catch (e) {
         console.error('[Scheduler] Clip release failed:', e);
+      }
+
+      /*
+       * Task 1c: nudge anyone invited a week ago who never picked a password.
+       * Once each — the invite row remembers having been nudged — so this is
+       * silent on almost every tick.
+       */
+      try {
+        const reminded = await remindStaleInvites(origin);
+        if (reminded > 0) console.log(`[Scheduler] Reminded ${reminded} pending invite(s)`);
+      } catch (e) {
+        console.error('[Scheduler] Invite reminders failed:', e);
       }
     }
 

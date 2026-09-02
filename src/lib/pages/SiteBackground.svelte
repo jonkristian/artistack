@@ -8,9 +8,10 @@
    * these are the variables every block reads, and a page rendering without
    * them falls back to whatever the browser defaults to.
    *
-   * It sets `color` as well as declaring the variables. Declaring them alone
-   * left text at the browser's default — black on a dark page — for anything
-   * that didn't colour itself explicitly.
+   * The variables themselves are declared by the root layout, so the basket
+   * panel it draws alongside the page shares them. This sets `color`, because
+   * variables alone left text at the browser's default — black on a dark page —
+   * for anything that didn't colour itself explicitly.
    */
   let {
     settings,
@@ -32,16 +33,9 @@
   class="pointer-events-none fixed inset-0 z-50 opacity-[0.04]"
   style="background-image: url('data:image/svg+xml,%3Csvg viewBox=%220 0 512 512%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noise%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%222%22 numOctaves=%224%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noise)%22/%3E%3C/svg%3E');"
 ></div>
-<div
-  style="
-		--color-bg: {settings?.colorBg ?? '#0c0a14'};
-		--color-card: {settings?.colorCard ?? '#14101f'};
-		--color-accent: {settings?.colorAccent ?? '#8b5cf6'};
-		--color-text: {settings?.colorText ?? '#f4f4f5'};
-		--color-text-muted: {settings?.colorTextMuted ?? '#a1a1aa'};
-		--color-icon: {settings?.colorIcon ?? '#a1a1aa'};
-		color: var(--color-text);
-	"
->
+<!-- The variables come from the root layout now, so everything it draws shares
+     them. This still sets `color`, because declaring the variables alone left
+     text at the browser's default for anything that didn't colour itself. -->
+<div style="color: var(--color-text)">
   {@render children()}
 </div>

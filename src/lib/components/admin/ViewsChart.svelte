@@ -14,12 +14,15 @@
     viewsByDay,
     previousViewsByDay,
     days = 30,
-    height = 200
+    height = 200,
+    locale = 'nb-NO'
   }: {
     viewsByDay: { date: string; count: number }[];
     previousViewsByDay: { date: string; count: number }[];
     days?: number;
     height?: number;
+    /** The site's language, so dates read the way the rest of the admin does. */
+    locale?: string;
   } = $props();
 
   let chartContainer: HTMLDivElement;
@@ -91,11 +94,18 @@
           grid: { stroke: '#374151', width: 1 },
           ticks: { stroke: '#374151' },
           font: '10px system-ui',
-          values: (_, ticks) =>
-            ticks.map((t) => {
-              const d = new Date(t * 1000);
-              return `${d.getDate()}/${d.getMonth() + 1}`;
-            })
+          /*
+           * The locale's own ordering, not a hardcoded day/month — that was an
+           * assumption about which language was in use, and it read backwards
+           * for anyone whose does it the other way round.
+           */
+          values: (_, ticks) => {
+            const format = new Intl.DateTimeFormat(locale, {
+              day: 'numeric',
+              month: 'numeric'
+            });
+            return ticks.map((t) => format.format(new Date(t * 1000)));
+          }
         },
         {
           stroke: '#6b7280',
@@ -106,7 +116,22 @@
         }
       ],
       series: [
-        {},
+        {
+          /*
+           * uPlot writes its own date here otherwise, in its own format and its
+           * own idea of a locale. This is the readout under the cursor, so it's
+           * the date somebody actually reads off the chart.
+           */
+          label: 'Day',
+          value: (_, timestamp) =>
+            timestamp == null
+              ? '--'
+              : new Intl.DateTimeFormat(locale, {
+                  weekday: 'short',
+                  day: 'numeric',
+                  month: 'short'
+                }).format(new Date(timestamp * 1000))
+        },
         {
           label: 'This period',
           stroke: '#8b5cf6',
@@ -116,7 +141,7 @@
           points: { show: false }
         },
         {
-          label: 'Previous period',
+          label: 'Previous 30 days',
           stroke: '#60a5fa',
           width: 1,
           dash: [6, 4],
@@ -162,10 +187,12 @@
     };
   });
 
-  // Rebuild when the numbers change.
+  // Rebuild when the numbers or the language change — the formatters are baked
+  // into the options, so a new locale needs a new chart.
   $effect(() => {
     viewsByDay;
     previousViewsByDay;
+    locale;
     if (chartContainer) {
       tick().then(() => createChart());
     }
@@ -179,13 +206,51 @@
 <div class="-mx-1 overflow-x-auto px-1">
   <div bind:this={chartContainer} class="w-full min-w-[34rem]"></div>
 </div>
-<div class="mt-3 flex items-center gap-6 text-xs text-gray-400">
-  <div class="flex items-center gap-2">
-    <span class="h-0.5 w-4 bg-purple-500"></span>
-    <span>This period</span>
-  </div>
-  <div class="flex items-center gap-2">
-    <span class="h-0.5 w-4 border-t-2 border-dashed border-blue-400"></span>
-    <span>Previous 30 days</span>
-  </div>
-</div>
+
+<!--
+  uPlot ships a stylesheet written for a white page, so its legend came out
+  black on black. The chart's own colours are set in the options above; this is
+  the part uPlot renders as DOM, and it can only be reached from CSS.
+
+  Here rather than on the page, which is where it used to live. Component styles
+  load with the page that declares them, so a rule written on the stats page did
+  nothing for the dashboard — and the same chart was tidy on one screen and
+  unreadable on the other. The options moved into this component for exactly
+  that reason; the styles should have come with them.
+
+  `:global` because the elements belong to uPlot, not to this component, so
+  Svelte's scoping would drop the rules as unused. Everything hangs off the
+  chart's own class — set in the options above — because uPlot's stylesheet
+  carries rules of the same specificity from a different file, and which of two
+  equally specific rules wins would otherwise come down to load order.
+-->
+<style>
+  :global(.uplot-chart) {
+    background: transparent;
+  }
+
+  :global(.uplot-chart .u-legend) {
+    color: var(--color-gray-400, #9ca3af);
+    font-size: 0.75rem;
+  }
+
+  /* The series rows sit in a table; its borders are drawn for a light page. */
+  :global(.uplot-chart .u-legend .u-marker) {
+    border-width: 2px;
+  }
+
+  /*
+   * It doubles as the readout under the cursor, so the value has to be legible
+   * rather than merely present — it's the only way to read a given day.
+   */
+  :global(.uplot-chart .u-legend .u-value) {
+    color: var(--color-gray-100, #f3f4f6);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Dimmed rather than hidden when a series is switched off, so it's clear the
+     row is still there to switch back on. */
+  :global(.uplot-chart .u-legend .u-off > *) {
+    opacity: 0.4;
+  }
+</style>

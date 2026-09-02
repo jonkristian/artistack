@@ -1,3 +1,4 @@
+import { BLOCK_TYPES } from '$lib/blocks/kinds';
 import { error } from '@sveltejs/kit';
 import { getSettings, updateSiteSettings } from '$lib/server/settings';
 import { requireUser } from '$lib/server/guards';
@@ -81,7 +82,7 @@ const idSchema = v.number();
 
 const addBlockSchema = v.object({
   pageId: v.number(),
-  type: v.picklist(['profile', 'links', 'shows', 'image', 'gallery']),
+  type: v.picklist(BLOCK_TYPES),
   label: v.optional(v.string()),
   config: v.optional(v.any())
 });

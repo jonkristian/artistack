@@ -1,7 +1,7 @@
 <script lang="ts">
   import SiteBackground from './SiteBackground.svelte';
   import { resolveTheme } from '$lib/themes';
-  import type { Profile, Block, Link, Show, Media } from '$lib/server/schema';
+  import type { Profile, Block, Link, Show, Media, ProductWithTags } from '$lib/server/schema';
   import type { PublicSettings } from '$lib/server/settings';
 
   /**
@@ -17,7 +17,8 @@
     blocks,
     links,
     shows,
-    media
+    media,
+    products = []
   }: {
     profile: Profile;
     settings: PublicSettings | null;
@@ -25,11 +26,13 @@
     links: Link[];
     shows: Show[];
     media: Media[];
+    /** For a shop block on an ordinary page. */
+    products?: ProductWithTags[];
   } = $props();
 
   const Layout = $derived(resolveTheme(settings?.layout));
 </script>
 
 <SiteBackground {settings}>
-  <Layout {profile} {settings} {links} {shows} {blocks} {media} />
+  <Layout {profile} {settings} {links} {shows} {blocks} {media} {products} />
 </SiteBackground>

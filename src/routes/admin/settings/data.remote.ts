@@ -1,7 +1,7 @@
 import { requireAdmin } from '$lib/server/guards';
 import { getSettings, updateSiteSettings } from '$lib/server/settings';
 import * as v from 'valibot';
-import { command } from '$app/server';
+import { command, getRequestEvent } from '$app/server';
 import { db } from '$lib/server/db';
 import { profile, settings } from '$lib/server/schema';
 import { eq } from 'drizzle-orm';
@@ -10,6 +10,7 @@ import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { DATA_DIR, mediaPath } from '$lib/server/paths';
 import { testSmtpConnection } from '$lib/server/email';
+import { sendSampleEmails } from '$lib/server/emails';
 
 // ============================================================================
 // Validation Schemas
@@ -23,6 +24,7 @@ const settingsSchema = v.object({
   releasesEnabled: v.optional(v.boolean()),
   pagesEnabled: v.optional(v.boolean()),
   showsEnabled: v.optional(v.boolean()),
+  shopEnabled: v.optional(v.boolean()),
   subscribersEnabled: v.optional(v.boolean()),
   pixelsEnabled: v.optional(v.boolean()),
   metaPixelId: v.optional(v.nullable(v.string())),
@@ -269,4 +271,19 @@ export const testSmtp = command(v.object({}), async () => {
 
   const result = await testSmtpConnection();
   return result;
+});
+
+/**
+ * One of every email, to whoever asked.
+ *
+ * Sent to the signed-in admin's own address rather than one typed into a box:
+ * a form that mails anywhere is a form that can be pointed at somebody else.
+ */
+export const sendEmailSamples = command(v.object({}), async () => {
+  const me = await requireAdmin();
+  const { url } = getRequestEvent();
+
+  const { sent, failed } = await sendSampleEmails(me.email, url.origin);
+
+  return { to: me.email, sent, failed };
 });

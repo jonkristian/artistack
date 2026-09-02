@@ -14,6 +14,7 @@ shows, and the clips you post about them.
 - **Shows** - Venue autocomplete, a line-up of acts with set times, posters, ticket links and calendar export
 - **Acts** - The bands you play with, kept once with their logos, rather than retyped per gig
 - **Landing pages** - A release or a show can have its own address, in the site's own layout
+- **Shop** - Merch and downloads with stock, a basket and a checkout; orders are charged when you post them, and downloads arrive on a link only the buyer has
 - **Audience** - A fan list with recorded consent, one-click unsubscribe and CSV export
 - **Stats** - Page views, link clicks, referrers, geography
 - **Integrations** - Discord notifications, Spotify/YouTube stats
@@ -66,9 +67,20 @@ shows, and the clips you post about them.
    script, which also runs on `bun run start`.
 
 4. Start the dev server:
+
    ```bash
    bun run dev
    ```
+
+5. Optionally fill the shop with things to look at:
+
+   ```bash
+   node scripts/seed-shop.mjs          # add a test catalogue
+   node scripts/seed-shop.mjs --clear  # remove it again
+   ```
+
+   It only ever writes and deletes its own fixed list of names, so it's safe to
+   run against a database with real products in it.
 
 ## Environment Variables
 

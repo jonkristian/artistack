@@ -9,7 +9,8 @@
   import * as draft from '$lib/stores/pageDraft.svelte';
   import { withResolvedLineups } from '$lib/utils/lineup';
   import type { UnifiedDraftData } from '../../../routes/admin/publishDraft';
-  import type { Link, Show, Block, Page, Media, Act } from '$lib/server/schema';
+  import type { Link, Show, Block, Page, Media, Act, ProductWithTags } from '$lib/server/schema';
+  import type { BlockType } from '$lib/blocks/kinds';
   import type { LayoutData } from '../../../routes/admin/$types';
   import { toggleBlockCollapsed } from '../../../routes/admin/data.remote';
 
@@ -39,6 +40,18 @@
 
   // Get reactive draft data - shared with layout and appearance
   const draftData = draft.getData<UnifiedDraftData>();
+
+  /*
+   * The shop, for a shop block. Off the draft like everything else here, so a
+   * product renamed or repriced a moment ago shows that way in the preview.
+   */
+  const products = $derived(draftData.products ?? []);
+
+  /*
+   * The preview is the public page, and the public page never sees a hidden
+   * product. The list above it does — that's where "hidden" is worth knowing.
+   */
+  const visibleProducts = $derived(products.filter((p) => p.visible));
 
   /*
    * The draft holds every page's blocks in one array, because one Update
@@ -105,7 +118,10 @@
   );
 
   // ===== Block operations =====
-  function handleAddBlock(type: string) {
+  // Typed rather than a loose string: the button that calls this is built from
+  // the registry, so a type it doesn't know about can't reach here — and the
+  // block it would have written couldn't be saved anyway.
+  function handleAddBlock(type: BlockType) {
     const def = blockRegistry[type];
     if (!def) return;
 
@@ -199,7 +215,7 @@
                 ontogglecollapsed={handleToggleCollapsed}
               >
                 {#snippet settings()}
-                  <SettingsComponent {block} />
+                  <SettingsComponent {block} {products} />
                 {/snippet}
                 <AdminComponent
                   {block}
@@ -207,6 +223,8 @@
                   bind:links={draftData.links}
                   bind:shows={draftData.shows}
                   {media}
+                  {products}
+                  {settings}
                   oneditlink={openLinkDialog}
                 />
               </BlockAdminWrapper>
@@ -224,6 +242,8 @@
                   bind:links={draftData.links}
                   bind:shows={draftData.shows}
                   {media}
+                  {products}
+                  {settings}
                   oneditlink={openLinkDialog}
                 />
               </BlockAdminWrapper>
@@ -263,6 +283,7 @@
       shows={withResolvedLineups(draftData.shows ?? [], acts)}
       blocks={pageBlocks}
       {media}
+      products={visibleProducts}
     />
   {/snippet}
 </EditorPreview>

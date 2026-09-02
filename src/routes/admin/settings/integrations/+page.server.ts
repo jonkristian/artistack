@@ -17,7 +17,8 @@ import {
   getMetaSettings,
   getTiktokSettings,
   getClipPublishingSettings,
-  getSettings
+  getSettings,
+  getSetting
 } from '$lib/server/settings';
 import type { PageServerLoad } from './$types';
 
@@ -59,6 +60,24 @@ export const load: PageServerLoad = async ({ request }) => {
   };
   const clipConfig = { ...clips, ...publishing };
 
+  /*
+   * The payment secrets never leave the server, not even to this admin-only
+   * page. What the form needs is whether they're set, and the two identifiers
+   * that are useless on their own — a client secret in the HTML is a client
+   * secret in someone's browser history.
+   */
+  const paymentSettings = await getSetting('payments');
+  const payments = {
+    testMode: paymentSettings.testMode,
+    testCheckout: paymentSettings.testCheckout,
+    vippsClientId: paymentSettings.vippsClientId,
+    vippsMerchantSerialNumber: paymentSettings.vippsMerchantSerialNumber,
+    hasVippsClientSecret: !!paymentSettings.vippsClientSecret,
+    hasVippsSubscriptionKey: !!paymentSettings.vippsSubscriptionKey,
+    paypalClientId: paymentSettings.paypalClientId,
+    hasPaypalClientSecret: !!paymentSettings.paypalClientSecret
+  };
+
   return {
     integrations: allIntegrations,
     spotifyConfig: spotifyConfig ?? null,
@@ -68,6 +87,7 @@ export const load: PageServerLoad = async ({ request }) => {
     settings: settingsData,
     discord,
     clips: clipConfig,
-    pixels
+    pixels,
+    payments
   };
 };

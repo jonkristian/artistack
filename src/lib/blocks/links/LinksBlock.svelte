@@ -1,4 +1,5 @@
 <script lang="ts">
+  import BlockHeading from '../BlockHeading.svelte';
   import type {
     Block,
     Profile,
@@ -44,14 +45,7 @@
 
 {#if blockLinks.length > 0}
   <section>
-    {#if config.heading}
-      <h2
-        class="mb-3 text-[10px] font-semibold tracking-widest uppercase"
-        style="color: var(--color-accent)"
-      >
-        {config.heading}
-      </h2>
-    {/if}
+    <BlockHeading heading={config.heading} />
     <div
       class="{isGrid ? 'grid gap-3' : 'space-y-3'}{isGrid && stackOnMobile
         ? ' links-grid-stack'

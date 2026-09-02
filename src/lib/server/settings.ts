@@ -55,8 +55,40 @@ const features = v.object({
   releases: v.boolean(),
   pages: v.boolean(),
   shows: v.boolean(),
+  shop: v.boolean(),
   subscribers: v.boolean(),
   pixels: v.boolean()
+});
+
+/**
+ * Payment credentials.
+ *
+ * A `secret` subject, which is what keeps it out of `getPublicSettings` — 1.3.0
+ * fixed exactly this class of leak, where keys were being serialised into the
+ * HTML of every public page. These are worse than an SMTP password: they move
+ * money.
+ *
+ * `testMode` picks the test environment for whichever provider is in use, so a
+ * shop can be wired up and tried without charging anyone. PayPal's sandbox
+ * needs nothing but a PayPal login, which makes it the one that can be walked
+ * end to end before there's a company behind any of this.
+ */
+const payments = v.object({
+  testMode: v.boolean(),
+  /**
+   * A checkout that takes no money.
+   *
+   * Separate from `testMode`, which picks a real provider's test environment.
+   * This one has no provider behind it at all — it's for walking the shop
+   * before there's an account to walk it with.
+   */
+  testCheckout: v.boolean(),
+  vippsClientId: v.nullable(v.string()),
+  vippsClientSecret: v.nullable(v.string()),
+  vippsSubscriptionKey: v.nullable(v.string()),
+  vippsMerchantSerialNumber: v.nullable(v.string()),
+  paypalClientId: v.nullable(v.string()),
+  paypalClientSecret: v.nullable(v.string())
 });
 
 const mail = v.object({
@@ -176,8 +208,23 @@ export const SETTING_KEYS = {
       releases: false,
       pages: false,
       shows: false,
+      shop: false,
       subscribers: false,
       pixels: false
+    }
+  },
+  payments: {
+    schema: payments,
+    secret: true,
+    defaults: {
+      testMode: true,
+      testCheckout: false,
+      vippsClientId: null,
+      vippsClientSecret: null,
+      vippsSubscriptionKey: null,
+      vippsMerchantSerialNumber: null,
+      paypalClientId: null,
+      paypalClientSecret: null
     }
   },
   mail: {
@@ -401,6 +448,7 @@ export type Settings = SiteSettings &
     releasesEnabled: boolean;
     pagesEnabled: boolean;
     showsEnabled: boolean;
+    shopEnabled: boolean;
     subscribersEnabled: boolean;
     pixelsEnabled: boolean;
   };
@@ -423,6 +471,7 @@ export async function getSettings(): Promise<Settings> {
     releasesEnabled: f.releases,
     pagesEnabled: f.pages,
     showsEnabled: f.shows,
+    shopEnabled: f.shop,
     subscribersEnabled: f.subscribers,
     pixelsEnabled: f.pixels
   };
@@ -462,6 +511,7 @@ const FIELD_ROUTES: Record<string, [SettingKey, string]> = {
   releasesEnabled: ['features', 'releases'],
   pagesEnabled: ['features', 'pages'],
   showsEnabled: ['features', 'shows'],
+  shopEnabled: ['features', 'shop'],
   subscribersEnabled: ['features', 'subscribers'],
   pixelsEnabled: ['features', 'pixels'],
   // mail

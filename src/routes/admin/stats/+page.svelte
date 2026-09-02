@@ -139,6 +139,7 @@
     <!-- Page Views Chart -->
     <SectionCard title="Page Views (Last 30 Days)">
       <ViewsChart
+        locale={data.settings?.locale || 'nb-NO'}
         viewsByDay={data.pageViews.viewsByDay}
         previousViewsByDay={data.previousPeriodViews}
       />
@@ -371,13 +372,3 @@
     {/if}
   </div>
 </div>
-
-<style>
-  /* uPlot dark theme overrides */
-  :global(.uplot-chart) {
-    background: transparent;
-  }
-  :global(.uplot-chart .u-legend) {
-    display: none;
-  }
-</style>
