@@ -136,6 +136,16 @@ export const releases = sqliteTable('releases', {
   releaseDate: integer('release_date', { mode: 'timestamp' }).notNull(),
   coverUrl: text('cover_url'), // what MediaPicker returns; may be a crop with no media row
   presaveUrl: text('presave_url'), // outbound handoff while native pre-save is blocked
+  /**
+   * The copy people read on the release page: what the record is, who played
+   * on it, who it's for. Markup, from the rich editor.
+   *
+   * Deliberately not the page's `description`, which is the meta description —
+   * plain text, cut around 160 characters by a search result, and printed as
+   * written if it ever held markup. One field was being asked to be both the
+   * summary a scraper reads and the words a fan reads.
+   */
+  body: text('body'),
   isrc: text('isrc'), // needed for YouTube Content ID; stable across services
   upc: text('upc'),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
@@ -192,6 +202,14 @@ export const shows = sqliteTable(
     venue: text('venue', { mode: 'json' }).$type<Venue>().notNull(),
     /** Poster or flyer. What MediaPicker returns, like a release's cover. */
     imageUrl: text('image_url'),
+    /**
+     * What the night is, in the act's own words. Markup, from the rich editor.
+     *
+     * Optional, and most gigs won't have one — a date, a venue and a line-up
+     * say enough. It's for the ones with something to say: a launch, a last
+     * night, a support slot worth explaining.
+     */
+    description: text('description'),
     /**
      * Its landing page, once it has one. Nullable because most gigs are a line
      * on the front page and never need an address of their own — unlike a
@@ -736,6 +754,45 @@ export interface ShowsBlockConfig extends BaseBlockConfig {
   limit?: number;
 }
 
+/**
+ * The site's records, as a block.
+ *
+ * It draws what's in Releases rather than owning a list, so a record announced
+ * once appears on every page displaying it — the same arrangement as the shows
+ * and shop blocks.
+ */
+export interface ReleasesBlockConfig extends BaseBlockConfig {
+  heading?: string;
+  displayAs?: 'grid' | 'rows'; // default 'grid'
+  /**
+   * How many across on a wide screen, for the grid. Phones get two whatever
+   * this says — a sleeve four across on a 375px screen is 80px of artwork.
+   */
+  columns?: 2 | 3 | 4; // default 3
+  limit?: number; // unset means all of them
+  /**
+   * Which records to draw. Default 'all'.
+   *
+   * 'upcoming' is a countdown block — what's coming, soonest first — and is
+   * why a pre-save page can be found before the day. 'out' is a discography,
+   * newest first, with nothing on it that can't be played yet.
+   */
+  filter?: 'all' | 'out' | 'upcoming';
+  /**
+   * Offer the pre-save on records that aren't out yet. Default true.
+   *
+   * Nothing to show without a pre-save link on the release itself, so this
+   * turns off an offer rather than inventing one.
+   */
+  showPresave?: boolean;
+  /**
+   * Offer the release's own services from the row: Spotify, Apple Music and
+   * whatever else it lists. Default true, and nothing shows for a release with
+   * no links of its own.
+   */
+  showServices?: boolean;
+}
+
 export interface GalleryBlockConfig extends BaseBlockConfig {
   mediaIds?: number[];
   displayAs?: 'grid' | 'carousel' | 'bento'; // default 'grid'
@@ -767,6 +824,7 @@ export interface ProductsBlockConfig extends BaseBlockConfig {
 
 export type BlockConfig =
   | EmailBlockConfig
+  | ReleasesBlockConfig
   | ProfileBlockConfig
   | LinksBlockConfig
   | ShowsBlockConfig
@@ -824,6 +882,30 @@ export type Subscriber = typeof subscribers.$inferSelect;
 export type NewSubscriber = typeof subscribers.$inferInsert;
 export type Release = typeof releases.$inferSelect;
 export type NewRelease = typeof releases.$inferInsert;
+/**
+ * A release as everything other than its own page needs it: the sleeve, the
+ * title, when it lands, and where it lives.
+ *
+ * The address comes from `pages`, so this is the join rather than the row — a
+ * releases block links to a slug, and `releases` doesn't hold one.
+ */
+export type ReleaseSummary = {
+  id: number;
+  title: string;
+  slug: string;
+  releaseDate: Date;
+  coverUrl: string | null;
+  /** Where a pre-save goes, while the outbound handoff is what we have. */
+  presaveUrl: string | null;
+  /**
+   * Its services, in the order the release lists them.
+   *
+   * Ids rather than URLs: every click goes out through `/go`, so a service
+   * offered from a block is counted the same as one offered from the release
+   * page — same links, same numbers, wherever they're pressed.
+   */
+  links: { id: number; platform: string; label: string | null }[];
+};
 export type Block = typeof blocks.$inferSelect;
 export type NewBlock = typeof blocks.$inferInsert;
 export type Link = typeof links.$inferSelect;

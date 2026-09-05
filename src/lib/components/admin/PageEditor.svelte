@@ -8,7 +8,7 @@
   import { toast } from '$lib/stores/toast.svelte';
   import * as draft from '$lib/stores/pageDraft.svelte';
   import { withResolvedLineups } from '$lib/utils/lineup';
-  import type { UnifiedDraftData } from '../../../routes/admin/publishDraft';
+  import { fromDateInput, type UnifiedDraftData } from '../../../routes/admin/publishDraft';
   import type { Link, Show, Block, Page, Media, Act, ProductWithTags } from '$lib/server/schema';
   import type { BlockType } from '$lib/blocks/kinds';
   import type { LayoutData } from '../../../routes/admin/$types';
@@ -52,6 +52,46 @@
    * product. The list above it does — that's where "hidden" is worth knowing.
    */
   const visibleProducts = $derived(products.filter((p) => p.visible));
+
+  /*
+   * The records, for a releases block. Off the draft too, and flattened to
+   * what a block needs: the sleeve, the title, the date and the address.
+   */
+  const releases = $derived(
+    (draftData.releases ?? []).flatMap((r) => {
+      const releaseDate = fromDateInput(r.releaseDate);
+      return releaseDate
+        ? [
+            {
+              id: r.id,
+              title: r.title,
+              slug: r.slug,
+              releaseDate,
+              coverUrl: r.coverUrl,
+              presaveUrl: r.presaveUrl,
+              published: r.published,
+              /*
+               * Off the draft as well, so a service added or hidden a moment
+               * ago shows that way in the preview. Release links live in the
+               * same array as the page's own, told apart by which owner they
+               * name.
+               */
+              links: draftData.links
+                .filter((l) => l.releaseId === r.id && l.visible !== false)
+                .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+                .map((l) => ({ id: l.id, platform: l.platform, label: l.label }))
+            }
+          ]
+        : [];
+    })
+  );
+
+  /*
+   * Same reason as the products: the public page only links to a release whose
+   * page is published, so the preview shouldn't either. The list above it
+   * shows the drafts, which is where knowing they're drafts is worth something.
+   */
+  const publishedReleases = $derived(releases.filter((r) => r.published));
 
   /*
    * The draft holds every page's blocks in one array, because one Update
@@ -215,7 +255,7 @@
                 ontogglecollapsed={handleToggleCollapsed}
               >
                 {#snippet settings()}
-                  <SettingsComponent {block} {products} />
+                  <SettingsComponent {block} {products} {releases} />
                 {/snippet}
                 <AdminComponent
                   {block}
@@ -224,6 +264,7 @@
                   bind:shows={draftData.shows}
                   {media}
                   {products}
+                  {releases}
                   {settings}
                   oneditlink={openLinkDialog}
                 />
@@ -243,6 +284,7 @@
                   bind:shows={draftData.shows}
                   {media}
                   {products}
+                  {releases}
                   {settings}
                   oneditlink={openLinkDialog}
                 />
@@ -257,15 +299,28 @@
         </div>
       {/if}
 
-      <!-- Add Block -->
-      <div class="flex flex-wrap gap-2">
-        {#each availableBlocks as def}
+      <!--
+        Add Block. A grid rather than a wrapping row: as a row these sized
+        themselves to their names, so seven landed on the first line and the
+        eighth sat alone underneath looking like a different kind of thing.
+        Even columns make them a set, and give the icon room to be read.
+
+        Four across, which is the full set in two even rows. Two on a narrow
+        editor pane, where four would leave every name truncated.
+      -->
+      <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {#each availableBlocks as def (def.type)}
           <button
             onclick={() => handleAddBlock(def.type)}
-            class="flex items-center gap-1.5 rounded-lg border border-dashed border-gray-700 px-3 py-2 text-xs text-gray-400 transition-colors hover:border-gray-500 hover:text-gray-200"
+            class="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-gray-700 px-3 py-4 text-xs font-semibold text-gray-400 transition-colors hover:border-gray-500 hover:bg-gray-900/60 hover:text-gray-200"
           >
-            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={def.icon} />
+            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.5"
+                d={def.icon}
+              />
             </svg>
             {def.name}
           </button>
@@ -284,6 +339,7 @@
       blocks={pageBlocks}
       {media}
       products={visibleProducts}
+      releases={publishedReleases}
     />
   {/snippet}
 </EditorPreview>

@@ -5,7 +5,8 @@
     SortableList,
     MediaPicker,
     EditorPreview,
-    DateTimePicker
+    DateTimePicker,
+    RichTextEditor
   } from '$lib/components/ui';
   import { ActEditDialog, SlugDialog } from '$lib/components/dialogs';
   import { slugify } from '$lib/utils/slug';
@@ -318,6 +319,20 @@
             apiKey={data.googleConfig?.placesEnabled ? data.googleConfig.apiKey : null}
             onchange={handleVenueChange}
           />
+
+          <div>
+            <span class={labelClass}>About</span>
+            <!--
+              Optional, and most gigs won't want it: a date, a venue and a
+              line-up already say what the night is. This is for the ones with
+              something more to say, and it only shows on the show's own page.
+            -->
+            <RichTextEditor
+              content={show.description ?? ''}
+              onUpdate={(html: string) => (show.description = html || null)}
+              placeholder="A launch, a last night, who's opening — anything the poster doesn't say."
+            />
+          </div>
         </div>
       </SectionCard>
 

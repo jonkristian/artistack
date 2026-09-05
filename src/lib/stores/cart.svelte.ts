@@ -138,16 +138,37 @@ export function openCart(next: CartView = 'basket') {
   open = true;
 }
 
+/**
+ * The receipt, once per order.
+ *
+ * `?order=` in the address is all that's left of the panel after a payment
+ * provider takes the browser off the site, so the overlay opens on it. That
+ * can't be the whole rule, though: `replaceState` rewrites the address bar
+ * without touching `page.url`, so the parameter read there survives the receipt
+ * being dismissed — and the panel let itself back in on the next thing that
+ * re-ran the effect, over an address bar with nothing in it, days after the
+ * order. Remembering which reference has been shown is what actually ends it.
+ */
+let receiptShownFor: string | null = null;
+
+export function openReceipt(reference: string) {
+  if (receiptShownFor === reference) return;
+  receiptShownFor = reference;
+  openCart('receipt');
+}
+
 export function closeCart() {
   open = false;
 
   /*
    * Closing a receipt is done with it.
    *
-   * The panel opens itself whenever the address carries `?order=`, which is how
-   * it survives the trip out to a payment provider and back. That also meant it
-   * reopened on the next render and on every reload — closing it did nothing
-   * that lasted. Dropping the parameter is what actually dismisses it.
+   * Dropping the parameter keeps the address shareable — nobody should hand
+   * someone a link to their own order — and means a reload doesn't land back on
+   * it. It is not what dismisses the panel: `replaceState` changes the address
+   * bar and `page.state`, and leaves `page.url` exactly as it was, so the
+   * parameter is still there to be read afterwards. `openReceipt` is what makes
+   * closing stick.
    *
    * `replaceState` rather than a navigation: this isn't a new page, and it
    * shouldn't be somewhere the back button returns to.

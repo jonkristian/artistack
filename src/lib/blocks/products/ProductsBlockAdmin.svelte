@@ -1,5 +1,6 @@
 <script lang="ts">
   import { formatPrice } from '$lib/utils/price';
+  import { RowThumb } from '$lib/components/ui';
   import type {
     Block,
     ProductWithTags,
@@ -35,10 +36,11 @@
 
 <div class="space-y-3">
   {#if matching.length > 0}
-    <ul class="space-y-1.5">
+    <ul class="space-y-2">
       {#each shown as product (product.id)}
-        <li class="flex items-baseline justify-between gap-3 text-sm">
-          <span class="truncate text-gray-300">
+        <li class="flex items-center gap-2.5 text-sm">
+          <RowThumb src={product.imageUrl} alt="" />
+          <span class="min-w-0 flex-1 truncate text-gray-300">
             {product.name}{#if !product.visible}<span class="text-gray-500"> · hidden</span>{/if}
           </span>
           <span class="shrink-0 text-xs text-gray-500">

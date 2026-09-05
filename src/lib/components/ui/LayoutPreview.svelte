@@ -7,7 +7,8 @@
     Show,
     Block,
     Media,
-    ProductWithTags
+    ProductWithTags,
+    ReleaseSummary
   } from '$lib/server/schema';
 
   let {
@@ -18,7 +19,8 @@
     shows = [],
     blocks = [],
     media = [],
-    products = []
+    products = [],
+    releases = []
   }: {
     layout: Component<{
       profile: Profile;
@@ -28,6 +30,7 @@
       blocks?: Block[];
       media?: Media[];
       products?: ProductWithTags[];
+      releases?: ReleaseSummary[];
     }>;
     profile: Partial<Profile> & { name: string };
     settings?: Partial<Settings> | null;
@@ -37,6 +40,8 @@
     media?: Media[];
     /** For a shop block, which draws the shop rather than owning a list. */
     products?: ProductWithTags[];
+    /** For a releases block, which draws the records the same way. */
+    releases?: ReleaseSummary[];
   } = $props();
 
   // Build a complete profile object with defaults for preview
@@ -66,6 +71,7 @@
      */
     subscribersEnabled: settings?.subscribersEnabled ?? false,
     shopEnabled: settings?.shopEnabled ?? false,
+    releasesEnabled: settings?.releasesEnabled ?? false,
     /** Prices and dates are formatted with it; without it they read American. */
     locale: settings?.locale ?? 'nb-NO'
   } as Settings);
@@ -90,6 +96,7 @@
     {blocks}
     {media}
     {products}
+    {releases}
   />
 </div>
 

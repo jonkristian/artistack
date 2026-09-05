@@ -13,6 +13,7 @@
   const blocks = $derived(data.blocks ?? []);
   const media = $derived(data.media ?? []);
   const products = $derived(data.products ?? []);
+  const releases = $derived(data.releases ?? []);
 
   // Seeded here rather than in the block, so a page carrying two shop blocks
   // still has one basket between them.
@@ -43,7 +44,7 @@
      public page rather than restated here. -->
 <SiteBackground {settings}>
   {#if profile}
-    <Layout {profile} {settings} {links} {shows} {blocks} {media} {products} />
+    <Layout {profile} {settings} {links} {shows} {blocks} {media} {products} {releases} />
   {:else}
     <!-- Empty State -->
     <main

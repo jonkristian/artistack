@@ -8,12 +8,14 @@ import type {
   Show,
   Media,
   ProductWithTags,
+  ReleaseSummary,
   ProfileBlockConfig,
   LinksBlockConfig,
   ShowsBlockConfig,
   GalleryBlockConfig,
   ImageBlockConfig,
   ProductsBlockConfig,
+  ReleasesBlockConfig,
   EmailBlockConfig
 } from '$lib/server/schema';
 
@@ -25,6 +27,8 @@ export interface BlockComponentProps {
   shows: Show[];
   media: Media[];
   products?: ProductWithTags[];
+  /** The site's records, for a releases block. */
+  releases?: ReleaseSummary[];
   locale: string;
 }
 
@@ -49,6 +53,7 @@ export interface BlockDefinition {
     | GalleryBlockConfig
     | ImageBlockConfig
     | ProductsBlockConfig
+    | ReleasesBlockConfig
     | EmailBlockConfig;
 }
 
@@ -59,5 +64,6 @@ export type {
   GalleryBlockConfig,
   ImageBlockConfig,
   ProductsBlockConfig,
+  ReleasesBlockConfig,
   EmailBlockConfig
 };

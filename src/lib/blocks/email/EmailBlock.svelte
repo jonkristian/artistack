@@ -13,5 +13,9 @@
 {#if settings?.subscribersEnabled}
   <!-- No `source`: EmailCapture falls back to the page it's on, which is right
        for a block that can sit on any of them. -->
-  <EmailCapture heading={config.heading || undefined} blurb={config.blurb || undefined} />
+  <EmailCapture
+    heading={config.heading || undefined}
+    blurb={config.blurb || undefined}
+    surface="soft"
+  />
 {/if}

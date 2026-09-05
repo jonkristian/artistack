@@ -96,5 +96,6 @@
     shows={data.shows ?? []}
     media={data.media ?? []}
     products={data.products ?? []}
+    releases={data.releases ?? []}
   />
 {/if}

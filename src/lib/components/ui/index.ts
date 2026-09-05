@@ -16,3 +16,7 @@ export { default as LibraryToolbar } from './LibraryToolbar.svelte';
 export { default as EmailCapture } from './EmailCapture.svelte';
 export { default as TrackingPixels } from './TrackingPixels.svelte';
 export { default as TagInput } from './TagInput.svelte';
+export { default as LengthMeter } from './LengthMeter.svelte';
+export { default as RowThumb } from './RowThumb.svelte';
+export { default as EmojiPicker } from './EmojiPicker.svelte';
+export { default as RichTextEditor } from './RichTextEditor.svelte';

@@ -1,3 +1,21 @@
+# 1.4.0 (05-09-2026)
+
+- A Releases block, so the records can sit on the front page or any other — it draws what's in Releases rather than keeping a second list, and each one leads to the release page it already has
+- The block shows all of them, only what's out, or only what's coming — upcoming reads soonest first, the way a tour does, and the rest newest first
+- As a grid of sleeves or as rows, two to four across; a single record centres and takes the room it deserves instead of sitting in a third of a line looking like the first of three that failed to load
+- Service buttons on a release row: Spotify, Apple Music and whatever else the record lists, one press from the front page. Before release day they say Save rather than Play, and every press goes through /go, so a play counted here is counted the same as one from the release page
+- A pre-save button too, for records with a pre-save link of their own
+- Releases, Shows and Shop blocks show a thumbnail beside each row in the editor — the sleeve, the poster, the product — so a list of names is a list of things
+- The block picker is a grid of four rather than a row that wrapped whenever a name was long
+- The sign-up block is drawn like the other blocks now, tinted and round-cornered with the fan-list envelope beside it, instead of an outlined box bolted to the page
+- Shows have an About field: what the night is, when it's a launch or a last night or a support slot worth explaining. Optional, and most gigs won't want one
+- Releases have one as well, separate from the description: the copy people read on the page, below the services. The description stays what a search result and a link preview show, which is a different job and a shorter one
+- A length meter under both, so it's visible while writing whether a description will survive the cut — around 160 characters in a search result, 200 in a link preview
+- The same meter on a clip's caption, marked at the fold rather than at a limit: roughly the first 100 characters show before "more", and 350 is as long as a caption wants to be. Neither stops you posting
+- An emoji picker on the caption, without the formatting either side of it — a caption is posted as plain text, so bold would arrive on TikTok as the letter b in angle brackets
+- Product descriptions are written in the same editor as the bio, and read that way on the page. Descriptions written before it still keep their line breaks
+- Fixed a receipt from an old order reappearing over the page by itself, days later and with nothing in the address bar: closing it cleared the address but not what the page thought its address was
+
 # 1.3.0 (02-09-2026)
 
 - Shows are their own section: a gig is a fact about the band, not something a block owns, so deleting a block no longer deletes the tour

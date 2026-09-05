@@ -191,6 +191,18 @@
         {/if}
       {/if}
 
+      <!-- After the buttons, like the sign-up below it: someone who came to
+           listen should reach what they came for before being asked to read
+           anything. -->
+      {#if release.body}
+        <section
+          class="release-copy w-full text-sm leading-relaxed"
+          style="color: var(--color-text-muted)"
+        >
+          {@html release.body}
+        </section>
+      {/if}
+
       {#if emailCapture}
         <!-- After the platform buttons on purpose: someone who came to listen
            should reach what they came for before being asked for anything. -->
@@ -208,3 +220,10 @@
     </main>
   </Layout>
 </SiteBackground>
+
+<style>
+  /* Paragraphs, spaced the way the bio block spaces its own. */
+  .release-copy :global(p + p) {
+    margin-top: 0.75rem;
+  }
+</style>

@@ -17,6 +17,9 @@ import EmailBlockAdmin from './email/EmailBlockAdmin.svelte';
 import ImageBlock from './image/ImageBlock.svelte';
 import ImageBlockAdmin from './image/ImageBlockAdmin.svelte';
 import ImageBlockSettings from './image/ImageBlockSettings.svelte';
+import ReleasesBlock from './releases/ReleasesBlock.svelte';
+import ReleasesBlockAdmin from './releases/ReleasesBlockAdmin.svelte';
+import ReleasesBlockSettings from './releases/ReleasesBlockSettings.svelte';
 import ProductsBlock from './products/ProductsBlock.svelte';
 import ProductsBlockAdmin from './products/ProductsBlockAdmin.svelte';
 import ProductsBlockSettings from './products/ProductsBlockSettings.svelte';
@@ -55,6 +58,23 @@ export const blockRegistry: Record<BlockType, BlockDefinition> = {
     defaultLabel: 'Shows',
     defaultConfig: {
       showPastShows: true
+    }
+  },
+  releases: {
+    type: 'releases',
+    name: 'Releases',
+    icon: 'M9 19V6l12-3v13M9 19a3 3 0 11-6 0 3 3 0 016 0zm12-3a3 3 0 11-6 0 3 3 0 016 0z',
+    component: ReleasesBlock,
+    adminComponent: ReleasesBlockAdmin,
+    adminSettingsComponent: ReleasesBlockSettings,
+    defaultLabel: 'Releases',
+    requiresFeature: 'releasesEnabled',
+    defaultConfig: {
+      displayAs: 'grid' as const,
+      columns: 3 as const,
+      filter: 'all' as const,
+      showPresave: true,
+      showServices: true
     }
   },
   image: {

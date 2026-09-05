@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { RowThumb } from '$lib/components/ui';
   import type { Block, Show, ShowsBlockConfig } from '$lib/server/schema';
 
   /**
@@ -26,10 +27,11 @@
 
 <div class="space-y-3">
   {#if upcoming.length > 0}
-    <ul class="space-y-1.5">
+    <ul class="space-y-2">
       {#each shown as show (show.id)}
-        <li class="flex items-baseline justify-between gap-3 text-sm">
-          <span class="truncate text-gray-300">
+        <li class="flex items-center gap-2.5 text-sm">
+          <RowThumb src={show.imageUrl} alt="" />
+          <span class="min-w-0 flex-1 truncate text-gray-300">
             {show.venue.name}{#if show.venue.city}<span class="text-gray-500">
                 , {show.venue.city}</span
               >{/if}

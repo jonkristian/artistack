@@ -162,6 +162,14 @@
         </div>
       </header>
 
+      <!-- Between the facts and the line-up: someone reading down has the date
+           and the venue by now, and this is what the poster couldn't say. -->
+      {#if show.description}
+        <section class="page-copy text-sm leading-relaxed" style="color: var(--color-text-muted)">
+          {@html show.description}
+        </section>
+      {/if}
+
       {#if lineup.length > 0}
         <section>
           <h2 class="mb-1 text-xs tracking-wider uppercase" style="color: var(--color-text-muted)">
@@ -284,3 +292,10 @@
     </div>
   </Layout>
 </SiteBackground>
+
+<style>
+  /* Paragraphs, spaced the way the bio block spaces its own. */
+  .page-copy :global(p + p) {
+    margin-top: 0.75rem;
+  }
+</style>

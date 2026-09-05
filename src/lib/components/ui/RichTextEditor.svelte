@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { Editor } from '@tiptap/core';
   import StarterKit from '@tiptap/starter-kit';
+  import EmojiPicker from './EmojiPicker.svelte';
 
   let {
     content = '',
@@ -13,46 +14,11 @@
     placeholder?: string;
   } = $props();
 
-  const emojis = [
-    '😀',
-    '😂',
-    '🥰',
-    '😎',
-    '🤘',
-    '🎵',
-    '🎶',
-    '🎸',
-    '🎤',
-    '🎧',
-    '🔥',
-    '✨',
-    '💫',
-    '⭐',
-    '❤️',
-    '💜',
-    '💙',
-    '🖤',
-    '🤍',
-    '💛',
-    '👏',
-    '🙌',
-    '✌️',
-    '🤙',
-    '👋',
-    '🎉',
-    '🎊',
-    '💪',
-    '🌟',
-    '🌍'
-  ];
-
   let element: HTMLDivElement;
   let editor: Editor | undefined = $state();
-  let showEmojis = $state(false);
 
   function insertEmoji(emoji: string) {
     editor?.chain().focus().insertContent(emoji).run();
-    showEmojis = false;
   }
 
   onMount(() => {
@@ -128,32 +94,8 @@
       >
         S
       </button>
-      <div class="relative ml-auto">
-        <button
-          type="button"
-          onclick={() => (showEmojis = !showEmojis)}
-          class="rounded px-2 py-0.5 text-xs transition-colors {showEmojis
-            ? 'bg-gray-600 text-white'
-            : 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'}"
-          aria-label="Emoji"
-        >
-          😀
-        </button>
-        {#if showEmojis}
-          <div
-            class="absolute right-0 z-10 mt-1 grid w-56 grid-cols-10 gap-0.5 rounded-lg border border-gray-700 bg-gray-800 p-2 shadow-lg"
-          >
-            {#each emojis as emoji}
-              <button
-                type="button"
-                onclick={() => insertEmoji(emoji)}
-                class="rounded p-0.5 text-base hover:bg-gray-700"
-              >
-                {emoji}
-              </button>
-            {/each}
-          </div>
-        {/if}
+      <div class="ml-auto">
+        <EmojiPicker onpick={insertEmoji} />
       </div>
     </div>
   {/if}

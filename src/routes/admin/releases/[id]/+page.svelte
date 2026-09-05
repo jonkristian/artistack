@@ -1,6 +1,13 @@
 <script lang="ts">
   import { fieldClass, labelClass } from '$lib/utils/classes';
-  import { ToggleSwitch, MediaPicker, EditorPreview, DateTimePicker } from '$lib/components/ui';
+  import {
+    ToggleSwitch,
+    MediaPicker,
+    EditorPreview,
+    DateTimePicker,
+    LengthMeter,
+    RichTextEditor
+  } from '$lib/components/ui';
   import { SectionCard } from '$lib/components/cards';
   import { SlugDialog } from '$lib/components/dialogs';
   import { slugify } from '$lib/utils/slug';
@@ -175,12 +182,36 @@
         </div>
 
         <div class="mt-4">
+          <!-- Plain text, and it stays plain: this ends up inside a meta tag,
+               where a <p> would be printed rather than obeyed. No emoji either
+               — search engines strip them out of a description and a link
+               preview is not where a record wants to look like an advert. They
+               belong in the copy below, and in a post caption. -->
           <label class={labelClass} for="description">Description</label>
           <textarea id="description" class={fieldClass} rows="2" bind:value={release.description}
           ></textarea>
-          <p class="mt-1 text-xs text-gray-500">
-            Used as the page description and the text in link previews.
-          </p>
+          <LengthMeter
+            value={release.description}
+            limit={160}
+            hard={200}
+            hint="Used as the page description and the text in link previews."
+            softHint="Search results will cut this off. Link previews still show it all."
+            hardHint="Past this, search results and link previews both cut it short."
+          />
+        </div>
+
+        <div class="mt-4">
+          <span class={labelClass}>About this release</span>
+          <!-- The words on the page, as against the ones a scraper reads. No
+               length to keep to: this is under the buttons, where someone who
+               has already found what they came for can read as much as they
+               like. -->
+          <RichTextEditor
+            content={release.body ?? ''}
+            onUpdate={(html: string) => (release.body = html || null)}
+            placeholder="What the record is, who played on it, who it's for…"
+          />
+          <p class="mt-1 text-xs text-gray-500">Shown on the release page, below the services.</p>
         </div>
 
         <div class="mt-4 grid gap-4 sm:grid-cols-2">
@@ -391,7 +422,12 @@
         </a>
 
         <ReleasePage
-          release={{ ...data.release, title: release.title, presaveUrl: release.presaveUrl }}
+          release={{
+            ...data.release,
+            title: release.title,
+            presaveUrl: release.presaveUrl,
+            body: release.body
+          }}
           {releaseLinks}
           cover={release.coverUrl}
           {isOut}

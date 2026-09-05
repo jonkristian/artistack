@@ -10,10 +10,11 @@ import {
   blocks,
   media,
   pages,
-  products
+  products,
+  releases
 } from '$lib/server/schema';
 import { auth } from '$lib/server/auth';
-import { eq, asc, and, isNull } from 'drizzle-orm';
+import { eq, asc, desc, and, isNull, isNotNull } from 'drizzle-orm';
 import { findCart, getCartLines, cartTotal } from '$lib/server/cart';
 import { ensureBlocksExist } from '$lib/server/setup';
 import { getMetaSettings, getTiktokSettings, getSettings } from '$lib/server/settings';
@@ -122,6 +123,60 @@ export async function load({ request, cookies }) {
     tags: productTags.get(p.id) ?? []
   }));
 
+  /*
+   * The records, for any page carrying a releases block. Newest first, which is
+   * the order a discography is read in and the order the block relies on.
+   *
+   * Published pages only: the block links to the release page, and an unlisted
+   * one is unlisted precisely so it isn't linked to yet. Skipped entirely when
+   * releases are off, like the shop's query.
+   */
+  const releaseRows = siteSettings?.releasesEnabled
+    ? await db
+        .select({
+          id: releases.id,
+          title: releases.title,
+          slug: pages.slug,
+          releaseDate: releases.releaseDate,
+          coverUrl: releases.coverUrl,
+          presaveUrl: releases.presaveUrl
+        })
+        .from(releases)
+        .innerJoin(pages, eq(pages.id, releases.pageId))
+        .where(eq(pages.published, true))
+        .orderBy(desc(releases.releaseDate))
+    : [];
+
+  /*
+   * The services each record is on, so a block can offer them from the row
+   * rather than by way of the release page. The same rows the release page
+   * loads for itself — this is the whole set at once, which is one query
+   * instead of one per record.
+   *
+   * Ids and marks only. The URLs stay on the server: every click goes out
+   * through /go, which is what counts it.
+   */
+  const releaseLinks =
+    releaseRows.length > 0
+      ? await db
+          .select({
+            id: links.id,
+            releaseId: links.releaseId,
+            platform: links.platform,
+            label: links.label
+          })
+          .from(links)
+          .where(and(eq(links.visible, true), isNotNull(links.releaseId)))
+          .orderBy(asc(links.position))
+      : [];
+
+  const siteReleases = releaseRows.map((release) => ({
+    ...release,
+    links: releaseLinks
+      .filter((link) => link.releaseId === release.id)
+      .map(({ id, platform, label }) => ({ id, platform, label }))
+  }));
+
   const cart = siteSettings?.shopEnabled ? await findCart(cookies) : null;
   const cartLines = cart ? await getCartLines(cart.id) : [];
 
@@ -136,6 +191,7 @@ export async function load({ request, cookies }) {
     blocks: allBlocks,
     media: allMedia,
     products: taggedProducts,
+    releases: siteReleases,
     cart: { lines: cartLines, total: cartTotal(cartLines) },
     user: session?.user ?? null
   };

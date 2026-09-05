@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { looksLikeHtml } from '$lib/utils/text';
   import { formatPrice } from '$lib/utils/price';
   import { toast } from '$lib/stores/toast.svelte';
   import * as cart from '$lib/stores/cart.svelte';
@@ -123,11 +124,21 @@
       </div>
 
       {#if product.description}
-        <!-- Kept as written, line breaks and all: sizes and tracklists are
-             typed as lists and should stay lists. -->
-        <p class="text-sm whitespace-pre-line" style="color: var(--color-text-muted)">
-          {product.description}
-        </p>
+        <!--
+          Written in the rich editor, so it arrives as markup — but products
+          described before that editor existed are plain text with real line
+          breaks in them, and running those through `{@html}` would join the
+          lines up. Each is drawn the way it was written.
+        -->
+        {#if looksLikeHtml(product.description)}
+          <div class="product-copy text-sm" style="color: var(--color-text-muted)">
+            {@html product.description}
+          </div>
+        {:else}
+          <p class="text-sm whitespace-pre-line" style="color: var(--color-text-muted)">
+            {product.description}
+          </p>
+        {/if}
       {/if}
 
       {#if variants.length > 0}
@@ -232,3 +243,10 @@
     </div>
   </div>
 </div>
+
+<style>
+  /* Paragraphs, the way the bio block spaces them. */
+  .product-copy :global(p + p) {
+    margin-top: 0.5rem;
+  }
+</style>

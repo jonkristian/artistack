@@ -16,6 +16,7 @@ export const BLOCK_TYPES = [
   'profile',
   'links',
   'shows',
+  'releases',
   'image',
   'gallery',
   'email',

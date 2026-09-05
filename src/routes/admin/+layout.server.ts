@@ -90,6 +90,7 @@ export const load: LayoutServerLoad = async ({ request }) => {
         releaseDate: releases.releaseDate,
         coverUrl: releases.coverUrl,
         presaveUrl: releases.presaveUrl,
+        body: releases.body,
         isrc: releases.isrc,
         upc: releases.upc
       })

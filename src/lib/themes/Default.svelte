@@ -7,6 +7,7 @@
     Show,
     Media,
     ProductWithTags,
+    ReleaseSummary,
     Block,
     ImageBlockConfig,
     BaseBlockConfig
@@ -22,7 +23,8 @@
     blocks = [],
     children,
     media = [],
-    products = []
+    products = [],
+    releases = []
   }: {
     profile: Profile;
     settings?: PublicSettings | null;
@@ -40,6 +42,8 @@
     media?: Media[];
     /** For the shop block, which draws the shop rather than owning a list. */
     products?: ProductWithTags[];
+    /** For the releases block, which draws the records the same way. */
+    releases?: ReleaseSummary[];
   } = $props();
 
   const locale = $derived(settings?.locale || 'nb-NO');
@@ -108,6 +112,7 @@
                 {shows}
                 {media}
                 {products}
+                {releases}
                 {locale}
               />
             </div>

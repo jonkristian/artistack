@@ -77,6 +77,7 @@ export type ReleaseDraft = {
   releaseDate: string;
   coverUrl: string | null;
   presaveUrl: string | null;
+  body: string | null;
   isrc: string | null;
   upc: string | null;
 };
@@ -122,6 +123,7 @@ export function buildDraftFromServerData(data: {
     releaseDate: Date;
     coverUrl: string | null;
     presaveUrl: string | null;
+    body: string | null;
     isrc: string | null;
     upc: string | null;
   }[];
@@ -364,7 +366,8 @@ export async function publishAllChanges(draftData: UnifiedDraftData) {
         imageUrl: td.imageUrl ?? undefined,
         ticketUrl: td.ticketUrl ?? undefined,
         eventUrl: td.eventUrl ?? undefined,
-        soldOut: td.soldOut ?? false
+        soldOut: td.soldOut ?? false,
+        description: td.description ?? undefined
       });
     }
 
@@ -378,7 +381,8 @@ export async function publishAllChanges(draftData: UnifiedDraftData) {
         changes.imageUrl !== undefined ||
         changes.ticketUrl !== undefined ||
         changes.eventUrl !== undefined ||
-        changes.soldOut !== undefined;
+        changes.soldOut !== undefined ||
+        changes.description !== undefined;
       if (hasChanges) {
         await serverUpdateShow({
           id,
@@ -390,7 +394,8 @@ export async function publishAllChanges(draftData: UnifiedDraftData) {
           imageUrl: changes.imageUrl,
           ticketUrl: changes.ticketUrl,
           eventUrl: changes.eventUrl,
-          soldOut: changes.soldOut ?? undefined
+          soldOut: changes.soldOut ?? undefined,
+          description: changes.description
         });
       }
     }

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { fieldClass, labelClass } from '$lib/utils/classes';
-  import { ToggleSwitch, MediaPicker, TagInput } from '$lib/components/ui';
+  import { ToggleSwitch, MediaPicker, TagInput, RichTextEditor } from '$lib/components/ui';
   import { SectionCard } from '$lib/components/cards';
   import { goto, invalidateAll } from '$app/navigation';
   import { toast } from '$lib/stores/toast.svelte';
@@ -176,15 +176,15 @@
           </div>
 
           <div>
-            <label for="product-description" class={labelClass}>Description</label>
-            <textarea
-              id="product-description"
-              value={product.description ?? ''}
-              oninput={(e) => (product.description = e.currentTarget.value || null)}
-              rows="3"
-              class={fieldClass}
+            <span class={labelClass}>Description</span>
+            <!-- Rich, because this is read on the page rather than fed to
+                 anything: a tracklist wants its line breaks and a pressing
+                 detail wants its emphasis. The dialog renders it. -->
+            <RichTextEditor
+              content={product.description ?? ''}
+              onUpdate={(html: string) => (product.description = html || null)}
               placeholder="Sizes, pressing details, what's included…"
-            ></textarea>
+            />
           </div>
 
           <div class="grid gap-4 sm:grid-cols-2">

@@ -794,7 +794,8 @@ const createShowSchema = v.object({
   ticketUrl: v.optional(v.nullable(v.string())),
   eventUrl: v.optional(v.nullable(v.string())),
   soldOut: v.optional(v.boolean()),
-  imageUrl: v.optional(v.nullable(v.string()))
+  imageUrl: v.optional(v.nullable(v.string())),
+  description: v.optional(v.nullable(v.string()))
 });
 
 export const createShow = command(createShowSchema, async (data) => {
@@ -814,6 +815,7 @@ export const createShow = command(createShowSchema, async (data) => {
       eventUrl: data.eventUrl || null,
       soldOut: data.soldOut || false,
       imageUrl: data.imageUrl || null,
+      description: data.description || null,
       position
     })
     .returning();
@@ -835,7 +837,8 @@ const updateShowSchema = v.object({
   ticketUrl: v.optional(v.nullable(v.string())),
   eventUrl: v.optional(v.nullable(v.string())),
   soldOut: v.optional(v.boolean()),
-  imageUrl: v.optional(v.nullable(v.string()))
+  imageUrl: v.optional(v.nullable(v.string())),
+  description: v.optional(v.nullable(v.string()))
 });
 
 export const updateShow = command(updateShowSchema, async ({ id, ...updates }) => {
@@ -852,6 +855,7 @@ export const updateShow = command(updateShowSchema, async ({ id, ...updates }) =
   if (updates.eventUrl !== undefined) updateData.eventUrl = updates.eventUrl;
   if (updates.soldOut !== undefined) updateData.soldOut = updates.soldOut;
   if (updates.imageUrl !== undefined) updateData.imageUrl = updates.imageUrl;
+  if (updates.description !== undefined) updateData.description = updates.description;
 
   /*
    * The line-up lives in the join table, so changing only a running order or a

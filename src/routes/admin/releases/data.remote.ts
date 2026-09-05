@@ -48,6 +48,7 @@ const updateSchema = v.object({
   description: v.optional(v.nullable(v.string())),
   shareImageUrl: v.optional(v.nullable(v.string())),
   presaveUrl: v.optional(v.nullable(v.string())),
+  body: v.optional(v.nullable(v.string())),
   isrc: v.optional(v.nullable(v.string())),
   upc: v.optional(v.nullable(v.string())),
   coverUrl: v.optional(v.nullable(v.string())),
@@ -89,6 +90,7 @@ export const updateRelease = command(updateSchema, async (input) => {
     releaseChanges.releaseDate = date;
   }
   if (input.presaveUrl !== undefined) releaseChanges.presaveUrl = input.presaveUrl;
+  if (input.body !== undefined) releaseChanges.body = input.body;
   if (input.isrc !== undefined) releaseChanges.isrc = input.isrc;
   if (input.upc !== undefined) releaseChanges.upc = input.upc;
   if (input.coverUrl !== undefined) releaseChanges.coverUrl = input.coverUrl;

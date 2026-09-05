@@ -2,12 +2,20 @@
   import { goto, invalidateAll } from '$app/navigation';
   import { toast } from '$lib/stores/toast.svelte';
   import MediaPicker from '$lib/components/ui/MediaPicker.svelte';
-  import { ImageSelect, SortableList, TagInput, ToggleSwitch } from '$lib/components/ui';
+  import {
+    EmojiPicker,
+    ImageSelect,
+    LengthMeter,
+    SortableList,
+    TagInput,
+    ToggleSwitch
+  } from '$lib/components/ui';
   import { SectionCard } from '$lib/components/cards';
   import { EditorPreview } from '$lib/components/ui';
   import { PhoneUploadDialog, QueueClipDialog, SourceClipDialog } from '$lib/components/dialogs';
   import { formatDuration } from '$lib/utils/upload';
   import { fieldClass, labelClass, numberClass } from '$lib/utils/classes';
+  import { insertAtCursor } from '$lib/utils/text';
   import {
     DEFAULT_CLIP_CONFIG,
     DEFAULT_ADVANCED_CONFIG,
@@ -47,6 +55,18 @@
 
   let { data }: { data: PageData } = $props();
 
+  /** The caption box, so an emoji lands where the cursor is. */
+  let captionField = $state<HTMLTextAreaElement>();
+
+  /*
+   * What the caption box says right now.
+   *
+   * The box itself reports on blur — every keystroke is not worth a round trip
+   * — but the meter under it is there to be watched while writing, and reading
+   * the saved value meant it sat still until you clicked away.
+   */
+  let captionText = $state('');
+
   let sourcePickerOpen = $state(false);
   /** The source clip whose trim and mute are open, or null. */
   let editingSource = $state<(typeof data.sources)[number] | null>(null);
@@ -55,6 +75,14 @@
   let postSheet = $state<{ markdown: string } | null>(null);
 
   const selected = $derived(data.project);
+
+  /*
+   * Reset from the project, so opening another clip — or a save landing —
+   * shows that clip's caption rather than the last one typed.
+   */
+  $effect(() => {
+    captionText = selected.description ?? '';
+  });
 
   const config = $derived<ClipRenderConfig>({
     ...DEFAULT_CLIP_CONFIG,
@@ -533,16 +561,51 @@
           <div class="sm:col-span-2">
             <div class="mb-1 flex items-center justify-between gap-2">
               <label class="text-sm text-gray-400" for="clip-desc">Description</label>
-              {@render saveAsDefault('description')}
+              <div class="flex items-center gap-2">
+                <!-- The emoji, without the formatting either side of them: this
+                     is posted as plain text, so a <b> would be typed out in the
+                     caption rather than read as bold. -->
+                <EmojiPicker
+                  onpick={(emoji: string) =>
+                    captionField &&
+                    patch({ description: (captionText = insertAtCursor(captionField, emoji)) })}
+                />
+                {@render saveAsDefault('description')}
+              </div>
             </div>
             <textarea
               id="clip-desc"
               rows="3"
               class={fieldClass}
+              bind:this={captionField}
               value={selected.description ?? ''}
               placeholder="Keywords first — this becomes the post caption."
+              oninput={(e) => (captionText = e.currentTarget.value)}
               onblur={(e) => patch({ description: e.currentTarget.value })}
             ></textarea>
+            <!--
+              Both marks are ours, and neither is the platforms'. TikTok and
+              Instagram take 2,200 characters, which is so far past what anyone
+              reads that measuring against it says nothing — a bar that never
+              moves is decoration.
+
+              So: 100 is the fold, roughly what shows before “more” and the
+              reason the field asks for keywords first, and 350 is a caption
+              that has said what it came to say. Going past either is allowed;
+              the post still sends.
+
+              The hashtags and the campaign link the post sheet adds aren't
+              counted here; they land after all of this.
+            -->
+            <LengthMeter
+              value={captionText}
+              limit={100}
+              hard={350}
+              split
+              hint="Keywords first — roughly the first 100 characters show before “more”."
+              softHint="Past the fold. Keep going if it's worth it — the rest is behind “more”."
+              hardHint="Long for a caption. The platforms take it; people stop reading."
+            />
           </div>
         </div>
       </SectionCard>
