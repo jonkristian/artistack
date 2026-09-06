@@ -378,8 +378,8 @@
               block can show "what is tagged merch" and mean the same thing the
               rest of the admin does.
 
-              Keyed on the product so switching between two reseeds the chips —
-              TagInput reads `initial` once by design.
+              Keyed on the product so switching between two reseeds the selection
+              — TagInput reads `initial` once by design.
             -->
             {#key product.id}
               <TagInput

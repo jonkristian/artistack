@@ -1,0 +1,12 @@
+-- How far to turn a source clip before anything else happens to it.
+--
+-- The renderer already honours the rotation a container declares — probeVideo
+-- reads the display matrix and swaps the dimensions to match — so footage shot
+-- on a phone arrives upright without help. This is for the footage that lies:
+-- screen recordings, some Android exports, a camera held the wrong way up, all
+-- of which are stored sideways with nothing in the file admitting it. No amount
+-- of probing rescues those, so it has to be a decision someone makes.
+--
+-- Degrees clockwise, and only the four right angles: this corrects a wrong
+-- orientation, it doesn't tilt a shot for effect. 0 is "as it came".
+ALTER TABLE `clip_sources` ADD `rotation` integer DEFAULT 0;

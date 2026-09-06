@@ -14,6 +14,7 @@
   let {
     editor,
     preview,
+    footer,
     previewStyle = '',
     editorClass = 'lg:w-1/2 lg:flex-none',
     previewClass = 'lg:w-1/2 lg:flex-none',
@@ -21,6 +22,17 @@
   }: {
     editor: Snippet;
     preview: Snippet;
+    /**
+     * A strip under both panes, the full width of whatever this component sits
+     * in — which is the page beside the sidebar, without anything here having
+     * to know how wide that is.
+     *
+     * It stays put while the panes scroll, because they are what scrolls: the
+     * panes carry the overflow and this is simply the last row of a column
+     * that's already the height of the screen. No fixed positioning, and so no
+     * offset to keep in step with the layout around it.
+     */
+    footer?: Snippet;
     /** Inline style for the preview pane, for pages that theme its background. */
     previewStyle?: string;
     /** Wide-screen split. The default is even; the clip editor is 3/5 to 2/5. */
@@ -59,4 +71,13 @@
       {@render preview()}
     </div>
   </div>
+
+  <!-- Unstyled: a footer that draws its own rule and background would leave a
+       stray line across the page on every screen whose footer has nothing to
+       say. With the chrome inside, an empty one collapses to nothing. -->
+  {#if footer}
+    <div class="shrink-0">
+      {@render footer()}
+    </div>
+  {/if}
 </div>

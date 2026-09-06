@@ -57,6 +57,17 @@
           </svg>
         {/if}
         <span class="flex-1 break-words">{t.message}</span>
+        {#if t.action}
+          <button
+            onclick={() => {
+              t.action?.run();
+              dismissToast(t.id);
+            }}
+            class="shrink-0 rounded px-1.5 py-0.5 font-medium text-white/90 underline underline-offset-2 transition-colors hover:bg-white/10 hover:text-white"
+          >
+            {t.action.label}
+          </button>
+        {/if}
         <button
           onclick={() => dismissToast(t.id)}
           aria-label="Dismiss"

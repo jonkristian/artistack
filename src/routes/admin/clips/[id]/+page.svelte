@@ -1,18 +1,28 @@
 <script lang="ts">
-  import { goto, invalidateAll } from '$app/navigation';
+  import { beforeNavigate, goto, invalidateAll } from '$app/navigation';
   import { toast } from '$lib/stores/toast.svelte';
   import MediaPicker from '$lib/components/ui/MediaPicker.svelte';
   import {
     EmojiPicker,
     ImageSelect,
     LengthMeter,
+    SaveStatus,
     SortableList,
     TagInput,
+    TimeField,
     ToggleSwitch
   } from '$lib/components/ui';
+  import { Autosave } from '$lib/utils/autosave.svelte';
+  import { renderFingerprint } from '$lib/clips/fingerprint';
+  import {
+    AudioTrackControls,
+    ClipTimeline,
+    SourceClipControls,
+    type TimelineTrack
+  } from '$lib/components/clips';
   import { SectionCard } from '$lib/components/cards';
   import { EditorPreview } from '$lib/components/ui';
-  import { PhoneUploadDialog, QueueClipDialog, SourceClipDialog } from '$lib/components/dialogs';
+  import { PhoneUploadDialog, QueueClipDialog } from '$lib/components/dialogs';
   import { formatDuration } from '$lib/utils/upload';
   import { fieldClass, labelClass, numberClass } from '$lib/utils/classes';
   import { insertAtCursor } from '$lib/utils/text';
@@ -24,6 +34,7 @@
     CLIP_STATUS_LABELS,
     CLIP_STATUS_DOTS,
     PLATFORM_NAMES,
+    type ClipRotation,
     type ClipRenderConfig,
     type ClipAdvancedConfig,
     type TimedCaption
@@ -37,6 +48,12 @@
     addSource,
     updateSource,
     removeSource,
+    addAudio,
+    updateAudio,
+    removeAudio,
+    reorderAudio,
+    restoreSource,
+    restoreAudio,
     reorderSources,
     startRender,
     stopRender,
@@ -59,6 +76,66 @@
   let captionField = $state<HTMLTextAreaElement>();
 
   /*
+   * The rendered clip's player, so a timed caption can be marked against it
+   * instead of guessed at.
+   *
+   * Caption times are read on the body timeline — the sources end to end, after
+   * trims and speed — and that is exactly what this video shows from its first
+   * frame, since the intro is composited over the opening rather than added
+   * before it. The outro is appended at the end and shifts nothing.
+   *
+   * Undefined until a render exists. There is no timeline to point at before
+   * one, which is the honest state rather than a missing feature.
+   */
+  let previewVideo = $state<HTMLVideoElement>();
+
+  /**
+   * Every write on this page goes through here.
+   *
+   * There is no Save button in the studio — a change is committed as you make
+   * it — so this is the only thing standing between a refused write and finding
+   * out about it on the next reload.
+   */
+  const autosave = new Autosave();
+
+  /*
+   * Leaving the page with something unsaved. Two different holes.
+   *
+   * A field that commits on blur has committed nothing while the cursor is
+   * still in it, so leaving by any route that isn't a click elsewhere took the
+   * last thing typed with it. Blurring here fires the very handler that click
+   * would have, and the request is away before the navigation is.
+   *
+   * A failed save is worse: it exists only on this screen. That one is worth
+   * stopping for.
+   */
+  beforeNavigate((nav) => {
+    (document.activeElement as HTMLElement | null)?.blur();
+
+    const failure = autosave.failure;
+    if (failure && !confirm(`Couldn't save ${failure.what}. Leave anyway and lose that change?`)) {
+      nav.cancel();
+    }
+  });
+
+  /*
+   * The same question for a closing tab, where the browser owns the wording and
+   * all we can do is ask it to ask.
+   *
+   * No blur-flush here, deliberately. A blur fires a save whether or not the
+   * field changed, so flushing would put a write in flight every single time
+   * the tab closed with a cursor in a field — and then this would find the page
+   * unsettled and prompt, every time, for nothing.
+   */
+  $effect(() => {
+    const guard = (e: BeforeUnloadEvent) => {
+      if (!autosave.settled) e.preventDefault();
+    };
+    window.addEventListener('beforeunload', guard);
+    return () => window.removeEventListener('beforeunload', guard);
+  });
+
+  /*
    * What the caption box says right now.
    *
    * The box itself reports on blur — every keystroke is not worth a round trip
@@ -67,10 +144,23 @@
    */
   let captionText = $state('');
 
-  let sourcePickerOpen = $state(false);
+  /*
+   * What the tag field holds right now, for the same reason.
+   *
+   * "Save as default" reads these rather than the loaded page data, because
+   * pressing it is the *first* thing that blurs the field you were typing in:
+   * the blur fires the save, the save is a round trip, and the click handler
+   * runs long before it lands. Reading the server's copy therefore captured the
+   * value from before the edit — which, the first time round, is nothing, and
+   * "saved as default" quietly cleared the default instead.
+   */
+  let tagNames = $state<string[]>([]);
+
+  let mediaPickerOpen = $state(false);
   /** The source clip whose trim and mute are open, or null. */
-  let editingSource = $state<(typeof data.sources)[number] | null>(null);
-  let musicPickerOpen = $state(false);
+  let openSourceId = $state<number | null>(null);
+  /** The track whose settings are open, or null. */
+  let openTrackId = $state<number | null>(null);
   let phoneUploadOpen = $state(false);
   let postSheet = $state<{ markdown: string } | null>(null);
 
@@ -84,12 +174,37 @@
     captionText = selected.description ?? '';
   });
 
+  $effect(() => {
+    tagNames = data.tags;
+  });
+
   const config = $derived<ClipRenderConfig>({
     ...DEFAULT_CLIP_CONFIG,
     ...((selected.config ?? {}) as Partial<ClipRenderConfig>)
   });
 
   const sources = $derived(data.sources);
+  /*
+   * The beds with their defaults filled in, once, the way `config` is merged
+   * with DEFAULT_CLIP_CONFIG above. Every column carries a database default, so
+   * every one of them is nullable in the row type and nowhere downstream wants
+   * to think about that.
+   */
+  const tracks = $derived<TimelineTrack[]>(
+    data.audio.map((row) => ({
+      id: row.id,
+      mediaId: row.mediaId,
+      // Resolved once, here, because both the list and the timeline want to
+      // write the track's name and neither should be looking it up itself.
+      label: mediaById.get(row.mediaId)?.filename ?? 'Missing track',
+      start: row.start ?? 0,
+      end: row.end ?? null,
+      seek: row.seek ?? 0,
+      fadeIn: row.fadeIn ?? true,
+      fadeOut: row.fadeOut ?? true,
+      duck: row.duck ?? false
+    }))
+  );
 
   const mediaById = $derived(new Map(data.media.map((m) => [m.id, m])));
 
@@ -108,6 +223,27 @@
   }
 
   const isRendering = $derived(job?.status === 'queued' || job?.status === 'rendering');
+
+  /**
+   * Whether the clip has moved on since the render you're looking at.
+   *
+   * The same function the renderer records with, over the same pieces, so the
+   * two can't develop different ideas of what counts as a change. Unknown —
+   * nothing rendered, or rendered before the fingerprint existed — shows
+   * nothing, which is the honest answer.
+   */
+  const stale = $derived.by(() => {
+    if (!outputMedia || !selected.renderFingerprint) return false;
+    return (
+      renderFingerprint({
+        config,
+        captions,
+        sources,
+        audio: tracks,
+        defaultGraphicMediaId: data.defaultGraphicMediaId
+      }) !== selected.renderFingerprint
+    );
+  });
 
   /**
    * One forward action per stage. Review is only meaningful before a clip is
@@ -145,7 +281,8 @@
 
   async function handleDelete(id: number) {
     if (!confirm('Delete this clip and its rendered video? This cannot be undone.')) return;
-    await deleteProject(id);
+    const gone = await attempt('Could not delete the clip', () => deleteProject(id));
+    if (gone === undefined) return;
     toast.success('Deleted');
     await goto('/admin/clips');
   }
@@ -155,10 +292,10 @@
    * empty field clears the default rather than storing nothing useful.
    */
   async function handleSaveDefault(field: 'tags' | 'description') {
-    const result =
-      field === 'tags'
-        ? await saveClipDefaultTags(data.tags)
-        : await saveClipDefaultDescription(selected.description ?? '');
+    const result = await attempt(`Could not save the default ${field}`, () =>
+      field === 'tags' ? saveClipDefaultTags(tagNames) : saveClipDefaultDescription(captionText)
+    );
+    if (!result) return;
     if (!result.success) {
       toast.error('Could not save the default');
       return;
@@ -166,20 +303,49 @@
     toast.success(result.cleared ? `Default ${field} cleared` : `Saved as the default ${field}`);
   }
 
-  /** Saves a set of project fields. */
-  async function patch(fields: Record<string, unknown>) {
-    await updateProject({ id: selected.id, ...fields });
-    await invalidateAll();
+  /**
+   * An action that isn't a save — it deletes, approves, publishes, copies.
+   *
+   * Same defect as the silent autosave, different words: a rejected promise in
+   * an event handler goes nowhere, so a lost connection halfway through
+   * approving a clip looked like nothing happening at all. These aren't
+   * retryable the way a field is — you press the button again — so they only
+   * need to be heard.
+   */
+  async function attempt<T>(whatFailed: string, run: () => Promise<T>): Promise<T | undefined> {
+    try {
+      return await run();
+    } catch (e) {
+      const detail = e instanceof Error && e.message ? ` — ${e.message}` : '';
+      toast.error(`${whatFailed}${detail}`);
+      return undefined;
+    }
   }
 
-  async function patchConfig(changes: Partial<ClipRenderConfig>) {
-    await patch({ config: changes });
+  /**
+   * Saves a set of project fields.
+   *
+   * `what` names the thing for the failure message, so it reads as "Couldn't
+   * save the caption" rather than as an error code.
+   *
+   * A failed save deliberately skips the reload. The server still holds the old
+   * value, so refreshing would wipe what you typed off the screen and leave you
+   * with an apology and nothing to retry — the unsaved edit stays put instead,
+   * which is also what makes Try again mean anything.
+   */
+  async function patch(what: string, fields: Record<string, unknown>) {
+    const saved = await autosave.run(what, () => updateProject({ id: selected.id, ...fields }));
+    if (saved !== undefined) await invalidateAll();
+  }
+
+  async function patchConfig(what: string, changes: Partial<ClipRenderConfig>) {
+    await patch(what, { config: changes });
   }
 
   // Advanced dials are merged server-side, so sending one field leaves the rest
   // untouched.
   async function patchAdvanced(changes: Partial<ClipAdvancedConfig>) {
-    await patch({ config: { advanced: changes } });
+    await patch('the advanced settings', { config: { advanced: changes } });
   }
 
   const advanced = $derived<ClipAdvancedConfig>({
@@ -265,7 +431,7 @@
   async function applyPreset(presetId: string) {
     const preset = CLIP_PRESETS.find((p) => p.id === presetId);
     if (!preset) return;
-    await patchConfig(preset.config);
+    await patchConfig('the preset', preset.config);
     toast.success(`${preset.label} applied`);
   }
 
@@ -280,18 +446,44 @@
    * because addSource derives each new position from the current highest, so
    * firing them at once would race and collapse the ordering.
    */
-  async function handleAddSources(ids: number[]) {
+  /**
+   * Files the picked media by what each file is: footage into Clips, music into
+   * Audio. Anything else — a stray image — is skipped rather than filed
+   * somewhere it would only be confusing.
+   *
+   * Sequential because both inserts derive a position from the current highest,
+   * so firing them at once would race and collapse the ordering.
+   */
+  async function handleAddMedia(ids: number[]) {
     if (!selected || ids.length === 0) return;
-    for (const mediaId of ids) {
-      await addSource({ projectId: selected.id, mediaId });
-    }
-    await invalidateAll();
-    toast.success(`Added ${ids.length} clip${ids.length > 1 ? 's' : ''}`);
-  }
 
-  async function handleSelectMusic(url: string | null) {
-    const item = url ? data.media.find((m) => m.url === url) : null;
-    await patchConfig({ musicMediaId: item?.id ?? null });
+    const picked = ids
+      .map((id) => data.media.find((m) => m.id === id))
+      .filter((m): m is (typeof data.media)[number] => Boolean(m));
+
+    const videos = picked.filter((m) => m.mimeType?.startsWith('video/'));
+    const audios = picked.filter((m) => m.mimeType?.startsWith('audio/'));
+    if (videos.length === 0 && audios.length === 0) return;
+
+    // One unit of work, not one per file: a run that stops halfway has still
+    // added something, and retrying the whole picking is what you'd want.
+    const added = await autosave.run('the media', async () => {
+      for (const item of videos) {
+        await addSource({ projectId: selected.id, mediaId: item.id });
+      }
+      for (const item of audios) {
+        await addAudio({ projectId: selected.id, mediaId: item.id });
+      }
+    });
+    await invalidateAll();
+
+    if (added !== undefined) {
+      const parts = [
+        videos.length ? `${videos.length} clip${videos.length > 1 ? 's' : ''}` : null,
+        audios.length ? `${audios.length} track${audios.length > 1 ? 's' : ''}` : null
+      ].filter(Boolean);
+      toast.success(`Added ${parts.join(' and ')}`);
+    }
   }
 
   const graphicOptions = $derived([
@@ -315,15 +507,29 @@
 
   /** SortableList hands back the whole list already in its new order. */
   async function handleReorderSources(reordered: typeof sources) {
-    await reorderSources({
-      projectId: selected.id,
-      orderedIds: reordered.map((s) => s.id)
-    });
+    await autosave.run('the clip order', () =>
+      reorderSources({
+        projectId: selected.id,
+        orderedIds: reordered.map((s) => s.id)
+      })
+    );
+    // Reloaded either way: a refused reorder leaves the list showing an order
+    // the server never took, and the honest thing is to put it back.
+    await invalidateAll();
+  }
+
+  async function handleReorderAudio(reordered: typeof tracks) {
+    await autosave.run('the track order', () =>
+      reorderAudio({ projectId: selected.id, orderedIds: reordered.map((t) => t.id) })
+    );
+    // Reloaded either way: a refused reorder leaves the list showing an order
+    // the server never took, and the honest thing is to put it back.
     await invalidateAll();
   }
 
   async function handleRender() {
-    const result = await startRender(selected.id);
+    const result = await attempt('Could not start the render', () => startRender(selected.id));
+    if (!result) return;
     if (!result.success) {
       toast.error(result.message ?? 'Could not start the render');
       return;
@@ -334,17 +540,21 @@
 
   async function handleStop() {
     if (!job) return;
-    await stopRender(job.id);
+    const stopped = await attempt('Could not cancel the render', () => stopRender(job.id));
+    if (stopped === undefined) return;
     toast.success('Render cancelled');
   }
 
   // --- review & release --------------------------------------------------
 
   async function handleSendForReview() {
-    const result = await sendForReview({
-      projectId: selected.id,
-      origin: window.location.origin
-    });
+    const result = await attempt('Could not send for review', () =>
+      sendForReview({
+        projectId: selected.id,
+        origin: window.location.origin
+      })
+    );
+    if (!result) return;
     if (!result.success) {
       toast.error(result.error ?? 'Could not send for review');
       return;
@@ -358,14 +568,20 @@
 
   async function handleDecision(approved: boolean) {
     const note = approved ? null : prompt('Why is it rejected? (optional)');
-    await reviewDecision({ projectId: selected.id, approved, note });
+    const decided = await attempt('Could not record the decision', () =>
+      reviewDecision({ projectId: selected.id, approved, note })
+    );
+    if (decided === undefined) return;
     await invalidateAll();
     toast.success(approved ? 'Approved' : 'Rejected');
   }
 
   async function handlePreviewLink(rotate = false) {
     const fn = rotate ? resetPreviewLink : createPreviewLink;
-    const result = await fn({ projectId: selected.id, origin: window.location.origin });
+    const result = await attempt('Could not create the preview link', () =>
+      fn({ projectId: selected.id, origin: window.location.origin })
+    );
+    if (!result) return;
     navigator.clipboard.writeText(result.url);
     await invalidateAll();
     toast.success(rotate ? 'New link created and copied' : 'Preview link copied');
@@ -382,7 +598,8 @@
     const alreadyQueued = selected.status === 'queued';
 
     if (!alreadyQueued) {
-      const result = await addToQueue(selected.id);
+      const result = await attempt('Could not queue the clip', () => addToQueue(selected.id));
+      if (!result) return;
       if (!result.success) {
         toast.error(result.message ?? 'Could not queue');
         return;
@@ -390,7 +607,10 @@
     }
 
     // Sent even when null, so switching back to the drip clears an old pin.
-    await setScheduledDate({ projectId: selected.id, when });
+    const dated = await attempt('Could not set the release date', () =>
+      setScheduledDate({ projectId: selected.id, when })
+    );
+    if (dated === undefined) return;
     await invalidateAll();
 
     toast.success(
@@ -403,7 +623,10 @@
   }
 
   async function handleUnqueue() {
-    await removeFromQueue(selected.id);
+    const removed = await attempt('Could not remove it from the queue', () =>
+      removeFromQueue(selected.id)
+    );
+    if (removed === undefined) return;
     await invalidateAll();
     toast.success('Removed from the queue');
   }
@@ -421,7 +644,10 @@
   }
 
   async function handlePublishNow() {
-    const result = await publishNow({ projectId: selected.id, origin: window.location.origin });
+    const result = await attempt('Could not publish the clip', () =>
+      publishNow({ projectId: selected.id, origin: window.location.origin })
+    );
+    if (!result) return;
     if (!result.success) {
       toast.error(result.error ?? 'Publish failed');
       return;
@@ -431,7 +657,10 @@
   }
 
   async function handlePostSheet() {
-    postSheet = await getPostSheet({ projectId: selected.id, origin: window.location.origin });
+    const sheet = await attempt('Could not build the post sheet', () =>
+      getPostSheet({ projectId: selected.id, origin: window.location.origin })
+    );
+    if (sheet) postSheet = sheet;
   }
 
   function copyPostSheet() {
@@ -445,7 +674,7 @@
   const captions = $derived((selected.captions ?? []) as TimedCaption[]);
 
   async function setCaptions(next: TimedCaption[]) {
-    await patch({ captions: next });
+    await patch('the captions', { captions: next });
   }
 
   async function addCaption() {
@@ -459,13 +688,17 @@
   }
 
   async function deleteCaption(index: number) {
+    // The whole list, not the removed line: putting one back where it was is
+    // the same operation as never having taken it out, and the array is small.
+    const before = captions;
     await setCaptions(captions.filter((_, i) => i !== index));
+    toast.undoable('Caption removed', () => setCaptions(before));
   }
 </script>
 
 <!--
   Removing a row is the same gesture wherever it appears — a source clip, a
-  caption, the music bed — so it gets one shape. The label carries the meaning
+  caption, an audio track — so it gets one shape. The label carries the meaning
   the glyph can't.
 -->
 <!--
@@ -517,6 +750,14 @@
 
 <EditorPreview editorClass="lg:flex-1" previewClass="lg:w-2/5 lg:max-w-2xl lg:flex-none" padPreview>
   {#snippet editor()}
+    <!-- Zero height, so the first card below starts at the top of the column
+         and lines up with the video in the pane beside it. The status floats
+         over the corner instead of holding a row open for the nine tenths of
+         the time it has nothing to report. -->
+    <div class="sticky top-0 z-30 flex h-0 justify-end">
+      <SaveStatus {autosave} />
+    </div>
+
     {#if !data.renderingAvailable}
       <div class="mb-6 rounded-lg border border-amber-700/50 bg-amber-950/40 p-4 text-sm">
         <p class="font-medium text-amber-300">Rendering is unavailable</p>
@@ -539,7 +780,7 @@
               id="clip-name"
               class={fieldClass}
               value={selected.name}
-              onblur={(e) => patch({ name: e.currentTarget.value })}
+              onblur={(e) => patch('the name', { name: e.currentTarget.value })}
             />
           </div>
           <div>
@@ -554,7 +795,10 @@
                 initial={data.tags}
                 suggestions={data.allTags}
                 placeholder="indie rock, new music"
-                onchange={(names) => patch({ tags: names })}
+                onchange={(names) => {
+                  tagNames = names;
+                  patch('the tags', { tags: names });
+                }}
               />
             {/key}
           </div>
@@ -568,7 +812,9 @@
                 <EmojiPicker
                   onpick={(emoji: string) =>
                     captionField &&
-                    patch({ description: (captionText = insertAtCursor(captionField, emoji)) })}
+                    patch('the description', {
+                      description: (captionText = insertAtCursor(captionField, emoji))
+                    })}
                 />
                 {@render saveAsDefault('description')}
               </div>
@@ -581,7 +827,7 @@
               value={selected.description ?? ''}
               placeholder="Keywords first — this becomes the post caption."
               oninput={(e) => (captionText = e.currentTarget.value)}
-              onblur={(e) => patch({ description: e.currentTarget.value })}
+              onblur={(e) => patch('the description', { description: e.currentTarget.value })}
             ></textarea>
             <!--
               Both marks are ours, and neither is the platforms'. TikTok and
@@ -610,44 +856,137 @@
         </div>
       </SectionCard>
 
-      <!-- Sources -->
-      <SectionCard title="Source clips">
+      <!-- Branding, on its own rather than buried under Look.
+
+           It is a look decision — which mark the clip wears and where — but
+           it is the one you make once and then leave alone, while the rest
+           of Look is what you fiddle with. Sharing a card put the settled
+           thing underneath the unsettled one.
+
+           Not folded into the first card either: that one is the post — the
+           name, the tags, the caption that gets typed into TikTok — and this
+           is the render. -->
+      <SectionCard title="Branding">
         {#snippet actions()}
-          <div class="flex gap-2">
-            <button
-              onclick={() => (phoneUploadOpen = true)}
-              title="Show a QR to upload footage straight from a phone"
-              class="flex items-center gap-1.5 rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs whitespace-nowrap text-gray-300 hover:bg-gray-700"
-            >
-              <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="1.5"
-                  d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
-                />
-              </svg>
-              From phone
-            </button>
-            <button
-              onclick={() => (sourcePickerOpen = true)}
-              class="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium whitespace-nowrap text-white hover:bg-violet-500"
-            >
-              Add clips
-            </button>
-          </div>
+          <!-- What it will actually render with, which is the one thing you
+               would open this card to check. -->
+          <span class="text-xs text-gray-500">
+            {#if config.randomGraphics}
+              Random of {data.graphics.length}
+            {:else if activeGraphic}
+              {activeGraphic.filename}
+            {/if}
+          </span>
         {/snippet}
 
+        <!-- Graphic and placements on one row: which mark, and where it lands,
+             is a single decision in practice. The toggles stay available with no
+             graphic designated — they're what says whether these stages run at
+             all, so hiding them made the setting unreachable. -->
+        <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
+          {#if data.graphics.length > 0}
+            <div class="w-48 shrink-0">
+              <ImageSelect
+                value={config.randomGraphics ? 'random' : String(config.graphicMediaId ?? '')}
+                options={graphicOptions}
+                onchange={(v) =>
+                  patchConfig(
+                    'the branding',
+                    v === 'random'
+                      ? { randomGraphics: true }
+                      : { randomGraphics: false, graphicMediaId: v === '' ? null : Number(v) }
+                  )}
+              />
+            </div>
+          {/if}
+
+          {#each BRANDING_OPTIONS as option (option.key)}
+            <label class="flex items-center gap-2 text-sm text-gray-300" title={option.hint}>
+              <input
+                type="checkbox"
+                checked={config[option.key] as boolean}
+                onchange={(e) =>
+                  patchConfig('the branding', { [option.key]: e.currentTarget.checked } as never)}
+                class="rounded border-gray-600 bg-gray-700 text-violet-500"
+              />
+              {option.label}
+            </label>
+          {/each}
+        </div>
+
+        {#if data.graphics.length === 0}
+          <p class="mt-3 text-sm text-gray-500">
+            No clip graphics designated, so these render without a mark. Add some in
+            <a href="/admin/media" class="text-violet-400 hover:text-violet-300">Media</a>.
+          </p>
+        {/if}
+      </SectionCard>
+
+      <!-- Adding, once, for both lists.
+           A file knows what it is, so asking which section it belongs in was
+           asking the person to do the sorting: footage into Clips, music into
+           Audio, and the same two buttons whichever you have in your hand. The
+           phone QR takes both too — the server files an arriving upload the
+           same way.
+
+           Full width, splitting the row between them. At their own size they
+           sat in the gap between two cards belonging to neither and read as
+           debris; spanning the column they line up with everything else in it
+           and become the thing you do before the lists below. -->
+      <div class="flex flex-wrap gap-2">
+        <button
+          onclick={() => (mediaPickerOpen = true)}
+          title="Footage lands in Clips, music in Audio"
+          class="flex flex-1 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-medium whitespace-nowrap text-white transition-colors hover:bg-violet-500"
+        >
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M12 4v16m8-8H4"
+            />
+          </svg>
+          Add media
+        </button>
+        <button
+          onclick={() => (phoneUploadOpen = true)}
+          title="Show a QR to upload footage or music straight from a phone"
+          class="flex flex-1 items-center justify-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm whitespace-nowrap text-gray-300 transition-colors hover:bg-gray-700"
+        >
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.5"
+              d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
+            />
+          </svg>
+          From phone
+        </button>
+      </div>
+
+      <!-- Clips -->
+      <SectionCard title="Clips">
         {#if sources.length === 0}
-          <p class="text-sm text-gray-500">No sources yet. They render in the order listed here.</p>
+          <p class="text-sm text-gray-500">No clips yet. They render in the order listed here.</p>
         {:else}
+          <!-- Rows, not tiles. This is the ingredient list — what is in the
+               clip and in what order — and the arranging happens on the
+               timeline further down. A row states an order without restating
+               it every time the column changes width, and it stays short
+               enough that the sections below it are still on the screen. -->
           <SortableList items={sources} onreorder={handleReorderSources}>
             {#snippet children(source)}
               {@const item = mediaById.get(source.mediaId)}
+              <!-- The background sits on the wrapper, not the header, so an
+                   open row and the controls it opened are one shape rather than
+                   a card with another card under it. -->
               <div
-                class="group flex items-center gap-3 rounded-lg bg-gray-800/50 px-3 py-2 transition-colors hover:bg-gray-800"
+                class="group overflow-hidden rounded-lg bg-gray-800/50 transition-colors hover:bg-gray-800"
               >
-                <!-- The handle rides on the thumbnail rather than beside it.
+                <div class="flex items-center gap-3 px-3 py-2">
+                  <!-- The handle rides on the thumbnail rather than beside it.
                      A drag affordance needs somewhere to grab, not a column of
                      its own — and on a narrow row that column was the trim
                      fields' space.
@@ -655,55 +994,240 @@
                      Always visible, never revealed on hover: a phone has no
                      hover, so a handle that waits for one can't be found at all
                      on the screen where the saved space actually matters. -->
-                <div class="relative h-14 w-10 shrink-0 overflow-hidden rounded bg-gray-800">
-                  {#if item?.thumbnailUrl}
-                    <img src={item.thumbnailUrl} alt="" class="h-full w-full object-cover" />
-                  {/if}
-                  <div
-                    data-drag-handle
-                    aria-label="Drag to reorder"
-                    class="absolute inset-x-0 bottom-0 flex items-center justify-center bg-black/60 py-1 text-white/80 transition-colors group-hover:bg-black/80 group-hover:text-white"
+                  <div class="relative h-14 w-10 shrink-0 overflow-hidden rounded bg-gray-800">
+                    {#if item?.thumbnailUrl}
+                      <img src={item.thumbnailUrl} alt="" class="h-full w-full object-cover" />
+                    {/if}
+                    <div
+                      data-drag-handle
+                      aria-label="Drag to reorder"
+                      class="absolute inset-x-0 bottom-0 flex items-center justify-center bg-black/60 py-1 text-white/80 transition-colors group-hover:bg-black/80 group-hover:text-white"
+                    >
+                      <svg
+                        class="h-3.5 w-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M4 8h16M4 16h16"
+                        />
+                      </svg>
+                    </div>
+                  </div>
+
+                  <!-- The row opens trim, mute and rotate, and used to say so
+                     only in a title — a tooltip, on the one control here you'd
+                     never guess at, unreachable on the phone this list is
+                     designed for. The scissors carry it instead: always drawn,
+                     never revealed on hover, for the same reason the drag
+                     handle above is. -->
+                  <button
+                    onclick={() => (openSourceId = openSourceId === source.id ? null : source.id)}
+                    class="group/trim flex min-w-0 flex-1 items-center gap-2 text-left"
+                    aria-expanded={openSourceId === source.id}
+                    title="Trim, mute and turn"
                   >
-                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <span class="min-w-0 flex-1">
+                      <span
+                        class="block truncate text-sm text-white group-hover/trim:text-violet-300"
+                      >
+                        {item?.filename ?? 'Missing file'}
+                      </span>
+                      <span class="block text-xs text-gray-500">
+                        {formatDuration(item?.durationMs)}
+                        {#if source.trimStart != null || source.trimEnd != null}
+                          · trimmed
+                        {/if}
+                        {#if source.muted}
+                          · muted
+                        {/if}
+                        {#if source.rotation}
+                          · turned {source.rotation}°
+                        {/if}
+                      </span>
+                    </span>
+                    <svg
+                      class="h-4 w-4 shrink-0 text-gray-600 transition-colors group-hover/trim:text-violet-300"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
                       <path
                         stroke-linecap="round"
                         stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M4 8h16M4 16h16"
+                        stroke-width="1.5"
+                        d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z"
                       />
                     </svg>
-                  </div>
+                  </button>
+
+                  {@render removeButton(async () => {
+                    // Captured before it goes: after the reload there is nothing
+                    // left to describe what was removed.
+                    const gone = { ...source };
+                    const done = await autosave.run('the removed clip', () =>
+                      removeSource(source.id)
+                    );
+                    await invalidateAll();
+                    if (done === undefined) return;
+                    toast.undoable('Clip removed', async () => {
+                      await autosave.run('the restored clip', () => restoreSource(gone));
+                      await invalidateAll();
+                    });
+                  }, 'Remove source clip')}
                 </div>
 
-                <button
-                  onclick={() => (editingSource = source)}
-                  class="min-w-0 flex-1 text-left"
-                  title="Trim and mute"
-                >
-                  <p class="truncate text-sm text-white">{item?.filename ?? 'Missing file'}</p>
-                  <p class="text-xs text-gray-500">
-                    {formatDuration(item?.durationMs)}
-                    {#if source.trimStart != null || source.trimEnd != null}
-                      · trimmed
-                    {/if}
-                    {#if source.muted}
-                      · muted
-                    {/if}
-                  </p>
-                </button>
-
-                {@render removeButton(async () => {
-                  await removeSource(source.id);
-                  await invalidateAll();
-                }, 'Remove source clip')}
+                {#if openSourceId === source.id}
+                  <SourceClipControls
+                    src={item?.url ?? null}
+                    trimStart={source.trimStart}
+                    trimEnd={source.trimEnd}
+                    muted={source.muted ?? false}
+                    rotation={(source.rotation ?? 0) as ClipRotation}
+                    onchange={async (values) => {
+                      await autosave.run('the clip', () =>
+                        updateSource({ id: source.id, ...values })
+                      );
+                      await invalidateAll();
+                    }}
+                  />
+                {/if}
               </div>
             {/snippet}
           </SortableList>
         {/if}
       </SectionCard>
 
-      <!-- Timed captions -->
-      <SectionCard title="Timed captions">
+      <SectionCard title="Audio">
+        {#snippet actions()}
+          <!-- Beside the heading because it is about the section, not about any
+               track in it: it drops the footage audio from the mix entirely and
+               lets the beds play at full instead of sitting back under it. With
+               two beds that question is asked once, and up here it costs no
+               row. -->
+          {#if tracks.length > 0}
+            <ToggleSwitch
+              label="Replace clip audio"
+              size="md"
+              checked={config.musicOnly}
+              onchange={(musicOnly) => patchConfig('the audio', { musicOnly })}
+            />
+          {/if}
+        {/snippet}
+
+        {#if tracks.length === 0}
+          <p class="text-sm text-gray-500">No audio. The clips' own sound is used as-is.</p>
+        {:else}
+          <SortableList items={tracks} onreorder={handleReorderAudio}>
+            {#snippet children(track)}
+              {@const marks = [
+                `${track.start}s–${track.end ?? 'end'}`,
+                track.seek ? `from ${track.seek}s` : null,
+                track.duck ? 'ducked' : null
+              ].filter(Boolean)}
+              <!-- The same row as a source clip, down to where the handle sits:
+                   these are both lists of things a clip is made of, and reading
+                   as two different kinds of list would be the only difference
+                   between them. -->
+              <div
+                class="group overflow-hidden rounded-lg bg-gray-800/50 transition-colors hover:bg-gray-800"
+              >
+                <div class="flex items-center gap-3 px-3 py-2">
+                  <div
+                    data-drag-handle
+                    aria-label="Drag to reorder"
+                    class="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-gray-800 text-gray-500 transition-colors group-hover:text-white"
+                  >
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="1.5"
+                        d="M9 19V6l12-3v13M9 19a3 3 0 11-6 0 3 3 0 016 0zm12-3a3 3 0 11-6 0 3 3 0 016 0z"
+                      />
+                    </svg>
+                  </div>
+
+                  <button
+                    onclick={() => (openTrackId = openTrackId === track.id ? null : track.id)}
+                    class="group/track flex min-w-0 flex-1 items-center gap-2 text-left"
+                    aria-expanded={openTrackId === track.id}
+                    title="When it comes in, and how it sits against the footage"
+                  >
+                    <span class="min-w-0 flex-1">
+                      <span
+                        class="block truncate text-sm text-white group-hover/track:text-violet-300"
+                      >
+                        {track.label}
+                      </span>
+                      <span class="block truncate text-xs text-gray-500" title={marks.join(' · ')}>
+                        {marks.join(' · ')}
+                      </span>
+                    </span>
+                    <!-- Sliders rather than scissors: this row opens settings,
+                       where a source row opens an edit. -->
+                    <svg
+                      class="h-4 w-4 shrink-0 text-gray-600 transition-colors group-hover/track:text-violet-300"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="1.5"
+                        d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
+                      />
+                    </svg>
+                  </button>
+
+                  {@render removeButton(async () => {
+                    // The stored row rather than the normalised one the list
+                    // draws from: restoring has to put back what was there,
+                    // nulls and all, not the defaults filled in over them.
+                    const gone = data.audio.find((a) => a.id === track.id);
+                    const done = await autosave.run('the removed track', () =>
+                      removeAudio(track.id)
+                    );
+                    await invalidateAll();
+                    if (done === undefined || !gone) return;
+                    toast.undoable('Track removed', async () => {
+                      await autosave.run('the restored track', () => restoreAudio(gone));
+                      await invalidateAll();
+                    });
+                  }, 'Remove this track')}
+                </div>
+
+                {#if openTrackId === track.id}
+                  <AudioTrackControls
+                    src={mediaById.get(track.mediaId)?.url ?? null}
+                    clipVideo={previewVideo}
+                    start={track.start}
+                    end={track.end}
+                    seek={track.seek}
+                    fadeIn={track.fadeIn}
+                    fadeOut={track.fadeOut}
+                    duck={track.duck}
+                    onchange={async (values) => {
+                      await autosave.run('the track', () =>
+                        updateAudio({ id: track.id, ...values })
+                      );
+                      await invalidateAll();
+                    }}
+                  />
+                {/if}
+              </div>
+            {/snippet}
+          </SortableList>
+        {/if}
+      </SectionCard>
+
+      <!-- Captions -->
+      <SectionCard title="Captions">
         {#snippet actions()}
           <button
             onclick={addCaption}
@@ -714,30 +1238,26 @@
         {/snippet}
         {#if captions.length === 0}
           <p class="text-sm text-gray-500">
-            No timed captions, so the clip renders without on-video text.
+            No captions, so the clip renders without on-video text.
           </p>
         {:else}
           <ul class="space-y-2">
             {#each captions as caption, index (index)}
-              <li class="flex items-center gap-2">
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0"
+              <li class="flex flex-wrap items-center gap-2">
+                <TimeField
                   value={caption.start}
-                  onblur={(e) => updateCaption(index, { start: Number(e.currentTarget.value) })}
-                  aria-label="Start seconds"
-                  class={numberClass + ' w-16'}
+                  onchange={(start) => updateCaption(index, { start: start ?? 0 })}
+                  label="Start seconds"
+                  media={previewVideo}
+                  unavailable="Render the clip once, then mark caption times against it"
                 />
                 <span class="text-gray-600">–</span>
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0"
+                <TimeField
                   value={caption.end}
-                  onblur={(e) => updateCaption(index, { end: Number(e.currentTarget.value) })}
-                  aria-label="End seconds"
-                  class={numberClass + ' w-16'}
+                  onchange={(end) => updateCaption(index, { end: end ?? 0 })}
+                  label="End seconds"
+                  media={previewVideo}
+                  unavailable="Render the clip once, then mark caption times against it"
                 />
                 <input
                   value={caption.text}
@@ -755,176 +1275,30 @@
               </li>
             {/each}
           </ul>
+          <!-- Said out loud rather than left to the buttons' tooltips: the
+               marks are disabled until there's a render to mark against, and a
+               tooltip explaining that can't be reached on a phone at all. -->
+          <p class="mt-3 text-xs text-gray-600">
+            {#if outputMedia}
+              Mark a time from the player, or drag them about on the timeline below.
+            {:else}
+              Render once, then mark these against the video instead of counting seconds.
+            {/if}
+          </p>
         {/if}
       </SectionCard>
 
       <!-- Music -->
-      <SectionCard title="Music bed">
-        {#snippet actions()}
-          <div class="flex gap-2">
-            <button
-              onclick={() => (musicPickerOpen = true)}
-              class="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700"
-            >
-              {config.musicMediaId ? 'Change' : 'Choose audio'}
-            </button>
-            {#if config.musicMediaId}
-              {@render removeButton(() => handleSelectMusic(null), 'Remove music bed')}
-            {/if}
-          </div>
-        {/snippet}
-
-        {#if config.musicMediaId}
-          {@const track = mediaById.get(config.musicMediaId)}
-          <div class="space-y-4">
-            <div>
-              <p class="mb-2 text-sm text-gray-300">
-                {track?.filename ?? 'Missing track'}
-                <span class="text-gray-500">{formatDuration(track?.durationMs)}</span>
-              </p>
-              {#if track?.url}
-                <!-- Native controls: scrubbing to find a sync point is exactly
-                     what the browser's player already does well. -->
-                <audio src={track.url} controls preload="metadata" class="h-9 w-full"></audio>
-              {/if}
-            </div>
-
-            <!-- Two starts, because they answer different questions: when the
-                 music comes in, and where in the song it comes in from. -->
-            <div
-              class="grid [grid-template-columns:repeat(auto-fill,minmax(min(100%,14rem),1fr))] gap-4"
-            >
-              <div>
-                <label class={labelClass} for="m-start">Comes in at (s)</label>
-                <input
-                  id="m-start"
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  class={numberClass + ' w-full'}
-                  value={config.musicStart}
-                  onblur={(e) => patchConfig({ musicStart: Number(e.currentTarget.value) })}
-                />
-                <p class="mt-1 text-xs text-gray-600">Where in the video.</p>
-              </div>
-              <div>
-                <label class={labelClass} for="m-seek">Plays from (s)</label>
-                <input
-                  id="m-seek"
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  class={numberClass + ' w-full'}
-                  value={config.musicSeek}
-                  onblur={(e) => patchConfig({ musicSeek: Number(e.currentTarget.value) })}
-                />
-                <p class="mt-1 text-xs text-gray-600">
-                  Where in the track. Scrub above to find it.
-                </p>
-              </div>
-              <div>
-                <label class={labelClass} for="m-xfade">Crossfade takeover (s)</label>
-                <input
-                  id="m-xfade"
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  class={numberClass + ' w-full'}
-                  value={config.musicCrossfade ?? ''}
-                  placeholder="off"
-                  onblur={(e) =>
-                    patchConfig({
-                      musicCrossfade:
-                        e.currentTarget.value === '' ? null : Number(e.currentTarget.value)
-                    })}
-                />
-                <p class="mt-1 text-xs text-gray-600">Fade the clip audio out into the music.</p>
-              </div>
-            </div>
-
-            <div class="flex flex-wrap gap-x-6 gap-y-3 border-t border-gray-800 pt-4">
-              <ToggleSwitch
-                label="Duck under speech"
-                size="md"
-                checked={config.duck}
-                onchange={(duck) => patchConfig({ duck })}
-              />
-              <ToggleSwitch
-                label="Replace clip audio"
-                size="md"
-                checked={config.musicOnly}
-                onchange={(musicOnly) => patchConfig({ musicOnly })}
-              />
-            </div>
-          </div>
-        {:else}
-          <p class="text-sm text-gray-500">No music bed. The clips' own audio is used as-is.</p>
-        {/if}
-      </SectionCard>
-
       <!-- Look -->
       <SectionCard title="Look">
-        <!-- The frame comes before the look: it depends on what you shot, not
-             on the mood you want, and it's the one choice here with a real
-             render cost. Presets used to set it, so changing look silently
-             re-framed the clip. -->
-        <div class="mb-5 flex flex-wrap gap-4">
-          <div class="min-w-36 flex-1">
-            <label class={labelClass} for="opt-aspect">Aspect</label>
-            <select
-              id="opt-aspect"
-              class={fieldClass}
-              value={config.aspect}
-              onchange={(e) => patchConfig({ aspect: e.currentTarget.value as never })}
-            >
-              <option value="9:16">9:16 vertical</option>
-              <option value="1:1">1:1 square</option>
-              <option value="16:9">16:9 landscape</option>
-            </select>
-          </div>
-          <div class="min-w-36 flex-1">
-            <!-- Blur is the one choice here with a real render cost, so the
-                 label carries the warning. Measured at roughly a sixth of the
-                 render on a 90-second clip. -->
-            <div class="mb-1 flex flex-wrap items-baseline gap-x-2">
-              <label class="block text-sm text-gray-400" for="opt-fill">
-                Footage that doesn't fit
-              </label>
-              {#if config.fill === 'blur'}
-                <span class="flex items-center gap-1 text-[11px] text-amber-400">
-                  <svg
-                    class="h-3 w-3 shrink-0 self-center"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path
-                      d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"
-                    />
-                    <line x1="12" y1="9" x2="12" y2="13" />
-                    <line x1="12" y1="17" x2="12.01" y2="17" />
-                  </svg>
-                  Adds 15% to render time
-                </span>
-              {/if}
-            </div>
-            <select
-              id="opt-fill"
-              class={fieldClass}
-              value={config.fill}
-              onchange={(e) => patchConfig({ fill: e.currentTarget.value as never })}
-            >
-              <option value="blur">Blurred background</option>
-              <option value="black">Black bars</option>
-              <option value="crop">Crop to fill</option>
-            </select>
-          </div>
-        </div>
+        <!-- The templates and nothing else. Each one is a still of this clip's
+             own footage with that grade on it, which is the whole decision for
+             most clips and the only part of it worth showing unprompted.
 
+             The frame moved in behind Customise with the rest. It is genuinely
+             not a look — it depends on what you shot, not the mood you want —
+             but it is also 9:16 for every clip this studio exists to make, so
+             standing at the front it was a question nobody needed to answer. -->
         <!-- Two presets per row even on the narrowest phone: they're compared
              against each other, and one per row makes that a scroll. -->
         <div
@@ -1002,6 +1376,69 @@
 
         {#if showCustomise}
           <div class="mt-4 space-y-4">
+            <!-- The frame comes before the look: it depends on what you shot, not
+               on the mood you want, and it's the one choice here with a real
+               render cost. Presets used to set it, so changing look silently
+               re-framed the clip. -->
+            <div class="mb-5 flex flex-wrap gap-4">
+              <div class="min-w-36 flex-1">
+                <label class={labelClass} for="opt-aspect">Aspect</label>
+                <select
+                  id="opt-aspect"
+                  class={fieldClass}
+                  value={config.aspect}
+                  onchange={(e) =>
+                    patchConfig('the frame', { aspect: e.currentTarget.value as never })}
+                >
+                  <option value="9:16">9:16 vertical</option>
+                  <option value="1:1">1:1 square</option>
+                  <option value="16:9">16:9 landscape</option>
+                </select>
+              </div>
+              <div class="min-w-36 flex-1">
+                <!-- Blur is the one choice here with a real render cost, so the
+                   label carries the warning. Measured at roughly a sixth of the
+                   render on a 90-second clip. -->
+                <div class="mb-1 flex flex-wrap items-baseline gap-x-2">
+                  <label class="block text-sm text-gray-400" for="opt-fill">
+                    Footage that doesn't fit
+                  </label>
+                  {#if config.fill === 'blur'}
+                    <span class="flex items-center gap-1 text-[11px] text-amber-400">
+                      <svg
+                        class="h-3 w-3 shrink-0 self-center"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"
+                        />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                      </svg>
+                      Adds 15% to render time
+                    </span>
+                  {/if}
+                </div>
+                <select
+                  id="opt-fill"
+                  class={fieldClass}
+                  value={config.fill}
+                  onchange={(e) =>
+                    patchConfig('the look', { fill: e.currentTarget.value as never })}
+                >
+                  <option value="blur">Blurred background</option>
+                  <option value="black">Black bars</option>
+                  <option value="crop">Crop to fill</option>
+                </select>
+              </div>
+            </div>
+
             <div
               class="grid [grid-template-columns:repeat(auto-fill,minmax(min(100%,14rem),1fr))] gap-4"
             >
@@ -1011,7 +1448,8 @@
                   id="opt-tone"
                   class={fieldClass}
                   value={config.tone}
-                  onchange={(e) => patchConfig({ tone: e.currentTarget.value as never })}
+                  onchange={(e) =>
+                    patchConfig('the look', { tone: e.currentTarget.value as never })}
                 >
                   <option value="none">None</option>
                   <option value="bw">Black &amp; white</option>
@@ -1026,7 +1464,8 @@
                   id="opt-cappos"
                   class={fieldClass}
                   value={config.captionPosition}
-                  onchange={(e) => patchConfig({ captionPosition: e.currentTarget.value as never })}
+                  onchange={(e) =>
+                    patchConfig('the look', { captionPosition: e.currentTarget.value as never })}
                 >
                   <option value="bottom">Bottom</option>
                   <option value="center">Center</option>
@@ -1042,7 +1481,8 @@
                   max="2"
                   step="0.1"
                   value={config.speed}
-                  onchange={(e) => patchConfig({ speed: Number(e.currentTarget.value) })}
+                  onchange={(e) =>
+                    patchConfig('the look', { speed: Number(e.currentTarget.value) })}
                   class="w-full accent-violet-500"
                 />
               </div>
@@ -1057,7 +1497,7 @@
                     type="checkbox"
                     checked={config[option.key] as boolean}
                     onchange={(e) =>
-                      patchConfig({ [option.key]: e.currentTarget.checked } as never)}
+                      patchConfig('the look', { [option.key]: e.currentTarget.checked } as never)}
                     class="rounded border-gray-600 bg-gray-700 text-violet-500"
                   />
                   {option.label}
@@ -1066,61 +1506,6 @@
             </div>
           </div>
         {/if}
-
-        <!-- Branding. Under Look because it is a look decision: which mark the
-             clip wears and where. It sat in its own card beside the render for
-             a while, which put a styling choice next to a publishing one. -->
-        <div class="mt-6 border-t border-gray-800 pt-5">
-          <div class="mb-3 flex items-center justify-between">
-            <h3 class="text-sm font-medium tracking-wider text-gray-400 uppercase">Branding</h3>
-            <span class="text-xs text-gray-500">
-              {#if config.randomGraphics}
-                Random of {data.graphics.length}
-              {:else if activeGraphic}
-                {activeGraphic.filename}
-              {/if}
-            </span>
-          </div>
-          <!-- Graphic and placements on one row: which mark, and where it lands,
-             is a single decision in practice. The toggles stay available with no
-             graphic designated — they're what says whether these stages run at
-             all, so hiding them made the setting unreachable. -->
-          <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
-            {#if data.graphics.length > 0}
-              <div class="w-48 shrink-0">
-                <ImageSelect
-                  value={config.randomGraphics ? 'random' : String(config.graphicMediaId ?? '')}
-                  options={graphicOptions}
-                  onchange={(v) =>
-                    patchConfig(
-                      v === 'random'
-                        ? { randomGraphics: true }
-                        : { randomGraphics: false, graphicMediaId: v === '' ? null : Number(v) }
-                    )}
-                />
-              </div>
-            {/if}
-
-            {#each BRANDING_OPTIONS as option (option.key)}
-              <label class="flex items-center gap-2 text-sm text-gray-300" title={option.hint}>
-                <input
-                  type="checkbox"
-                  checked={config[option.key] as boolean}
-                  onchange={(e) => patchConfig({ [option.key]: e.currentTarget.checked } as never)}
-                  class="rounded border-gray-600 bg-gray-700 text-violet-500"
-                />
-                {option.label}
-              </label>
-            {/each}
-          </div>
-
-          {#if data.graphics.length === 0}
-            <p class="mt-3 text-sm text-gray-500">
-              No clip graphics designated, so these render without a mark. Add some in
-              <a href="/admin/media" class="text-violet-400 hover:text-violet-300">Media</a>.
-            </p>
-          {/if}
-        </div>
       </SectionCard>
 
       <!-- Advanced: the renderer's internals, collapsed by default -->
@@ -1280,6 +1665,7 @@
     {#if outputMedia}
       <!-- svelte-ignore a11y_media_has_caption -->
       <video
+        bind:this={previewVideo}
         src={outputMedia.url}
         poster={outputMedia.thumbnailUrl ?? undefined}
         controls
@@ -1321,11 +1707,22 @@
         Cancel render
       </button>
     {:else}
+      <!-- Amber when the clip has moved on since this render, so the button
+           itself says whether pressing it would produce anything different.
+           Nothing subtler than a colour change would be noticed from across the
+           page, and nothing louder is warranted — an out-of-date render is a
+           normal state to be in while you work, not a problem. -->
       <button
         onclick={handleRender}
         disabled={!data.renderingAvailable || sources.length === 0}
-        class="w-full rounded-lg bg-sky-700 px-4 py-3 text-base font-medium whitespace-nowrap text-white transition-colors hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-40"
+        title={stale ? 'This clip has changed since it was last rendered' : undefined}
+        class="flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-base font-medium whitespace-nowrap text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40 {stale
+          ? 'bg-amber-700 hover:bg-amber-600'
+          : 'bg-sky-700 hover:bg-sky-600'}"
       >
+        {#if stale}
+          <span class="h-2 w-2 shrink-0 rounded-full bg-amber-200"></span>
+        {/if}
         {outputMedia ? 'Render again' : 'Render clip'}
       </button>
     {/if}
@@ -1334,17 +1731,31 @@
          it moves on. Nothing here exists until there is a render to act on. -->
     {#if outputMedia}
       <SectionCard>
-        <!-- Where the clip stands, stated once, at the top. The review strip
-             below carries the decision; this only says what it is. Where it
-             landed belongs with it — a release and its platforms are one fact,
-             not two, so the rows sit here rather than at the far end of the card. -->
+        <!-- Where the clip stands, when that isn't already obvious.
+             
+             "Rendered" is the one status this card can't tell you anything by
+             saying: there is a video above it and a button offering to make
+             another, so it only ever restated the room it was standing in.
+             Every other status is a thing that happened to the clip somewhere
+             else — sent, approved, queued, live — and none of those are visible
+             from here otherwise.
+             
+             The review strip below carries the decision; this only says what it
+             is. Where it landed belongs with it — a release and its platforms
+             are one fact, not two, so those rows sit here too. -->
         <div class="mb-3 flex items-center gap-2 text-sm">
-          <span
-            class="h-2 w-2 shrink-0 rounded-full {CLIP_STATUS_DOTS[selected.status] ??
-              'bg-gray-500'}"
-          ></span>
-          <span class="text-gray-300">{CLIP_STATUS_LABELS[selected.status] ?? selected.status}</span
-          >
+          {#if selected.status !== 'rendered'}
+            <span
+              class="h-2 w-2 shrink-0 rounded-full {CLIP_STATUS_DOTS[selected.status] ??
+                'bg-gray-500'}"
+            ></span>
+            <span class="text-gray-300">
+              {CLIP_STATUS_LABELS[selected.status] ?? selected.status}
+            </span>
+          {/if}
+          {#if stale}
+            <span class="text-xs text-amber-400">Changed since this render</span>
+          {/if}
           {#if outputMedia}
             <!-- A reference, not a step: you open it when you need to paste
                  something by hand, which is rare and never part of releasing. -->
@@ -1540,10 +1951,12 @@
                   placeholder="default"
                   onblur={async (e) => {
                     const raw = e.currentTarget.value;
-                    await setQueueGap({
-                      projectId: selected.id,
-                      days: raw === '' ? null : Number(raw)
-                    });
+                    await autosave.run('the queue gap', () =>
+                      setQueueGap({
+                        projectId: selected.id,
+                        days: raw === '' ? null : Number(raw)
+                      })
+                    );
                     await invalidateAll();
                   }}
                 />
@@ -1560,28 +1973,34 @@
       </SectionCard>
     {/if}
   {/snippet}
+
+  <!-- The timeline runs under both panes rather than inside either, because
+       it measures the whole clip and wants every pixel of the page to do it.
+       Here it also stops scrolling away from the fields it drives.
+
+       Only once there's a render. Before one there's no duration to lay
+       anything out against and no frames to lay it on, and a strip built from
+       the sources' own lengths would be a guess drawn as a measurement. -->
+  {#snippet footer()}
+    {#if outputMedia?.durationMs}
+      <div class="border-t border-gray-800 bg-gray-950">
+        <ClipTimeline
+          durationMs={outputMedia.durationMs}
+          stripUrl="/admin/clips/{selected.id}/strip?v={outputMedia.id}"
+          {captions}
+          oncaptions={setCaptions}
+          {tracks}
+          onaudio={async (id, changes) => {
+            await autosave.run('the track', () => updateAudio({ id, ...changes }));
+            await invalidateAll();
+          }}
+          video={previewVideo}
+        />
+      </div>
+    {/if}
+  {/snippet}
 </EditorPreview>
 
-{#if editingSource}
-  <!-- Captured, not read through `editingSource`: the save fires as the dialog
-       closes, and closing is what sets that back to null. -->
-  {@const source = editingSource}
-  {@const item = mediaById.get(source.mediaId)}
-  <SourceClipDialog
-    filename={item?.filename ?? 'Missing file'}
-    duration={formatDuration(item?.durationMs)}
-    trimStart={source.trimStart}
-    trimEnd={source.trimEnd}
-    muted={source.muted ?? false}
-    onchange={async (values) => {
-      await updateSource({ id: source.id, ...values });
-      await invalidateAll();
-    }}
-    onclose={() => (editingSource = null)}
-  />
-{/if}
-
-<!-- Pickers live outside the editor so their modals aren't clipped -->
 {#if queueDialogOpen}
   <QueueClipDialog
     nextSlot={data.nextSlot ? new Date(data.nextSlot) : null}
@@ -1598,40 +2017,25 @@
   <PhoneUploadDialog
     bind:open={phoneUploadOpen}
     projectId={selected.id}
-    label="Add footage to “{selected.name}”"
+    label="Add footage or music to “{selected.name}”"
   />
 {/if}
 
-{#if sourcePickerOpen}
+{#if mediaPickerOpen}
   <MediaPicker
-    label="Add source clips"
+    label="Add footage or music"
     media={data.media}
-    kind="video"
+    kind="all"
     noCrop
     modal
     multiple
     excludeRoles={['render']}
     selectedIds={[]}
     onmultiselect={(ids) => {
-      sourcePickerOpen = false;
-      handleAddSources(ids);
+      mediaPickerOpen = false;
+      handleAddMedia(ids);
     }}
-    bind:open={sourcePickerOpen}
-  />
-{/if}
-
-{#if musicPickerOpen}
-  <MediaPicker
-    label="Choose music"
-    media={data.media}
-    kind="audio"
-    noCrop
-    modal
-    onselect={(url) => {
-      musicPickerOpen = false;
-      handleSelectMusic(url);
-    }}
-    bind:open={musicPickerOpen}
+    bind:open={mediaPickerOpen}
   />
 {/if}
 

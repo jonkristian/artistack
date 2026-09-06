@@ -1,3 +1,23 @@
+# 1.5.0 (06-09-2026)
+
+- A timeline under the clip editor: the rendered clip as a strip of its own frames, with the captions and the music lying on it. Drag a block to move it, drag its edges to retime it — the shape of an edit is a thing you look at, not a column of numbers you work out
+- Drag the strip itself to pull the clip along, and click to put the playhead somewhere. A clip longer than the window used to mean hunting for a scrollbar at the bottom edge to reach footage you couldn't see
+- Dragging a caption or a track near either end pulls the timeline along with it, so a block can be moved somewhere that isn't on screen yet
+- Trimming a clip shows the clip. Play it, find the moment, mark it — rather than typing a number you had to work out somewhere else and only found out was wrong after a render
+- Footage that was filmed sideways can be turned. Phones say which way up they were and the renderer has always believed them; this is for the screen recordings and odd exports that don't say, which no amount of asking the file will fix
+- More than one piece of music on a clip, each with its own place: when it comes in, when it stops, and where in the song it plays from
+- Two tracks that overlap cross into each other automatically, over exactly the overlap you drew. There's nothing to set — if one runs past where the next begins, that IS the crossfade, and the two halves can't disagree about how long it lasts
+- Fades are a yes or no now. How long one takes has the same good answer nearly every time, so it's one setting for the clip in Advanced instead of a number on every track
+- Source clips, audio and captions are named Clips, Audio and Captions, in that order, and each row opens its settings underneath itself instead of over the page — so the timeline stays visible while you adjust the thing sitting on it
+- One Add media button for the whole clip, and one From phone. A file knows whether it's footage or music, so it goes where it belongs rather than asking you which list you meant. The phone QR sorts arrivals the same way
+- Removing a clip, a track or a caption offers to put it back. The studio saves as you go, so there's no Update to withhold and no draft to discard — the moment right after is the only chance to change your mind, and now it's offered
+- The Render button says when the clip has changed since the render you're looking at. It's driven by what a render is actually made of, so renaming a clip or rewriting its caption doesn't set it off — a warning that's usually wrong is one you stop reading
+- Tags are picked from a list rather than remembered and retyped. The point of a shared vocabulary is that reusing a tag is easier than inventing one, and a field that opened empty asked you to remember it instead. Anything new can still be typed straight in
+- The Look card is the templates and nothing else, with the frame and the rest behind Customise. Branding — which mark the clip wears, and where — is its own card, because it's decided once and then left alone
+- Fixed: saving as you go was silent about failing. A refused save now says so and offers to try again, rather than looking exactly like a save that worked until the next reload
+- Fixed: Save as default captured what was there before your edit, not what you'd just written — pressing it is the first thing that blurs the field you were typing in. The first time round that meant it cleared the default instead of setting it
+- Fixed: a tag kept only as the default for new clips was deleted by the tidy-up that clears unused tags, since nothing was tagged with it. New clips then came up short a tag with nothing to say why
+
 # 1.4.0 (05-09-2026)
 
 - A Releases block, so the records can sit on the front page or any other — it draws what's in Releases rather than keeping a second list, and each one leads to the release page it already has

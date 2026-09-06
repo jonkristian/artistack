@@ -9,13 +9,16 @@ import {
   renderJobs,
   clipProjects,
   clipSources,
+  clipAudio,
   media,
   settings,
   DEFAULT_CLIP_CONFIG,
   type ClipRenderConfig,
   type TimedCaption
 } from './schema';
-import { renderClip, type ClipSourceInput } from './clip-render';
+import { renderClip, type ClipSourceInput, type ClipAudioInput } from './clip-render';
+import { renderFingerprint } from '$lib/clips/fingerprint';
+import { removeClipStrip } from './clip-strip';
 import { probeVideo, extractPosterFrame } from './ffmpeg';
 
 /**
@@ -185,6 +188,7 @@ async function runJob(jobId: number, projectId: number): Promise<void> {
       .update(clipProjects)
       .set({
         outputMediaId: mediaId,
+        renderFingerprint: input.fingerprint,
         updatedAt: new Date(),
         ...(keepStatus ? {} : { status: 'rendered' as const, reviewNote: null, reviewedAt: null })
       })
@@ -263,11 +267,15 @@ async function buildRenderInput(projectId: number) {
 
   const config: ClipRenderConfig = { ...DEFAULT_CLIP_CONFIG, ...(project.config ?? {}) };
 
+  // The beds, in the order they're listed on the clip.
+  const audioRows = await db
+    .select()
+    .from(clipAudio)
+    .where(eq(clipAudio.projectId, projectId))
+    .orderBy(asc(clipAudio.position));
+
   // Resolve every referenced media row in one query.
-  const referencedIds = [
-    ...sourceRows.map((s) => s.mediaId),
-    ...(config.musicMediaId ? [config.musicMediaId] : [])
-  ];
+  const referencedIds = [...sourceRows.map((s) => s.mediaId), ...audioRows.map((a) => a.mediaId)];
   const mediaRows = await db.select().from(media).where(inArray(media.id, referencedIds));
   const byId = new Map(mediaRows.map((m) => [m.id, m]));
 
@@ -279,7 +287,8 @@ async function buildRenderInput(projectId: number) {
       trimStart: row.trimStart,
       trimEnd: row.trimEnd,
       muted: row.muted,
-      watermark: row.watermark
+      watermark: row.watermark,
+      rotation: row.rotation
     };
   });
 
@@ -299,7 +308,27 @@ async function buildRenderInput(projectId: number) {
     if (item) graphicPath = mediaPath(item.url);
   }
 
-  const musicItem = config.musicMediaId ? byId.get(config.musicMediaId) : undefined;
+  /*
+   * Beds whose file has gone from the library are dropped here rather than
+   * handed on as a path that doesn't resolve. The renderer checks again — a row
+   * can point at a media entry whose file is missing — but this is the cheaper
+   * of the two and keeps the log about the render rather than the database.
+   */
+  const audio: ClipAudioInput[] = audioRows.flatMap((row) => {
+    const item = byId.get(row.mediaId);
+    if (!item) return [];
+    return [
+      {
+        path: mediaPath(item.url),
+        start: row.start ?? 0,
+        end: row.end ?? null,
+        seek: row.seek ?? 0,
+        fadeIn: row.fadeIn ?? true,
+        fadeOut: row.fadeOut ?? true,
+        duck: row.duck ?? false
+      }
+    ];
+  });
 
   const baseName = `clip-${Date.now()}`;
   const outputPath = join(UPLOAD_DIR, `${baseName}.mp4`);
@@ -316,6 +345,28 @@ async function buildRenderInput(projectId: number) {
   return {
     name: project.name,
     baseName,
+    /*
+     * Taken here rather than after the render, because this is the state the
+     * render is actually about to be made from. Read again at the end, it could
+     * have moved on — an edit landing mid-render would be recorded as though it
+     * had been included, and the clip would look current while showing frames
+     * that predate it.
+     */
+    fingerprint: renderFingerprint({
+      config,
+      captions: (project.captions ?? []) as TimedCaption[],
+      sources: sourceRows,
+      audio: audioRows.map((row) => ({
+        mediaId: row.mediaId,
+        start: row.start ?? 0,
+        end: row.end ?? null,
+        seek: row.seek ?? 0,
+        fadeIn: row.fadeIn ?? true,
+        fadeOut: row.fadeOut ?? true,
+        duck: row.duck ?? false
+      })),
+      defaultGraphicMediaId: clips?.defaultGraphicMediaId ?? null
+    }),
     render: {
       sources,
       config: {
@@ -326,7 +377,7 @@ async function buildRenderInput(projectId: number) {
       introPath: graphicPath,
       watermarkPath: graphicPath,
       outroPath: graphicPath,
-      musicPath: musicItem ? mediaPath(musicItem.url) : null,
+      audio,
       outputPath
     }
   };
@@ -419,6 +470,7 @@ async function discardSupersededRender(
     for (const url of [prev.url, prev.thumbnailUrl]) {
       if (url) await unlink(mediaPath(url)).catch(() => {});
     }
+    await removeClipStrip(previousMediaId);
   } catch (e) {
     console.error('[RenderQueue] Could not discard superseded render:', e);
   }

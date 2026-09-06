@@ -20,3 +20,5 @@ export { default as LengthMeter } from './LengthMeter.svelte';
 export { default as RowThumb } from './RowThumb.svelte';
 export { default as EmojiPicker } from './EmojiPicker.svelte';
 export { default as RichTextEditor } from './RichTextEditor.svelte';
+export { default as TimeField } from './TimeField.svelte';
+export { default as SaveStatus } from './SaveStatus.svelte';

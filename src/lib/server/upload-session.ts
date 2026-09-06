@@ -2,7 +2,14 @@ import { randomBytes } from 'crypto';
 import { networkInterfaces } from 'os';
 import { eq, lt } from 'drizzle-orm';
 import { db } from './db';
-import { uploadSessions, media, clipSources, roleForMime, type UploadSession } from './schema';
+import {
+  uploadSessions,
+  media,
+  clipSources,
+  clipAudio,
+  roleForMime,
+  type UploadSession
+} from './schema';
 
 /**
  * Capability tokens for uploading from a phone.
@@ -105,8 +112,14 @@ export async function finalizeSessionUpload(
     })
     .returning();
 
-  // Only video becomes a clip source; a photo sent to a clip's QR still lands
-  // in the library, it just isn't footage.
+  /*
+   * An arriving file is filed by what it is: footage into the clip's sources,
+   * music into its audio. A photo sent to a clip's QR still lands in the
+   * library, it just isn't either of those.
+   *
+   * The same rule the picker follows, so the QR and the library agree about
+   * where a given file belongs.
+   */
   if (session.projectId && file.mimeType.startsWith('video/')) {
     const existing = await db
       .select({ position: clipSources.position })
@@ -117,6 +130,17 @@ export async function finalizeSessionUpload(
       projectId: session.projectId,
       mediaId: row.id,
       position: existing.reduce((max, s) => Math.max(max, s.position ?? 0), 0) + 1
+    });
+  } else if (session.projectId && file.mimeType.startsWith('audio/')) {
+    const existing = await db
+      .select({ position: clipAudio.position })
+      .from(clipAudio)
+      .where(eq(clipAudio.projectId, session.projectId));
+
+    await db.insert(clipAudio).values({
+      projectId: session.projectId,
+      mediaId: row.id,
+      position: existing.reduce((max, a) => Math.max(max, a.position ?? 0), 0) + 1
     });
   }
 

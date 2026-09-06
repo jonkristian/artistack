@@ -8,12 +8,13 @@ import { requireUser } from '$lib/server/guards';
 import * as v from 'valibot';
 import { command } from '$app/server';
 import { db } from '$lib/server/db';
-import { media, blocks, settings, clipSources, roleForMime } from '$lib/server/schema';
+import { media, blocks, settings, clipSources, clipAudio, roleForMime } from '$lib/server/schema';
 import type { GalleryBlockConfig } from '$lib/server/schema';
 import { eq } from 'drizzle-orm';
 import { readdir, unlink } from 'fs/promises';
 import { join } from 'path';
 import { mediaPath } from '$lib/server/paths';
+import { removeClipStrip } from '$lib/server/clip-strip';
 import { setTags, clearTags, pruneOrphanTags } from '$lib/server/tags';
 
 /** Where the clip studio caches its preset swatches, keyed `<mediaId>-<preset>.jpg`. */
@@ -147,14 +148,16 @@ export const deleteMedia = command(deleteMediaSchema, async (id) => {
     await db.delete(media).where(eq(media.id, id));
     await pruneOrphanTags();
 
-    // Drop any clip that used this as a source. Left in place, the row would
-    // survive as a dangling reference and surface much later as a failed
+    // Drop any clip that used this as a source or a bed. Left in place, the row
+    // would survive as a dangling reference and surface much later as a failed
     // render — "Source clip N is missing from the media library" — rather than
     // at the moment the file was removed.
     await db.delete(clipSources).where(eq(clipSources.mediaId, id));
+    await db.delete(clipAudio).where(eq(clipAudio.mediaId, id));
 
     // Preset swatches are cached per source file, so they go with it.
     await removePresetPreviews(id);
+    await removeClipStrip(id);
 
     // Also remove from any gallery block configs that reference this media
     const galleryBlocks = await db.select().from(blocks).where(eq(blocks.type, 'gallery'));

@@ -23,6 +23,27 @@ export const fieldClass = 'w-full ' + fieldBase;
 export const labelClass = 'mb-1 block text-sm text-gray-400';
 
 /**
+ * A field with something attached inside it — a button, a unit, an icon.
+ *
+ * The border, background and focus ring move to a wrapper so that whatever is
+ * attached sits inside them rather than beside them. Two controls that share an
+ * outline read as one control with an action; the same two side by side read as
+ * a field and an unrelated button that happens to be next to it.
+ *
+ * The caller sets the width on the wrapper, not the input: the input is only
+ * ever the space left over once the attachment has taken its own.
+ */
+export const fieldGroupClass =
+  'flex items-center rounded-lg border border-gray-700 bg-gray-800 ' +
+  'focus-within:border-gray-600';
+
+/** The input inside a fieldGroup: no chrome of its own, the wrapper has it. */
+export const bareInputClass =
+  'min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-white placeholder-gray-500 ' +
+  'focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none' +
+  ' [&::-webkit-outer-spin-button]:appearance-none';
+
+/**
  * Number field for dense rows — clip trim points, caption timings. Same size as
  * every other field; the caller sets the width, since these sit in flex rows
  * rather than a form grid.

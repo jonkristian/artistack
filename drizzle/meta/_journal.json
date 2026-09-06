@@ -309,6 +309,41 @@
       "when": 1700000043000,
       "tag": "0043_release_announced",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "6",
+      "when": 1700000044000,
+      "tag": "0044_clip_source_rotation",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "6",
+      "when": 1700000045000,
+      "tag": "0045_clip_audio_rows",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "6",
+      "when": 1700000046000,
+      "tag": "0046_clip_audio_end",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "6",
+      "when": 1700000047000,
+      "tag": "0047_clip_audio_simplify",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "6",
+      "when": 1700000048000,
+      "tag": "0048_clip_render_fingerprint",
+      "breakpoints": true
     }
   ]
 }

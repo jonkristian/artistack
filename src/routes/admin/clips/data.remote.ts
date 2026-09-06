@@ -5,10 +5,12 @@ import { command, query } from '$app/server';
 import { db } from '$lib/server/db';
 import { unlink } from 'fs/promises';
 import { mediaPath } from '$lib/server/paths';
+import { removeClipStrip } from '$lib/server/clip-strip';
 import { resolveTags, setTags, clearTags, pruneOrphanTags, listTags } from '$lib/server/tags';
 import {
   clipProjects,
   clipSources,
+  clipAudio,
   clipPosts,
   renderJobs,
   uploadSessions,
@@ -18,7 +20,8 @@ import {
   DEFAULT_CLIP_CONFIG,
   type ClipRenderConfig
 } from '$lib/server/schema';
-import { eq, asc, desc } from 'drizzle-orm';
+import { CLIP_ROTATIONS } from '$lib/clips/types';
+import { and, eq, asc, desc } from 'drizzle-orm';
 import { enqueueRender, cancelRender } from '$lib/server/render-queue';
 import { buildPostSheet } from '$lib/server/post-sheet';
 import {
@@ -51,6 +54,7 @@ const advancedSchema = v.partial(
     loudnormTruePeak: v.number(),
     loudnormRange: v.pipe(v.number(), v.minValue(1)),
     loudnormFloor: v.number(),
+    bedFadeSeconds: v.pipe(v.number(), v.minValue(0)),
     musicBedVolume: v.pipe(v.number(), v.minValue(0), v.maxValue(1)),
 
     introPercent: v.pipe(v.number(), v.minValue(0), v.maxValue(1)),
@@ -112,14 +116,7 @@ const configSchema = v.partial(
     logoMediaId: v.nullable(v.number()),
     logoColor: v.nullable(v.string()),
     loudnorm: v.boolean(),
-    musicMediaId: v.nullable(v.number()),
-    musicFadeIn: v.pipe(v.number(), v.minValue(0)),
-    musicFadeOut: v.pipe(v.number(), v.minValue(0)),
-    musicStart: v.pipe(v.number(), v.minValue(0)),
-    musicSeek: v.pipe(v.number(), v.minValue(0)),
-    musicCrossfade: v.nullable(v.number()),
     musicOnly: v.boolean(),
-    duck: v.boolean(),
     advanced: advancedSchema
   })
 );
@@ -244,6 +241,7 @@ export const deleteProject = command(v.number(), async (id) => {
     .limit(1);
 
   await db.delete(clipSources).where(eq(clipSources.projectId, id));
+  await db.delete(clipAudio).where(eq(clipAudio.projectId, id));
   await db.delete(renderJobs).where(eq(renderJobs.projectId, id));
   // A phone-upload QR bound to this clip would otherwise stay valid until it
   // expired, and finalizeSessionUpload would keep filing sources against a
@@ -284,6 +282,7 @@ async function discardRender(mediaId: number): Promise<void> {
     for (const url of [item.url, item.thumbnailUrl]) {
       if (url) await unlink(mediaPath(url)).catch(() => {});
     }
+    await removeClipStrip(mediaId);
   } catch (e) {
     console.error('[Clips] Could not discard render on delete:', e);
   }
@@ -318,7 +317,9 @@ export const updateSource = command(
     trimStart: v.optional(v.nullable(v.number())),
     trimEnd: v.optional(v.nullable(v.number())),
     muted: v.optional(v.boolean()),
-    watermark: v.optional(v.nullable(v.boolean()))
+    watermark: v.optional(v.nullable(v.boolean())),
+    // Right angles only — this straightens footage, it doesn't tilt it.
+    rotation: v.optional(v.picklist([...CLIP_ROTATIONS]))
   }),
   async ({ id, ...fields }) => {
     await requireUser();
@@ -334,12 +335,138 @@ export const updateSource = command(
   }
 );
 
+/**
+ * Adds a bed, appended after whatever is already there.
+ *
+ * Position comes from the current highest rather than a count, so a list with a
+ * gap in it — anything removed from the middle — still appends rather than
+ * colliding.
+ */
+export const addAudio = command(
+  v.object({ projectId: v.number(), mediaId: v.number() }),
+  async ({ projectId, mediaId }) => {
+    await requireUser();
+
+    const [last] = await db
+      .select({ position: clipAudio.position })
+      .from(clipAudio)
+      .where(eq(clipAudio.projectId, projectId))
+      .orderBy(desc(clipAudio.position))
+      .limit(1);
+
+    const [created] = await db
+      .insert(clipAudio)
+      .values({ projectId, mediaId, position: (last?.position ?? -1) + 1 })
+      .returning();
+
+    return { success: true, track: created };
+  }
+);
+
+export const updateAudio = command(
+  v.object({
+    id: v.number(),
+    start: v.optional(v.pipe(v.number(), v.minValue(0))),
+    end: v.optional(v.nullable(v.pipe(v.number(), v.minValue(0)))),
+    seek: v.optional(v.pipe(v.number(), v.minValue(0))),
+    fadeIn: v.optional(v.boolean()),
+    fadeOut: v.optional(v.boolean()),
+    duck: v.optional(v.boolean())
+  }),
+  async ({ id, ...fields }) => {
+    await requireUser();
+
+    const update: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(fields)) {
+      if (value !== undefined) update[key] = value;
+    }
+    if (Object.keys(update).length === 0) return { success: true };
+
+    await db.update(clipAudio).set(update).where(eq(clipAudio.id, id));
+    return { success: true };
+  }
+);
+
+/** Reorders the beds. Same shape as reorderSources, and for the same reason. */
+export const reorderAudio = command(
+  v.object({ projectId: v.number(), orderedIds: v.array(v.number()) }),
+  async ({ projectId, orderedIds }) => {
+    await requireUser();
+
+    for (const [index, id] of orderedIds.entries()) {
+      await db
+        .update(clipAudio)
+        .set({ position: index })
+        .where(and(eq(clipAudio.id, id), eq(clipAudio.projectId, projectId)));
+    }
+
+    return { success: true };
+  }
+);
+
+export const removeAudio = command(v.number(), async (id) => {
+  await requireUser();
+  await db.delete(clipAudio).where(eq(clipAudio.id, id));
+  return { success: true };
+});
+
 export const removeSource = command(v.number(), async (id) => {
   await requireUser();
 
   await db.delete(clipSources).where(eq(clipSources.id, id));
   return { success: true };
 });
+
+/*
+ * Putting back what was just removed.
+ *
+ * The id comes back with the row. Nothing else references a source or a bed by
+ * id, so a new one would do — but the position wouldn't survive a re-add, and
+ * "undo" that quietly moves a clip to the end of the list is not undo. SQLite's
+ * AUTOINCREMENT never reissues an id, so the original is always free to take.
+ *
+ * Both are idempotent through `onConflictDoNothing`: the toast can only be
+ * pressed once, but a double-tap on a phone is one press as far as the person
+ * is concerned.
+ */
+export const restoreSource = command(
+  v.object({
+    id: v.number(),
+    projectId: v.number(),
+    mediaId: v.number(),
+    position: v.nullable(v.number()),
+    trimStart: v.nullable(v.number()),
+    trimEnd: v.nullable(v.number()),
+    muted: v.nullable(v.boolean()),
+    watermark: v.nullable(v.boolean()),
+    rotation: v.nullable(v.number())
+  }),
+  async (row) => {
+    await requireUser();
+    await db.insert(clipSources).values(row).onConflictDoNothing();
+    return { success: true };
+  }
+);
+
+export const restoreAudio = command(
+  v.object({
+    id: v.number(),
+    projectId: v.number(),
+    mediaId: v.number(),
+    position: v.nullable(v.number()),
+    start: v.nullable(v.number()),
+    end: v.nullable(v.number()),
+    seek: v.nullable(v.number()),
+    fadeIn: v.nullable(v.boolean()),
+    fadeOut: v.nullable(v.boolean()),
+    duck: v.nullable(v.boolean())
+  }),
+  async (row) => {
+    await requireUser();
+    await db.insert(clipAudio).values(row).onConflictDoNothing();
+    return { success: true };
+  }
+);
 
 export const reorderSources = command(
   v.object({ projectId: v.number(), orderedIds: v.array(v.number()) }),

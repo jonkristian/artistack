@@ -1,7 +1,8 @@
 import { db } from './db';
 import { tags, taggings, type TaggableType } from './schema';
-import { eq, and, inArray, sql } from 'drizzle-orm';
+import { eq, and, inArray, notInArray, sql } from 'drizzle-orm';
 import { slugify } from '$lib/utils/slug';
+import { getClipSettings } from './settings';
 
 /**
  * The shared tag vocabulary.
@@ -122,5 +123,29 @@ export async function clearTags(entityType: TaggableType, entityId: number): Pro
  * that the anti-join costs nothing.
  */
 export async function pruneOrphanTags(): Promise<void> {
-  await db.delete(tags).where(sql`${tags.id} not in (select ${taggings.tagId} from ${taggings})`);
+  /*
+   * A tag saved as the default for new clips is referenced by the settings, not
+   * by a tagging row — so on this query's reading it is an orphan, and taking
+   * the last clip that used it off the list deleted it outright. The default
+   * kept the id, the id pointed at nothing, and every clip made afterwards came
+   * up short a tag with nothing to say why.
+   *
+   * Held here rather than by giving the settings a tagging row of their own: a
+   * default is a reference to a tag, not a thing that is tagged, and inventing
+   * an entity for it to hang off would put a lie in the taggings table to keep
+   * one query honest.
+   */
+  const clips = await getClipSettings();
+  const spared = clips?.defaultTagIds ?? [];
+
+  await db
+    .delete(tags)
+    .where(
+      spared.length
+        ? and(
+            sql`${tags.id} not in (select ${taggings.tagId} from ${taggings})`,
+            notInArray(tags.id, spared)
+          )
+        : sql`${tags.id} not in (select ${taggings.tagId} from ${taggings})`
+    );
 }

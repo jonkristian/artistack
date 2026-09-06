@@ -6,6 +6,35 @@
  * The database schema imports them from here.
  */
 
+/**
+ * One piece of music under a clip, as the editor and the renderer both see it.
+ *
+ * Mirrors the `clip_audio` row. Kept here beside TimedCaption because the same
+ * argument applies: the admin needs the shape at runtime, and `$lib/server` is
+ * not importable from browser code.
+ */
+export interface ClipAudioTrack {
+  id: number;
+  mediaId: number;
+  /** Where it comes in on the clip's timeline, in seconds. */
+  start: number;
+  /** Where it stops. Null plays until the clip does. */
+  end: number | null;
+  /** Where it comes in from inside the track, in seconds. */
+  seek: number;
+  /**
+   * Whether it fades at its own edges — against silence, or against the start
+   * or end of the clip. How long a fade lasts is one advanced dial for the
+   * whole clip, not a number on every track.
+   *
+   * Where two beds overlap they always cross into each other regardless, since
+   * summing two of them at full is not a thing anyone does on purpose.
+   */
+  fadeIn: boolean;
+  fadeOut: boolean;
+  duck: boolean;
+}
+
 /** A caption shown over the footage between two timestamps (seconds). */
 export interface TimedCaption {
   start: number;
@@ -89,6 +118,17 @@ export const PLATFORM_NAMES: Record<string, string> = {
  */
 export const MANUAL_PLATFORMS = new Set(['tiktok']);
 
+/**
+ * The turns a source clip can be corrected by, clockwise.
+ *
+ * Right angles only, and shared so the field, the dialog and the command that
+ * validates them can't disagree about what counts as one. Free rotation would
+ * be a different feature — this straightens footage that was stored wrong, and
+ * anything between the four leaves the frame with corners to fill.
+ */
+export const CLIP_ROTATIONS = [0, 90, 180, 270] as const;
+export type ClipRotation = (typeof CLIP_ROTATIONS)[number];
+
 export type ClipAspect = '9:16' | '1:1' | '16:9';
 export type ClipTone = 'none' | 'bw' | 'warm' | 'cool' | 'vintage';
 export type ClipFill = 'blur' | 'black' | 'crop';
@@ -125,6 +165,8 @@ export interface ClipAdvancedConfig {
   loudnormRange: number;
   /** Clips quieter than this (LUFS) are left alone, so silence isn't boosted into hiss. */
   loudnormFloor: number;
+  /** How long a music bed takes to fade in or out at its own edges. */
+  bedFadeSeconds: number;
   /**
    * Bed level when the music plays *under* the footage audio. Not a per-clip
    * choice: sitting under speech and standing alone are different jobs, so the
@@ -209,6 +251,7 @@ export const DEFAULT_ADVANCED_CONFIG: ClipAdvancedConfig = {
   loudnormTruePeak: -1.5,
   loudnormRange: 11,
   loudnormFloor: -32,
+  bedFadeSeconds: 1.5,
   musicBedVolume: 0.25,
 
   introPercent: 0.18,
@@ -276,6 +319,17 @@ export const ADVANCED_GROUPS: {
       { key: 'watermarkWidthPercent', label: 'Watermark width (%)', step: 1 },
       { key: 'watermarkX', label: 'Watermark left (px)', step: 1 },
       { key: 'watermarkY', label: 'Watermark top (px)', step: 1, hint: 'Kept clear of platform UI' }
+    ]
+  },
+  {
+    label: 'Audio',
+    fields: [
+      {
+        key: 'bedFadeSeconds',
+        label: 'Music fade (s)',
+        step: 0.1,
+        hint: 'How long a bed takes to come up or go away at its own edges'
+      }
     ]
   },
   {
@@ -362,15 +416,16 @@ export interface ClipRenderConfig {
 
   // Audio
   loudnorm: boolean; // normalise to -14 LUFS
-  musicMediaId?: number | null; // music bed from the media library
-  musicFadeIn: number; // seconds
-  musicFadeOut: number; // seconds
-  musicStart: number; // hold the bed until this point on the video timeline
-  musicSeek: number; // in-point into the bed file
-  /** Crossfade the footage audio out into the bed at musicStart, in seconds. */
-  musicCrossfade?: number | null;
-  musicOnly: boolean; // bed replaces the footage audio entirely
-  duck: boolean; // duck the bed under speech
+  /**
+   * The beds replace the footage audio entirely.
+   *
+   * The only music setting still living here. Every other one — which track,
+   * when it comes in, its fades, whether it ducks — moved to `clip_audio` rows
+   * when a clip stopped being limited to one of them. This stayed because it is
+   * a decision about the footage, not about any track: with two beds playing,
+   * "replace the clip audio" is asked once, not twice.
+   */
+  musicOnly: boolean;
 
   /** Renderer internals. Partial — unset fields fall back to the defaults. */
   advanced?: Partial<ClipAdvancedConfig>;
@@ -396,12 +451,7 @@ export const DEFAULT_CLIP_CONFIG: ClipRenderConfig = {
   watermark: true,
   randomGraphics: false,
   loudnorm: true,
-  musicFadeIn: 1.5,
-  musicFadeOut: 1.5,
-  musicStart: 0,
-  musicSeek: 0,
-  musicOnly: false,
-  duck: false
+  musicOnly: false
 };
 
 /**

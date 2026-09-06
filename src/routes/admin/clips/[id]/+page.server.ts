@@ -9,6 +9,7 @@ import { requireFeature } from '$lib/server/guards';
 import {
   clipProjects,
   clipSources,
+  clipAudio,
   clipPosts,
   renderJobs,
   media,
@@ -38,6 +39,12 @@ export const load: PageServerLoad = async ({ request, params }) => {
     .where(eq(clipSources.projectId, id))
     .orderBy(asc(clipSources.position));
 
+  const audio = await db
+    .select()
+    .from(clipAudio)
+    .where(eq(clipAudio.projectId, id))
+    .orderBy(asc(clipAudio.position));
+
   // Only the most recent job drives the UI; older ones stay in the table for
   // debugging a failed render.
   const [latestJob] = await db
@@ -65,6 +72,7 @@ export const load: PageServerLoad = async ({ request, params }) => {
     // The whole vocabulary, for the tag input's autocomplete.
     allTags: (await listTags()).map((t) => t.name),
     sources,
+    audio,
     latestJob: latestJob ?? null,
     media: allMedia,
     // The images designated as clip graphics, resolved to media rows so the

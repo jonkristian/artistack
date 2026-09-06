@@ -2,6 +2,7 @@ import {
   sqliteTable,
   text,
   integer,
+  real,
   index,
   uniqueIndex,
   primaryKey
@@ -433,6 +434,12 @@ export const clipProjects = sqliteTable('clip_projects', {
   captions: text('captions', { mode: 'json' }).$type<TimedCaption[]>().default([]),
   outputMediaId: integer('output_media_id'), // FK to media, set once a render succeeds
   /**
+   * What the current render was made from, so the editor can tell whether it
+   * still matches the clip. See renderFingerprint — deliberately not a
+   * timestamp, which moves for edits that change nothing visible.
+   */
+  renderFingerprint: text('render_fingerprint'),
+  /**
    * The graphic the last render actually used. Written by the renderer, so a
    * randomised pick is visible after the fact rather than a guess.
    */
@@ -512,9 +519,43 @@ export const clipSources = sqliteTable(
     // instead of being ducked by room noise.
     muted: integer('muted', { mode: 'boolean' }).default(false),
     // null inherits the project's watermark setting.
-    watermark: integer('watermark', { mode: 'boolean' })
+    watermark: integer('watermark', { mode: 'boolean' }),
+    // Degrees clockwise, for footage stored sideways with nothing in the file
+    // saying so. The container's own rotation flag is honoured already; this is
+    // the override for when there isn't one.
+    rotation: integer('rotation').default(0)
   },
   (table) => [index('clip_sources_project_id_idx').on(table.projectId)]
+);
+
+/**
+ * A piece of music under a clip.
+ *
+ * Rows rather than fields on the project, so a clip can carry more than one and
+ * audio behaves like every other part of an edit — added, ordered, removed.
+ * `musicOnly` stays on the project: replacing the footage audio is a decision
+ * about the footage, not a property of any one track.
+ */
+export const clipAudio = sqliteTable(
+  'clip_audio',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    projectId: integer('project_id').notNull(),
+    mediaId: integer('media_id').notNull(),
+    position: integer('position').default(0),
+    /** Where it comes in on the clip's timeline, in seconds. */
+    start: real('start').default(0),
+    /** Where it stops. Null plays until the clip does. */
+    end: real('end'),
+    /** Where it comes in from inside the track, in seconds. */
+    seek: real('seek').default(0),
+    /** Whether it fades at its own edges. How long is an advanced dial. */
+    fadeIn: integer('fade_in', { mode: 'boolean' }).default(true),
+    fadeOut: integer('fade_out', { mode: 'boolean' }).default(true),
+    /** Dip this bed under speech in the footage. */
+    duck: integer('duck', { mode: 'boolean' }).default(false)
+  },
+  (table) => [index('clip_audio_project_id_idx').on(table.projectId)]
 );
 
 // One render attempt. Rows are kept after completion so failures stay

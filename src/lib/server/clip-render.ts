@@ -9,6 +9,7 @@ import {
   DEFAULT_ADVANCED_CONFIG,
   type ClipRenderConfig,
   type ClipAdvancedConfig,
+  type ClipAudioTrack,
   type TimedCaption,
   type ClipAspect
 } from '$lib/clips/types';
@@ -100,6 +101,8 @@ export interface ClipSourceInput {
   muted?: boolean | null;
   /** Overrides the project watermark setting; null inherits. */
   watermark?: boolean | null;
+  /** Degrees clockwise to turn the footage before anything else. */
+  rotation?: number | null;
 }
 
 export interface RenderInput {
@@ -114,8 +117,8 @@ export interface RenderInput {
   introPath?: string | null;
   watermarkPath?: string | null;
   outroPath?: string | null;
-  /** Music bed audio file. */
-  musicPath?: string | null;
+  /** The beds, in the order they should be mixed. */
+  audio?: ClipAudioInput[];
   outputPath: string;
 }
 
@@ -311,8 +314,42 @@ async function loudnormFilter(
  * lands on whole pixels — an odd width put the seam on a half-pixel and
  * produced a yuv420 chroma fringe at the footage edge.
  */
-function buildFill(fill: string, width: number, height: number, adv: ClipAdvancedConfig): string {
-  const head = `[0:v]fps=${adv.fps},setpts=PTS-STARTPTS`;
+/**
+ * The filter that turns a source upright, as a fragment to append to a chain.
+ *
+ * Applied before anything measures the frame, because everything downstream —
+ * the fill, the scale, the crop — reasons about width and height, and turning
+ * the picture after they've decided would leave the answer they arrived at
+ * pointing the wrong way.
+ *
+ * `transpose` handles the quarter turns; 180 is two flips instead, which costs
+ * one pass rather than two and needs no intermediate buffer. Anything that
+ * isn't a right angle is dropped rather than rounded: this exists to correct an
+ * orientation, and a value that isn't one of the four is a bug upstream, not an
+ * instruction.
+ */
+function rotateFilter(rotation: number | null | undefined): string {
+  // Wrapped twice: a single `% 360` keeps the sign, so -90 stays -90.
+  switch ((((rotation ?? 0) % 360) + 360) % 360) {
+    case 90:
+      return ',transpose=1';
+    case 180:
+      return ',hflip,vflip';
+    case 270:
+      return ',transpose=2';
+    default:
+      return '';
+  }
+}
+
+function buildFill(
+  fill: string,
+  width: number,
+  height: number,
+  adv: ClipAdvancedConfig,
+  rotation?: number | null
+): string {
+  const head = `[0:v]fps=${adv.fps},setpts=PTS-STARTPTS${rotateFilter(rotation)}`;
 
   if (fill === 'black') {
     return (
@@ -463,7 +500,7 @@ async function renderPart(
   if (config.grain) effects.push(`noise=alls=${adv.grainStrength}:allf=t`);
 
   const chain = effects.length ? effects.join(',') : 'null';
-  const fill = buildFill(config.fill, width, height, adv);
+  const fill = buildFill(config.fill, width, height, adv, source.rotation);
   const watermarkPos = `${adv.watermarkX}:${adv.watermarkY}`;
 
   // Per-clip watermark override, falling back to the project setting.
@@ -516,6 +553,7 @@ async function renderPart(
   const probe = await probeVideo(source.path);
   const silent = Boolean(source.muted) || !probe.hasAudio;
   if (source.muted) ctx.onLog?.(`Mute: clip ${index + 1} (music stays full here)`);
+  if (source.rotation) ctx.onLog?.(`Rotate: clip ${index + 1} ${source.rotation}°`);
 
   const audioFilters: string[] = [];
   if (!silent) {
@@ -711,75 +749,149 @@ async function joinParts(
   return output;
 }
 
-/** Builds the audio filter graph for a render that has a music bed. */
-function buildMusicGraph(
+/**
+ * One bed, as the renderer needs it: the track's settings plus where its file is.
+ */
+export interface ClipAudioInput extends Omit<ClipAudioTrack, 'id' | 'mediaId'> {
+  path: string;
+}
+
+/** The sidechain that dips a bed under speech in the footage. */
+const DUCK = 'sidechaincompress=threshold=0.03:ratio=8:attack=5:release=250';
+
+/**
+ * Builds the audio filter graph for a render carrying one or more beds.
+ *
+ * Each bed is shaped on its own — delayed to its in-point, levelled, faded,
+ * ducked if asked — and then everything is summed in one `amix`. Input 0 is the
+ * joined footage; the beds follow in the order given, so bed `i` reads from
+ * input `i + 1`.
+ *
+ * Reusing `[0:a]` across several filters is fine, and load-bearing here: input
+ * pads are split automatically, unlike the output of a filter, which may only
+ * be consumed once.
+ */
+function buildAudioGraph(
+  tracks: ClipAudioInput[],
   config: ClipRenderConfig,
   adv: ClipAdvancedConfig,
   totalDuration: number,
   audioChain: string
 ): string {
-  const fadeOutStart = Math.max(0, totalDuration - config.musicFadeOut);
+  /*
+   * Padded back out to the clip's length before anything else.
+   *
+   * A bed that stops early leaves the mix short, and `-shortest` on the final
+   * pass would then cut the *picture* to where the music ended. Silence is
+   * cheap; a truncated video is a broken render.
+   */
+  const bounded =
+    `apad=whole_dur=${totalDuration.toFixed(3)},` +
+    `atrim=0:${totalDuration.toFixed(3)},asetpts=N/SR/TB`;
+  const tail = (mixed: string) =>
+    audioChain ? `${mixed};[amx]${bounded},${audioChain}[a]` : `${mixed};[amx]${bounded}[a]`;
 
-  // A bed under the footage sits back; a bed that replaced it is the whole
-  // soundtrack and plays at full. loudnorm settles the absolute level after.
+  // A bed under the footage sits back; beds that replaced it are the whole
+  // soundtrack and play at full. loudnorm settles the absolute level after.
   const volume = config.musicOnly ? 1 : adv.musicBedVolume;
 
-  // Match the natural track's format before doing anything else.
-  let bed = 'aresample=48000,aformat=channel_layouts=stereo';
-  if (config.musicStart > 0) {
-    // Hold the bed until musicStart by padding the front with silence.
-    const delayMs = Math.round(config.musicStart * 1000);
-    bed += `,adelay=${delayMs}|${delayMs}`;
-  }
-  bed +=
-    `,volume=${volume}` +
-    `,afade=t=in:st=${config.musicStart}:d=${config.musicFadeIn}` +
-    `,afade=t=out:st=${fadeOutStart.toFixed(2)}:d=${config.musicFadeOut}`;
+  /*
+   * Where each bed actually plays, in timeline order.
+   *
+   * Sorted because the crossfades below are read off neighbours, and "the next
+   * bed" only means anything once they're in the order they'll be heard. The
+   * input index travels with each one, since that's fixed by the command line
+   * and must not be re-sorted along with them.
+   */
+  const placed = tracks
+    .map((track, index) => ({
+      track,
+      input: index + 1,
+      start: track.start,
+      // Null means "until the clip does", and a value past the end means the
+      // same thing — the clip is the outer bound either way.
+      stop: Math.min(track.end ?? totalDuration, totalDuration)
+    }))
+    .filter((bed) => bed.stop > bed.start)
+    .sort((a, b) => a.start - b.start);
 
-  const tail = (mixed: string) =>
-    audioChain ? `${mixed};[amx]${audioChain}[a]` : `${mixed};[amx]anull[a]`;
+  const parts: string[] = [];
+  const beds: string[] = [];
 
-  if (config.musicCrossfade && config.musicCrossfade > 0) {
-    // Crossfade takeover: the clip's own audio genuinely ENDS as the bed comes
-    // up, rather than being summed at zero. Equal-power (qsin) curves hold the
-    // level flat through the handoff instead of dipping.
-    //
-    // acrossfade blends A's last d seconds with B's first d, so the bed's t=0
-    // lands at output musicStart — which is where the seeked-to in-point plays.
-    // Lengths: nat = start + d, bed = total - start, so out = total.
-    const natDuration = Math.min(config.musicStart + config.musicCrossfade, totalDuration);
-    const bedDuration = Math.max(0.1, totalDuration - config.musicStart);
-    const bedFadeOut = Math.max(0, fadeOutStart - config.musicStart);
+  placed.forEach((bed, index) => {
+    /*
+     * A crossfade is not something to specify — it's something already drawn.
+     * Where one bed runs past where the next begins, the length of that overlap
+     * IS the handover, so the outgoing one fades across exactly the stretch the
+     * incoming one is rising through. Nobody has to describe it, and the two
+     * halves cannot disagree about it.
+     *
+     * Equal-power curves on both sides, so the level holds flat through the
+     * handover instead of dipping in the middle the way two linear ramps do.
+     */
+    const next = placed[index + 1];
+    const previous = placed[index - 1];
+    const overlapOut = next ? Math.max(0, bed.stop - next.start) : 0;
+    const overlapIn = previous ? Math.max(0, previous.stop - bed.start) : 0;
 
-    const bedChain =
-      `aresample=48000,aformat=channel_layouts=stereo,atrim=0:${bedDuration.toFixed(3)},` +
-      `asetpts=N/SR/TB,volume=${volume},` +
-      `afade=t=out:st=${bedFadeOut.toFixed(3)}:d=${config.musicFadeOut}`;
+    const base = Math.max(0, adv.bedFadeSeconds);
+    /*
+     * The toggles govern a bed's own edges — how it arrives out of silence and
+     * how it leaves. An overlap overrides them: two beds at full is not a
+     * choice anyone makes, it's a clash.
+     */
+    const fadeInSec = overlapIn > 0 ? overlapIn : bed.track.fadeIn ? base : 0;
+    const fadeOutSec = overlapOut > 0 ? overlapOut : bed.track.fadeOut ? base : 0;
+    const curveIn = overlapIn > 0 ? ':curve=qsin' : '';
+    const curveOut = overlapOut > 0 ? ':curve=qsin' : '';
 
-    return tail(
-      `[0:a]atrim=0:${natDuration.toFixed(3)},asetpts=N/SR/TB[nat];` +
-        `[1:a]${bedChain}[bed];` +
-        `[nat][bed]acrossfade=d=${config.musicCrossfade}:c1=qsin:c2=qsin[amx]`
-    );
-  }
+    // Match the natural track's format before doing anything else.
+    let chain = 'aresample=48000,aformat=channel_layouts=stereo';
+    if (bed.start > 0) {
+      // Hold the bed until its in-point by padding the front with silence.
+      const delayMs = Math.round(bed.start * 1000);
+      chain += `,adelay=${delayMs}|${delayMs}`;
+    }
+    chain += `,volume=${volume}`;
 
-  if (config.musicOnly) {
-    // The bed replaces the natural audio outright.
-    const chain = `[1:a]${bed},atrim=0:${totalDuration.toFixed(3)},asetpts=N/SR/TB`;
-    return audioChain ? `${chain}[amx];[amx]${audioChain}[a]` : `${chain}[a]`;
-  }
+    // A zero-length fade is not a fade, and ffmpeg would rather not be asked.
+    if (fadeInSec > 0) {
+      chain += `,afade=t=in:st=${bed.start.toFixed(3)}:d=${fadeInSec.toFixed(3)}${curveIn}`;
+    }
+    if (fadeOutSec > 0) {
+      const from = Math.max(bed.start, bed.stop - fadeOutSec);
+      chain += `,afade=t=out:st=${from.toFixed(3)}:d=${fadeOutSec.toFixed(3)}${curveOut}`;
+    }
 
-  if (config.duck) {
-    // Sidechain the bed off the natural audio: music dips under speech and
-    // swells back in the gaps.
-    return tail(
-      `[1:a]${bed}[bed];` +
-        `[bed][0:a]sidechaincompress=threshold=0.03:ratio=8:attack=5:release=250[duckd];` +
-        `[0:a][duckd]amix=inputs=2:duration=first:normalize=0[amx]`
-    );
-  }
+    // Every bed is looped on the way in, so each one has to be given an end.
+    // `amix` alone can't supply one once the footage audio is gone.
+    chain += `,atrim=0:${bed.stop.toFixed(3)},asetpts=N/SR/TB`;
 
-  return tail(`[1:a]${bed}[bed];[0:a][bed]amix=inputs=2:duration=first:normalize=0[amx]`);
+    // Ducking against footage audio that isn't in the mix would be sidechaining
+    // off silence, so it's skipped rather than quietly doing nothing.
+    if (bed.track.duck && !config.musicOnly) {
+      parts.push(`[${bed.input}:a]${chain}[raw${index}]`);
+      parts.push(`[raw${index}][0:a]${DUCK}[bed${index}]`);
+    } else {
+      parts.push(`[${bed.input}:a]${chain}[bed${index}]`);
+    }
+    beds.push(`[bed${index}]`);
+  });
+
+  // Every track was zero-length or past the end of the clip.
+  if (beds.length === 0) return tail('[0:a]anull[amx]');
+
+  /*
+   * `longest` rather than `first`, because a bed can stop early: with the
+   * footage in the mix its own audio is first and runs the whole way, but
+   * without it the first bed might be the one that ends soonest, and `first`
+   * would take every other bed down with it. Everything is already bounded —
+   * each bed by its own end, the mix by `bounded` above.
+   */
+  const sources = config.musicOnly ? beds : ['[0:a]', ...beds];
+  parts.push(`${sources.join('')}amix=inputs=${sources.length}:duration=longest:normalize=0[amx]`);
+
+  return tail(parts.join(';'));
 }
 
 /**
@@ -1073,39 +1185,51 @@ export async function renderClip(
 
     const videoChain = videoFilters.join(',');
 
-    // A missing music file shouldn't fail the whole render.
-    let musicPath = input.musicPath ?? null;
-    if (musicPath) {
+    /*
+     * A missing track shouldn't fail the whole render — one bed of three going
+     * astray costs that bed, not the clip. Checked one at a time for the same
+     * reason.
+     */
+    const tracks: ClipAudioInput[] = [];
+    for (const track of input.audio ?? []) {
       try {
-        await probeDuration(musicPath);
+        await probeDuration(track.path);
+        tracks.push(track);
       } catch {
-        onLog?.(`Music not found or unreadable: ${musicPath} — rendering without a bed`);
-        musicPath = null;
+        onLog?.(`Audio not found or unreadable: ${track.path} — rendering without it`);
       }
     }
 
     const finalArgs: string[] = ['-y', '-loglevel', 'error'];
 
-    if (musicPath) {
-      const seek = config.musicSeek;
-
+    if (tracks.length > 0) {
       onLog?.(
-        `Music: seek ${seek.toFixed(2)}s ` +
-          `start ${config.musicStart}s duck ${config.duck} only ${config.musicOnly}`
+        `Audio: ${tracks.length} bed(s), replacing clip audio: ${config.musicOnly}` +
+          tracks
+            .map(
+              (t) =>
+                `\n  ${t.start}s–${t.end ?? 'end'} from ${t.seek}s` +
+                ` fades ${t.fadeIn ? 'in' : '-'}/${t.fadeOut ? 'out' : '-'} duck ${t.duck}`
+            )
+            .join('')
       );
 
+      finalArgs.push('-i', joined);
+      for (const track of tracks) {
+        finalArgs.push(
+          // -stream_loop makes a bed cover any length; the mix caps it to the video.
+          '-stream_loop',
+          '-1',
+          '-ss',
+          String(track.seek),
+          '-i',
+          track.path
+        );
+      }
+
       finalArgs.push(
-        '-i',
-        joined,
-        // -stream_loop makes the bed cover any length; the mix caps it to the video.
-        '-stream_loop',
-        '-1',
-        '-ss',
-        String(seek),
-        '-i',
-        musicPath,
         '-filter_complex',
-        `[0:v]${videoChain}[v];${buildMusicGraph(config, adv, totalDuration, audioChain)}`,
+        `[0:v]${videoChain}[v];` + buildAudioGraph(tracks, config, adv, totalDuration, audioChain),
         '-map',
         '[v]',
         '-map',
