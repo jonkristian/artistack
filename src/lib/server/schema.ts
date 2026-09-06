@@ -146,6 +146,14 @@ export const releases = sqliteTable('releases', {
    * summary a scraper reads and the words a fan reads.
    */
   body: text('body'),
+  /**
+   * When the fan list was told, so it is told once.
+   *
+   * Null until an announcement actually goes out — by the scheduler on release
+   * day, or by hand from the release itself. Both check this, and both set it,
+   * so a restart mid-send or a second press can't mail the list twice.
+   */
+  announcedAt: integer('announced_at', { mode: 'timestamp' }),
   isrc: text('isrc'), // needed for YouTube Content ID; stable across services
   upc: text('upc'),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())

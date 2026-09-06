@@ -5,6 +5,7 @@ import type { DiscordSettings } from './schema';
 import { settings, integrations } from './schema';
 import { sendScheduledDiscordReport } from './discord';
 import { refreshAllSocialStats } from './social-stats';
+import { announceRelease, releasesAwaitingAnnouncement } from './announce';
 import { recoverStaleJobs, processQueue } from './render-queue';
 import { runReleaseTick, checkPublishCoverage } from './clip-queue';
 import { remindStaleInvites } from './invites';
@@ -112,6 +113,26 @@ async function runScheduledTasks(): Promise<void> {
           console.log('[Scheduler] Social stats refreshed');
         } catch (e) {
           console.error('[Scheduler] Failed to refresh social stats:', e);
+        }
+      }
+    }
+    // Task 3: Tell the fan list about anything that has come out.
+    //
+    // Nine in the morning, not midnight: a release dated today is out from the
+    // first minute of it, and an email that arrives then is read at breakfast
+    // anyway — from the bottom of a night's worth of other mail. The hourly
+    // tick means the first 9am on or after release day, so a server that was
+    // down for the day still sends the next morning rather than never.
+    if (now.getHours() === 9) {
+      const origin = env.BETTER_AUTH_BASE_URL || env.ORIGIN;
+      if (origin) {
+        for (const id of await releasesAwaitingAnnouncement()) {
+          try {
+            const result = await announceRelease(id, origin);
+            if (result.held) console.log(`[Scheduler] Release ${id} not announced: ${result.held}`);
+          } catch (e) {
+            console.error('[Scheduler] Failed to announce release', id, e);
+          }
         }
       }
     }

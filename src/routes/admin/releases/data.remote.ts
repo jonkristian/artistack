@@ -119,3 +119,20 @@ export const deleteRelease = command(v.object({ id: v.number() }), async ({ id }
 
   return { success: true };
 });
+
+/**
+ * Tell the fan list, now, rather than waiting for the morning.
+ *
+ * The same function the scheduler calls, so the checks are the same ones —
+ * already announced, page still a draft, no services to press. What comes back
+ * says which of those happened, because "nothing was sent" needs a reason.
+ */
+export const announceReleaseNow = command(v.object({ id: v.number() }), async ({ id }) => {
+  await requireUser();
+
+  const { announceRelease } = await import('$lib/server/announce');
+  const { getRequestEvent } = await import('$app/server');
+  const { url } = getRequestEvent();
+
+  return announceRelease(id, url.origin);
+});

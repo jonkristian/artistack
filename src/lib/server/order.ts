@@ -300,7 +300,7 @@ export async function applyPaymentStatus(
     try {
       const settings = await getSettings();
       if (settings?.subscribersEnabled) {
-        unsubscribeToken = await addSubscriber({
+        ({ token: unsubscribeToken } = await addSubscriber({
           email: updated.buyerEmail,
           name: updated.buyerName,
           source: 'checkout',
@@ -308,7 +308,7 @@ export async function applyPaymentStatus(
           // Buying something is not a request to be mailed. Someone who has
           // opted out before stays out, whatever a tickbox said.
           revivesUnsubscribed: false
-        });
+        }));
       }
     } catch (err) {
       // A list that didn't grow is not a reason to fail a paid order.

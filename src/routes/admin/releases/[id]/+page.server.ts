@@ -1,9 +1,9 @@
 import { error } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
-import { releases, pages, links } from '$lib/server/schema';
+import { releases, pages, links, subscribers } from '$lib/server/schema';
 import { requireFeature } from '$lib/server/guards';
 import { getReleaseClickStats } from '$lib/server/analytics';
-import { eq, asc } from 'drizzle-orm';
+import { eq, asc, isNull, count } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ request, params }) => {
@@ -26,7 +26,17 @@ export const load: PageServerLoad = async ({ request, params }) => {
 
   const clicks = await getReleaseClickStats(release.id);
 
+  /*
+   * How many people an announcement would actually reach, so the confirmation
+   * can say a number rather than "the fan list" — the difference between
+   * pressing that button carefully and pressing it casually.
+   */
+  const [{ total: subscriberCount } = { total: 0 }] = await db
+    .select({ total: count() })
+    .from(subscribers)
+    .where(isNull(subscribers.unsubscribedAt));
+
   // Media isn't fetched here: the admin layout already loads the library, and
   // MediaPicker takes it straight from there.
-  return { release, page, releaseLinks, clicks };
+  return { release, page, releaseLinks, clicks, subscriberCount };
 };

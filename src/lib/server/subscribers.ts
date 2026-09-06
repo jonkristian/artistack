@@ -29,6 +29,7 @@ export async function addSubscriber(input: {
    * list stops being trusted, whatever the law allows.
    */
   revivesUnsubscribed: boolean;
+}): Promise<{
   /**
    * The unsubscribe token, when the address is on the list and active — whether
    * it was just added or was already there. Null when it isn't, which is the
@@ -37,7 +38,20 @@ export async function addSubscriber(input: {
    * Returned so a receipt can say "you're on the list" and give the way off it
    * in the same breath.
    */
-}): Promise<string | null> {
+  token: string | null;
+  /**
+   * Whether this put them on the list, as against finding them already on it.
+   *
+   * A welcome email is for the first one only. Someone who signs up twice — the
+   * same person on two release pages, a form sent again because the page was
+   * slow — has not joined anything the second time, and a second welcome reads
+   * as a list that has lost count of its own members.
+   *
+   * A revival counts as joining: they opted out, thought better of it, and
+   * asked again.
+   */
+  joined: boolean;
+}> {
   const email = input.email.trim().toLowerCase();
   const now = new Date();
 
@@ -58,12 +72,12 @@ export async function addSubscriber(input: {
           country: input.country ?? null
         })
         .where(eq(subscribers.id, existing.id));
-      return existing.token;
+      return { token: existing.token, joined: true };
     }
 
     // Already on the list, or off it and staying off. Nothing to write either
     // way; the token comes back only for someone actually on it.
-    return existing.unsubscribedAt ? null : existing.token;
+    return { token: existing.unsubscribedAt ? null : existing.token, joined: false };
   }
 
   const token = crypto.randomUUID();
@@ -76,5 +90,5 @@ export async function addSubscriber(input: {
     token
   });
 
-  return token;
+  return { token, joined: true };
 }

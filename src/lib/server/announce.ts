@@ -1,0 +1,108 @@
+import { db } from './db';
+import { releases, pages, links, subscribers } from './schema';
+import { eq, and, isNull, asc, lte } from 'drizzle-orm';
+import { sendReleaseEmail } from './emails';
+
+/**
+ * Telling the fan list a record is out.
+ *
+ * One function for both ways it happens — the scheduler on release day and the
+ * button on the release — because the interesting part is everything that
+ * isn't the send: who is still on the list, whether this has gone out already,
+ * and refusing to mail hundreds of people a page with no links on it. Two
+ * copies of that would eventually disagree, and the way you'd find out is a
+ * mailing you can't take back.
+ */
+export type AnnounceResult =
+  | { sent: number; failed: number; held?: never }
+  | { held: string; sent?: never; failed?: never };
+
+export async function announceRelease(releaseId: number, origin: string): Promise<AnnounceResult> {
+  const [row] = await db
+    .select({
+      id: releases.id,
+      title: releases.title,
+      coverUrl: releases.coverUrl,
+      body: releases.body,
+      releaseDate: releases.releaseDate,
+      announcedAt: releases.announcedAt,
+      slug: pages.slug,
+      published: pages.published
+    })
+    .from(releases)
+    .innerJoin(pages, eq(pages.id, releases.pageId))
+    .where(eq(releases.id, releaseId))
+    .limit(1);
+
+  if (!row) return { held: 'That release is gone.' };
+  if (row.announcedAt) return { held: 'The list has already been told about this one.' };
+  if (!row.published)
+    return { held: 'The release page is a draft, so there is nothing to link to.' };
+
+  const releaseLinks = await db
+    .select({ id: links.id, platform: links.platform, label: links.label })
+    .from(links)
+    .where(and(eq(links.releaseId, releaseId), eq(links.visible, true)))
+    .orderBy(asc(links.position));
+
+  /*
+   * An announcement with nowhere to listen is worse than a late one: it spends
+   * the one message people opened for this record, and the links are usually
+   * missing because the stores haven't published them yet — which is to say,
+   * because it's too early to send.
+   */
+  if (releaseLinks.length === 0) {
+    return { held: 'The release has no services on it yet, so there would be nothing to press.' };
+  }
+
+  const list = await db
+    .select({ email: subscribers.email, token: subscribers.token })
+    .from(subscribers)
+    .where(isNull(subscribers.unsubscribedAt));
+
+  /*
+   * Claimed before the first email rather than after the last: a crash halfway
+   * through is a partial send, and sending the whole list a second time is a
+   * worse repair than missing the tail of it. The count that comes back is what
+   * actually went out.
+   */
+  await db.update(releases).set({ announcedAt: new Date() }).where(eq(releases.id, releaseId));
+
+  let sent = 0;
+  let failed = 0;
+
+  for (const person of list) {
+    try {
+      await sendReleaseEmail(row, releaseLinks, { to: person.email, token: person.token }, origin);
+      sent += 1;
+    } catch (err) {
+      failed += 1;
+      console.error('[announce] could not mail', person.email, err);
+    }
+  }
+
+  console.log(`[announce] "${row.title}": ${sent} sent, ${failed} failed`);
+  return { sent, failed };
+}
+
+/**
+ * Releases that are out, published, and haven't been announced.
+ *
+ * Date only — a release dated today counts from midnight, and the scheduler
+ * decides what time of day is a decent hour to arrive in someone's inbox.
+ */
+export async function releasesAwaitingAnnouncement(): Promise<number[]> {
+  const rows = await db
+    .select({ id: releases.id })
+    .from(releases)
+    .innerJoin(pages, eq(pages.id, releases.pageId))
+    .where(
+      and(
+        isNull(releases.announcedAt),
+        lte(releases.releaseDate, new Date()),
+        eq(pages.published, true)
+      )
+    );
+
+  return rows.map((r) => r.id);
+}

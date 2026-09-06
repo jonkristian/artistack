@@ -14,6 +14,11 @@
 - The same meter on a clip's caption, marked at the fold rather than at a limit: roughly the first 100 characters show before "more", and 350 is as long as a caption wants to be. Neither stops you posting
 - An emoji picker on the caption, without the formatting either side of it — a caption is posted as plain text, so bold would arrive on TikTok as the letter b in angle brackets
 - Product descriptions are written in the same editor as the bio, and read that way on the page. Descriptions written before it still keep their line breaks
+- Signing up for the fan list now gets one email back: you're on the list, here's what to expect, and the way off it. It's the only thing that proves an address works, so a typo turns up now rather than on release day — and if someone else typed your address in, you find out at once
+- Only for someone who has actually just joined, so a form sent twice doesn't send two
+- A release-day email to the fan list: the sleeve, your words about the record, and a button to every service it's on, sent one message per person so the way off the list is theirs alone
+- It sends itself at 9am on the first morning on or after the release date, and there's a button on the release for when you'd rather it went now — once the store links actually resolve. Either way it can only happen once, and it refuses to send at all while the release has no services on it: an announcement with nowhere to listen spends the one message anyone opened for that record
+- Sign-ups are limited to ten an hour from one connection. The form has always had a honeypot and a bot filter; a limit matters more now that a sign-up sends mail, since an open endpoint that emails whoever it's told to is a way to have your domain send someone else's spam
 - Fixed a receipt from an old order reappearing over the page by itself, days later and with nothing in the address bar: closing it cleared the address but not what the page thought its address was
 
 # 1.3.0 (02-09-2026)

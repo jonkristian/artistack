@@ -22,11 +22,50 @@
     fromDateInput,
     type UnifiedDraftData
   } from '../../publishDraft';
-  import { deleteRelease } from '../data.remote';
+  import { deleteRelease, announceReleaseNow } from '../data.remote';
   import type { Link } from '$lib/server/schema';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
+
+  /*
+   * Straight off the server rather than held here: the send writes the date
+   * before it mails anybody, so reloading the row is both the truth and the
+   * simplest way to have it survive opening another release.
+   */
+  const announced = $derived(data.release.announcedAt ?? null);
+  let announcing = $state(false);
+
+  async function announce() {
+    if (announcing) return;
+    const count = data.subscriberCount;
+    if (
+      !confirm(
+        count === 1
+          ? 'Send this to the one person on the fan list?'
+          : `Send this to all ${count} people on the fan list? It can only be done once.`
+      )
+    )
+      return;
+
+    announcing = true;
+    try {
+      const result = await announceReleaseNow({ id: data.release.id });
+      if (result.held) {
+        toast.error(result.held);
+      } else {
+        await invalidateAll();
+        toast.info(
+          result.failed
+            ? `Sent to ${result.sent}, ${result.failed} bounced back`
+            : `Sent to ${result.sent}`
+        );
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not send that');
+    }
+    announcing = false;
+  }
 
   /*
    * Edits go into the shared draft, so this page behaves like every other
@@ -316,6 +355,40 @@
             </button>
           </form>
         </SectionCard>
+
+        <!--
+          Only where the fan list is switched on. A site that collects no
+          addresses has nobody to tell.
+        -->
+        {#if data.settings?.subscribersEnabled}
+          <SectionCard title="The fan list">
+            <p class="-mt-2 mb-3 text-xs text-gray-500">
+              {#if announced}
+                Told on {new Intl.DateTimeFormat(data.settings?.locale || 'nb-NO', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric'
+                }).format(announced)}. Once only — a second announcement of the same record is how a
+                list stops being read.
+              {:else}
+                One email each, with the sleeve, your words and the services. It sends itself at 9am
+                on the first morning after the release date; this is for when you'd rather it went
+                now — once the store links actually resolve.
+              {/if}
+            </p>
+
+            {#if !announced}
+              <button
+                type="button"
+                class="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-500 disabled:opacity-50"
+                disabled={announcing}
+                onclick={announce}
+              >
+                {announcing ? 'Sending…' : 'Tell the fan list'}
+              </button>
+            {/if}
+          </SectionCard>
+        {/if}
       </div>
 
       {#if data.clicks.total > 0}
