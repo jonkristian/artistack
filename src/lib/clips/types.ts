@@ -33,7 +33,51 @@ export interface ClipAudioTrack {
   fadeIn: boolean;
   fadeOut: boolean;
   duck: boolean;
+  /** Which row it sits in on the timeline. */
+  lane: number;
 }
+
+/**
+ * Where a caption can sit in the frame, highest first.
+ *
+ * Named, and only three of them, because the names are what make lining
+ * captions up possible: two captions both at Bottom are at exactly the same
+ * height, and no amount of careful dragging is needed to make that true. Free
+ * placement would let two lines sit four pixels apart, which reads as a mistake
+ * and is one.
+ *
+ * The vocabulary is the clip's own caption position — top, middle, bottom — so
+ * a caption placed here means the same thing the setting means. `y` is the
+ * fraction of the frame measured up from the bottom.
+ */
+/**
+ * Where a caption can sit, as a share of the height up from the bottom.
+ *
+ * Chosen against the two things that actually compete with text in a vertical
+ * video, rather than against the frame:
+ *
+ * - The platform's own furniture. TikTok, Reels and Shorts all paint a username,
+ *   their own caption and a music ticker over roughly the bottom fifth. Bottom
+ *   used to be 0.1, which is inside that — and lower than where an un-anchored
+ *   caption lands, so choosing "bottom" moved a line *down* into the crowd.
+ *   0.24 is the render's own default and clears it.
+ *
+ * - The subject. Shot on thirds, eyes sit around 0.6–0.7, so the optical-centre
+ *   golden section (0.618) puts text straight across the face. The one that
+ *   helps is the lower section, 0.382 — the broadcast lower third, under the
+ *   face and over the furniture.
+ */
+export const CAPTION_ANCHORS = [
+  // Below the watermark, which sits in the top-left corner: a top-anchored
+  // caption is measured from the bottom, so at 0.76 its *bottom* was a quarter
+  // of the way down and a second line grew up through the logo.
+  { id: 'top', label: 'Top', y: 0.72 },
+  { id: 'middle', label: 'Middle', y: 0.382 },
+  // Clear of the platform's furniture, and no further up than it has to be.
+  // A fifth of the frame is roughly where TikTok's own caption and username
+  // start; 0.24 was a comfortable margin past that and read as mid-frame.
+  { id: 'bottom', label: 'Bottom', y: 0.18 }
+] as const;
 
 /** A caption shown over the footage between two timestamps (seconds). */
 export interface TimedCaption {
@@ -42,6 +86,25 @@ export interface TimedCaption {
   text: string;
   /** Big and centred instead of lower-third — the `!` prefix in a caption. */
   headline?: boolean;
+  /**
+   * How far up the frame it sits, as a fraction of the height from the bottom.
+   *
+   * Absent means "wherever the clip's caption position says", which is what
+   * every caption did before this existed and still does until one is moved.
+   * Set, it wins — a clip can want most of its captions along the bottom and
+   * one of them across the middle.
+   */
+  y?: number;
+  /**
+   * Which timeline row it sits in.
+   *
+   * Purely where it's drawn — unlike `y`, it changes nothing about the render.
+   * Rows used to be worked out from which captions overlapped, which was tidy
+   * and wrong: it decided for you, and a row you'd dragged something to was
+   * overwritten the moment the arithmetic ran again. Overlapping is the
+   * editor's business, so where things sit is theirs too.
+   */
+  lane?: number;
 }
 
 /**
@@ -264,11 +327,16 @@ export const DEFAULT_ADVANCED_CONFIG: ClipAdvancedConfig = {
 
   logoWidthPercent: 60,
   watermarkWidthPercent: 22,
-  watermarkX: 48,
-  watermarkY: 96,
+  watermarkX: 32,
+  watermarkY: 40,
 
   captionSizeDivisor: 18,
-  headlineSizeDivisor: 17,
+  /*
+   * A headline was 64px against a caption's 60 — six per cent, which nobody can
+   * see and which made the aA switch look broken. Half as big again is the
+   * smallest difference that reads as a decision rather than a rounding error.
+   */
+  headlineSizeDivisor: 12,
   captionMarginX: 80,
   fontFamily: '',
 
@@ -329,7 +397,21 @@ export const ADVANCED_GROUPS: {
         label: 'Music fade (s)',
         step: 0.1,
         hint: 'How long a bed takes to come up or go away at its own edges'
-      }
+      },
+      {
+        // The most audible number in the render, and it was unreachable.
+        key: 'musicBedVolume',
+        label: 'Music under speech',
+        step: 0.05,
+        hint: 'How far a bed sits back when the footage keeps its own sound'
+      },
+      {
+        key: 'audioFadeInSeconds',
+        label: 'Audio fade in (s)',
+        step: 0.1,
+        hint: 'The whole clip, not a bed. Only used when the toggle is on'
+      },
+      { key: 'audioFadeOutSeconds', label: 'Audio fade out (s)', step: 0.1 }
     ]
   },
   {
@@ -337,7 +419,19 @@ export const ADVANCED_GROUPS: {
     fields: [
       { key: 'introPercent', label: 'Intro length (fraction of clip)', step: 0.01 },
       { key: 'introMaxSeconds', label: 'Intro max (s)', step: 0.1 },
-      { key: 'outroSeconds', label: 'Outro (s)', step: 0.1 }
+      { key: 'outroSeconds', label: 'Outro (s)', step: 0.1 },
+      {
+        key: 'outroOverlapSeconds',
+        label: 'Outro dissolve (s)',
+        step: 0.1,
+        hint: 'How long the last shot takes to become the card'
+      },
+      {
+        key: 'videoFadeOutSeconds',
+        label: 'Picture fade out (s)',
+        step: 0.1,
+        hint: 'Only used when the toggle is on'
+      }
     ]
   },
   {
@@ -348,6 +442,21 @@ export const ADVANCED_GROUPS: {
         label: 'Caption size divisor',
         step: 1,
         hint: 'Font size = frame width / this, so lower is bigger'
+      },
+      {
+        // The other half of the pair. Only the first was ever on this panel, so
+        // the two could drift to within six per cent of each other and the aA
+        // switch looked broken with no dial to explain it.
+        key: 'headlineSizeDivisor',
+        label: 'Big caption size divisor',
+        step: 1,
+        hint: 'The aA switch. Lower than the one beside it, or big is not big'
+      },
+      {
+        key: 'captionMarginX',
+        label: 'Caption side margin (px)',
+        step: 4,
+        hint: 'Where lines wrap, measured in the finished frame'
       }
     ]
   },

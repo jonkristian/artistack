@@ -3,7 +3,12 @@
   import { goto, invalidateAll } from '$app/navigation';
   import { toast } from '$lib/stores/toast.svelte';
   import { formatDuration } from '$lib/utils/upload';
-  import { CLIP_STATUS_LABELS, CLIP_STATUS_STYLES, type ClipStatus } from '$lib/clips/types';
+  import {
+    CLIP_STATUS_LABELS,
+    CLIP_STATUS_STYLES,
+    PLATFORM_NAMES,
+    type ClipStatus
+  } from '$lib/clips/types';
   import { LibraryToolbar, SelectCheckbox } from '$lib/components/ui';
   import { Selection } from '$lib/utils/selection.svelte';
   import type { PageData } from './$types';
@@ -75,7 +80,24 @@
 
   const mediaById = $derived(new Map(data.media.map((m) => [m.id, m])));
 
-  const confirmed = $derived(new Set(data.confirmedIds));
+  /**
+   * Where each clip got to, and how it went.
+   *
+   * Sorted so the same clip reads the same way every time it is drawn — the
+   * rows come back in whatever order the table gives them, and badges that
+   * swap places between loads look like something changed.
+   */
+  const postsFor = (id: number) =>
+    [...(data.posts[id] ?? [])].sort((a, b) => a.platform.localeCompare(b.platform));
+
+  /** Anywhere it is actually live. A draft was uploaded and not posted. */
+  const confirmed = $derived(
+    new Set(
+      Object.entries(data.posts)
+        .filter(([, rows]) => rows.some((r) => r.status === 'live'))
+        .map(([id]) => Number(id))
+    )
+  );
 
   const sourceCounts = $derived(
     data.sources.reduce<Record<number, number>>((acc, s) => {
@@ -223,6 +245,28 @@
                 <!-- Published, but nothing ever reported reaching a platform.
                      Catches the case where the posting workflow is down: it
                      can't raise its own alarm, so the absence has to. -->
+                <!-- Where it went, one badge per platform.
+                     Live is the only one that means the public can see it: a
+                     draft was uploaded for someone to post by hand, and a
+                     failure is a thing to go and look at. Colour says which
+                     without a word for it. -->
+                {#each postsFor(project.id) as post (post.platform)}
+                  <span
+                    class="rounded px-1.5 py-0.5 text-[10px] font-medium {post.status === 'live'
+                      ? 'bg-emerald-900 text-emerald-300'
+                      : post.status === 'draft'
+                        ? 'bg-amber-900 text-amber-300'
+                        : 'bg-red-900 text-red-300'}"
+                    title="{PLATFORM_NAMES[post.platform] ?? post.platform} — {post.status ===
+                    'live'
+                      ? 'live'
+                      : post.status === 'draft'
+                        ? 'uploaded, post it by hand'
+                        : 'failed'}"
+                  >
+                    {PLATFORM_NAMES[post.platform] ?? post.platform}
+                  </span>
+                {/each}
                 {#if project.status === 'published' && !confirmed.has(project.id)}
                   <span
                     class="rounded bg-amber-900 px-1.5 py-0.5 text-[10px] font-medium text-amber-300"

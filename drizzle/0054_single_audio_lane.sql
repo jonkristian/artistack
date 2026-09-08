@@ -1,0 +1,11 @@
+-- Beds come back to one lane.
+--
+-- The second row only ever stacked them for looking at: two overlapping beds
+-- crossfade, and the render works that out from the overlap without caring
+-- which row either was drawn in. Rows are the scarcest thing on the timeline,
+-- so the one spent on that is worth more given back to the row that's left —
+-- which is now tall enough to draw the waveform in.
+--
+-- Anything parked on lane 1 would otherwise be drawn off the bottom of the
+-- strip, so it comes home. Nothing about how it sounds changes.
+UPDATE `clip_audio` SET `lane` = 0 WHERE `lane` <> 0;

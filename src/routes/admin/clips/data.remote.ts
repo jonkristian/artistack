@@ -5,10 +5,11 @@ import { command, query } from '$app/server';
 import { db } from '$lib/server/db';
 import { unlink } from 'fs/promises';
 import { mediaPath } from '$lib/server/paths';
-import { removeClipStrip } from '$lib/server/clip-strip';
+import { rotateMedia } from '$lib/server/media-rotate';
 import { resolveTags, setTags, clearTags, pruneOrphanTags, listTags } from '$lib/server/tags';
 import {
   clipProjects,
+  clipMedia,
   clipSources,
   clipAudio,
   clipPosts,
@@ -33,11 +34,23 @@ import {
 } from '$lib/server/clip-review';
 import { enqueueForRelease, dequeue, publishClip } from '$lib/server/clip-queue';
 
+/**
+ * Every field a caption has, because valibot drops the ones it doesn't name.
+ *
+ * `v.object` strips unknown keys rather than complaining about them, so a field
+ * added to TimedCaption and forgotten here doesn't fail — it saves, reports
+ * success, and is gone on the next load. Both `y` and `lane` were added and
+ * forgotten exactly that way.
+ */
 const timedCaptionSchema = v.object({
   start: v.number(),
   end: v.number(),
   text: v.string(),
-  headline: v.optional(v.boolean())
+  headline: v.optional(v.boolean()),
+  /** Where it sits in the frame, as a fraction of the height from the bottom. */
+  y: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
+  /** Which timeline row it's drawn in. Nothing to do with the render. */
+  lane: v.optional(v.pipe(v.number(), v.minValue(0)))
 });
 
 // Renderer internals. Bounds here only reject values that would break a render;
@@ -282,32 +295,248 @@ async function discardRender(mediaId: number): Promise<void> {
     for (const url of [item.url, item.thumbnailUrl]) {
       if (url) await unlink(mediaPath(url)).catch(() => {});
     }
-    await removeClipStrip(mediaId);
   } catch (e) {
     console.error('[Clips] Could not discard render on delete:', e);
   }
 }
 
-export const addSource = command(
+/**
+ * Puts files in the project's pool, without placing any of them.
+ *
+ * Idempotent per file: the pool is a set, so picking something already in it is
+ * not an error and not a second entry — it just isn't news.
+ */
+export const addToPool = command(
+  v.object({ projectId: v.number(), mediaIds: v.array(v.number()) }),
+  async ({ projectId, mediaIds }) => {
+    await requireUser();
+    if (mediaIds.length === 0) return { success: true, added: 0 };
+
+    const existing = await db
+      .select({ mediaId: clipMedia.mediaId, position: clipMedia.position })
+      .from(clipMedia)
+      .where(eq(clipMedia.projectId, projectId));
+
+    const have = new Set(existing.map((row) => row.mediaId));
+    const wanted = [...new Set(mediaIds)].filter((id) => !have.has(id));
+    if (wanted.length === 0) return { success: true, added: 0 };
+
+    let position = existing.reduce((max, row) => Math.max(max, row.position ?? 0), 0);
+    await db
+      .insert(clipMedia)
+      .values(wanted.map((mediaId) => ({ projectId, mediaId, position: ++position })));
+
+    return { success: true, added: wanted.length };
+  }
+);
+
+/**
+ * Takes a file out of the pool, and every placement of it with it.
+ *
+ * Leaving the placements would leave blocks on the timeline referring to
+ * something the project no longer has, which is a worse state than either
+ * having it or not. Returns what went so it can all be put back.
+ */
+export const removeFromPool = command(
+  v.object({ projectId: v.number(), mediaId: v.number() }),
+  async ({ projectId, mediaId }) => {
+    await requireUser();
+
+    const where = (table: typeof clipSources | typeof clipAudio) =>
+      and(eq(table.projectId, projectId), eq(table.mediaId, mediaId));
+
+    const sources = await db.select().from(clipSources).where(where(clipSources));
+    const audio = await db.select().from(clipAudio).where(where(clipAudio));
+
+    await db.delete(clipSources).where(where(clipSources));
+    await db.delete(clipAudio).where(where(clipAudio));
+    await db
+      .delete(clipMedia)
+      .where(and(eq(clipMedia.projectId, projectId), eq(clipMedia.mediaId, mediaId)));
+
+    return { success: true, sources, audio };
+  }
+);
+
+/** Puts a pooled file, and everything that was placed from it, back. */
+export const restoreToPool = command(
+  v.object({
+    projectId: v.number(),
+    mediaId: v.number(),
+    sources: v.array(v.record(v.string(), v.any())),
+    audio: v.array(v.record(v.string(), v.any()))
+  }),
+  async ({ projectId, mediaId, sources, audio }) => {
+    await requireUser();
+
+    const [last] = await db
+      .select({ position: clipMedia.position })
+      .from(clipMedia)
+      .where(eq(clipMedia.projectId, projectId))
+      .orderBy(desc(clipMedia.position))
+      .limit(1);
+
+    await db
+      .insert(clipMedia)
+      .values({ projectId, mediaId, position: (last?.position ?? 0) + 1 })
+      .onConflictDoNothing();
+
+    if (sources.length) await db.insert(clipSources).values(sources as never);
+    if (audio.length) await db.insert(clipAudio).values(audio as never);
+
+    return { success: true };
+  }
+);
+
+/**
+ * Adds a clip, landing after everything already on the timeline.
+ *
+ * `start` used to be left at its default of zero, so every clip added arrived
+ * stacked underneath the first one — invisible on the strip until you noticed
+ * the first block had grown a shadow and dragged it off. Where a new thing goes
+ * is a decision, and "nowhere in particular" isn't one.
+ *
+ * The end of the last placement rather than the sum of the lengths: clips can
+ * sit anywhere now, with gaps between them and overlaps across them, so the
+ * only thing "after everything" can mean is past the furthest end.
+ */
+export const placeSource = command(
   v.object({ projectId: v.number(), mediaId: v.number() }),
   async ({ projectId, mediaId }) => {
     await requireUser();
 
     const existing = await db
-      .select()
+      .select({
+        position: clipSources.position,
+        start: clipSources.start,
+        trimStart: clipSources.trimStart,
+        trimEnd: clipSources.trimEnd,
+        durationMs: media.durationMs
+      })
       .from(clipSources)
+      .leftJoin(media, eq(media.id, clipSources.mediaId))
       .where(eq(clipSources.projectId, projectId));
+
+    const [project] = await db
+      .select({ config: clipProjects.config })
+      .from(clipProjects)
+      .where(eq(clipProjects.id, projectId))
+      .limit(1);
+
+    // The speed the whole clip plays at, which is what turns a trim window in
+    // source seconds into the length a block occupies.
+    const speed = (project?.config as ClipRenderConfig | null)?.speed || 1;
+
+    const end = existing.reduce((furthest, row) => {
+      const length =
+        row.trimStart != null && row.trimEnd != null
+          ? Math.max(0, row.trimEnd - row.trimStart)
+          : (row.durationMs ?? 0) / 1000;
+      return Math.max(furthest, (row.start ?? 0) + length / speed);
+    }, 0);
 
     const [created] = await db
       .insert(clipSources)
       .values({
         projectId,
         mediaId,
+        start: Math.round(end * 100) / 100,
         position: existing.reduce((max, s) => Math.max(max, s.position ?? 0), 0) + 1
       })
       .returning();
 
     return { success: true, source: created };
+  }
+);
+
+/**
+ * Places a bed, landing after everything already on the timeline.
+ *
+ * Position comes from the current highest rather than a count, so a list with a
+ * gap in it — anything removed from the middle — still appends rather than
+ * colliding.
+ */
+export const placeAudio = command(
+  v.object({ projectId: v.number(), mediaId: v.number() }),
+  async ({ projectId, mediaId }) => {
+    await requireUser();
+
+    const existing = await db
+      .select({
+        position: clipAudio.position,
+        start: clipAudio.start,
+        end: clipAudio.end,
+        seek: clipAudio.seek,
+        durationMs: media.durationMs
+      })
+      .from(clipAudio)
+      .leftJoin(media, eq(media.id, clipAudio.mediaId))
+      .where(eq(clipAudio.projectId, projectId));
+
+    const end = existing.reduce((furthest, row) => {
+      // An open-ended bed runs until the clip does, which this side can't know.
+      // Its own remaining length is the honest stand-in.
+      const stop =
+        row.end ?? (row.start ?? 0) + Math.max(0, (row.durationMs ?? 0) / 1000 - (row.seek ?? 0));
+      return Math.max(furthest, stop);
+    }, 0);
+
+    const [created] = await db
+      .insert(clipAudio)
+      .values({
+        projectId,
+        mediaId,
+        start: Math.round(end * 100) / 100,
+        position: existing.reduce((max, a) => Math.max(max, a.position ?? 0), 0) + 1
+      })
+      .returning();
+
+    return { success: true, track: created };
+  }
+);
+
+/**
+ * Turns a file a quarter, for every clip that uses it.
+ *
+ * Keyed on the media rather than on one placement, because that is what it
+ * does: the footage itself is rewritten, so all three blocks made from a shot
+ * turn together and so does every other clip in the site that uses it. Any
+ * render-time correction sitting on a placement is folded into the turn and
+ * then cleared, or the picture would spin back the moment the column went.
+ */
+export const rotateFootage = command(
+  v.object({ projectId: v.number(), mediaId: v.number() }),
+  async ({ projectId, mediaId }) => {
+    await requireUser();
+
+    const placements = await db
+      .select({ id: clipSources.id, rotation: clipSources.rotation })
+      .from(clipSources)
+      .where(and(eq(clipSources.projectId, projectId), eq(clipSources.mediaId, mediaId)));
+
+    // Whatever correction was already being applied at render time is real and
+    // on screen, so it moves into the file rather than being dropped.
+    const pending = placements.find((row) => row.rotation)?.rotation ?? 0;
+
+    const result = await rotateMedia(mediaId, 90 + pending);
+    if (!result.ok) {
+      return {
+        success: false,
+        message:
+          result.reason === 'unsupported'
+            ? "This file's container can't hold a rotation"
+            : 'That file is missing'
+      };
+    }
+
+    if (pending) {
+      await db
+        .update(clipSources)
+        .set({ rotation: 0 })
+        .where(and(eq(clipSources.projectId, projectId), eq(clipSources.mediaId, mediaId)));
+    }
+
+    return { success: true, rotation: result.rotation };
   }
 );
 
@@ -318,6 +547,8 @@ export const updateSource = command(
     trimEnd: v.optional(v.nullable(v.number())),
     muted: v.optional(v.boolean()),
     watermark: v.optional(v.nullable(v.boolean())),
+    start: v.optional(v.pipe(v.number(), v.minValue(0))),
+    lane: v.optional(v.pipe(v.number(), v.minValue(0))),
     // Right angles only — this straightens footage, it doesn't tilt it.
     rotation: v.optional(v.picklist([...CLIP_ROTATIONS]))
   }),
@@ -334,88 +565,6 @@ export const updateSource = command(
     return { success: true };
   }
 );
-
-/**
- * Adds a bed, appended after whatever is already there.
- *
- * Position comes from the current highest rather than a count, so a list with a
- * gap in it — anything removed from the middle — still appends rather than
- * colliding.
- */
-export const addAudio = command(
-  v.object({ projectId: v.number(), mediaId: v.number() }),
-  async ({ projectId, mediaId }) => {
-    await requireUser();
-
-    const [last] = await db
-      .select({ position: clipAudio.position })
-      .from(clipAudio)
-      .where(eq(clipAudio.projectId, projectId))
-      .orderBy(desc(clipAudio.position))
-      .limit(1);
-
-    const [created] = await db
-      .insert(clipAudio)
-      .values({ projectId, mediaId, position: (last?.position ?? -1) + 1 })
-      .returning();
-
-    return { success: true, track: created };
-  }
-);
-
-export const updateAudio = command(
-  v.object({
-    id: v.number(),
-    start: v.optional(v.pipe(v.number(), v.minValue(0))),
-    end: v.optional(v.nullable(v.pipe(v.number(), v.minValue(0)))),
-    seek: v.optional(v.pipe(v.number(), v.minValue(0))),
-    fadeIn: v.optional(v.boolean()),
-    fadeOut: v.optional(v.boolean()),
-    duck: v.optional(v.boolean())
-  }),
-  async ({ id, ...fields }) => {
-    await requireUser();
-
-    const update: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(fields)) {
-      if (value !== undefined) update[key] = value;
-    }
-    if (Object.keys(update).length === 0) return { success: true };
-
-    await db.update(clipAudio).set(update).where(eq(clipAudio.id, id));
-    return { success: true };
-  }
-);
-
-/** Reorders the beds. Same shape as reorderSources, and for the same reason. */
-export const reorderAudio = command(
-  v.object({ projectId: v.number(), orderedIds: v.array(v.number()) }),
-  async ({ projectId, orderedIds }) => {
-    await requireUser();
-
-    for (const [index, id] of orderedIds.entries()) {
-      await db
-        .update(clipAudio)
-        .set({ position: index })
-        .where(and(eq(clipAudio.id, id), eq(clipAudio.projectId, projectId)));
-    }
-
-    return { success: true };
-  }
-);
-
-export const removeAudio = command(v.number(), async (id) => {
-  await requireUser();
-  await db.delete(clipAudio).where(eq(clipAudio.id, id));
-  return { success: true };
-});
-
-export const removeSource = command(v.number(), async (id) => {
-  await requireUser();
-
-  await db.delete(clipSources).where(eq(clipSources.id, id));
-  return { success: true };
-});
 
 /*
  * Putting back what was just removed.
@@ -468,44 +617,75 @@ export const restoreAudio = command(
   }
 );
 
-export const reorderSources = command(
-  v.object({ projectId: v.number(), orderedIds: v.array(v.number()) }),
-  async ({ projectId, orderedIds }) => {
+export const updateAudio = command(
+  v.object({
+    id: v.number(),
+    start: v.optional(v.pipe(v.number(), v.minValue(0))),
+    end: v.optional(v.nullable(v.pipe(v.number(), v.minValue(0)))),
+    seek: v.optional(v.pipe(v.number(), v.minValue(0))),
+    fadeIn: v.optional(v.boolean()),
+    fadeOut: v.optional(v.boolean()),
+    duck: v.optional(v.boolean())
+  }),
+  async ({ id, ...fields }) => {
     await requireUser();
 
-    // Positions are rewritten from the given order, so a partial or stale list
-    // can't leave two sources fighting over the same slot.
-    for (let i = 0; i < orderedIds.length; i++) {
-      await db
-        .update(clipSources)
-        .set({ position: i + 1 })
-        .where(eq(clipSources.id, orderedIds[i]));
+    const update: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(fields)) {
+      if (value !== undefined) update[key] = value;
     }
-    await db
-      .update(clipProjects)
-      .set({ updatedAt: new Date() })
-      .where(eq(clipProjects.id, projectId));
+    if (Object.keys(update).length === 0) return { success: true };
 
+    await db.update(clipAudio).set(update).where(eq(clipAudio.id, id));
     return { success: true };
   }
 );
 
-export const startRender = command(v.number(), async (projectId) => {
+export const removeAudio = command(v.number(), async (id) => {
+  await requireUser();
+  await db.delete(clipAudio).where(eq(clipAudio.id, id));
+  return { success: true };
+});
+
+export const removeSource = command(v.number(), async (id) => {
   await requireUser();
 
-  const sources = await db
-    .select()
-    .from(clipSources)
-    .where(eq(clipSources.projectId, projectId))
-    .orderBy(asc(clipSources.position));
-
-  if (sources.length === 0) {
-    return { success: false, message: 'Add at least one source clip first' };
-  }
-
-  const job = await enqueueRender(projectId);
-  return { success: true, job };
+  await db.delete(clipSources).where(eq(clipSources.id, id));
+  return { success: true };
 });
+
+/*
+ * Putting back what was just removed.
+ *
+ * The id comes back with the row. Nothing else references a source or a bed by
+ * id, so a new one would do — but the position wouldn't survive a re-add, and
+ * "undo" that quietly moves a clip to the end of the list is not undo. SQLite's
+ * AUTOINCREMENT never reissues an id, so the original is always free to take.
+ *
+ * Both are idempotent through `onConflictDoNothing`: the toast can only be
+ * pressed once, but a double-tap on a phone is one press as far as the person
+ * is concerned.
+ */
+
+export const startRender = command(
+  v.object({ projectId: v.number(), proof: v.optional(v.boolean()) }),
+  async ({ projectId, proof = false }) => {
+    await requireUser();
+
+    const sources = await db
+      .select()
+      .from(clipSources)
+      .where(eq(clipSources.projectId, projectId))
+      .orderBy(asc(clipSources.position));
+
+    if (sources.length === 0) {
+      return { success: false, message: 'Add at least one source clip first' };
+    }
+
+    const job = await enqueueRender(projectId, proof);
+    return { success: true, job };
+  }
+);
 
 export const stopRender = command(v.number(), async (jobId) => {
   await requireUser();

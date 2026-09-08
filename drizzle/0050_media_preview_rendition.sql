@@ -1,0 +1,13 @@
+-- A small copy of a video, for playing in the editor.
+--
+-- The trim player, and the live preview that will follow it, load the original
+-- file — which for phone footage is routinely 4K. That is tens of megabytes to
+-- scrub a three-second clip, and two of them at once to play across a cut.
+--
+-- Made quietly after the upload has already been answered, so nothing waits for
+-- it. Null means it isn't ready yet, was never made, or the file predates this
+-- column: everything falls back to the original, which is what it did before.
+--
+-- Never used for rendering. The render is the one thing that must have the
+-- footage as shot.
+ALTER TABLE `media` ADD `preview_url` text;

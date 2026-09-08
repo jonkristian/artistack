@@ -70,7 +70,7 @@ export function renderFingerprint(state: RenderState): string {
 
   const captions = state.captions
     .filter((c) => c.text?.trim())
-    .map((c) => [c.start, c.end, c.text, Boolean(c.headline)]);
+    .map((c) => [c.start, c.end, c.text, Boolean(c.headline), c.y ?? null]);
 
   return JSON.stringify({
     config: state.config,

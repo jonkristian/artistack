@@ -344,6 +344,55 @@
       "when": 1700000048000,
       "tag": "0048_clip_render_fingerprint",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "6",
+      "when": 1700000049000,
+      "tag": "0049_clip_proof_render",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1700000050000,
+      "tag": "0050_media_preview_rendition",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "6",
+      "when": 1700000051000,
+      "tag": "0051_clip_placements",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "6",
+      "when": 1700000052000,
+      "tag": "0052_placement_start_speed",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "6",
+      "when": 1700000053000,
+      "tag": "0053_media_waveform",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "6",
+      "when": 1700000054000,
+      "tag": "0054_single_audio_lane",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "6",
+      "when": 1700000055000,
+      "tag": "0055_clip_media_pool",
+      "breakpoints": true
     }
   ]
 }

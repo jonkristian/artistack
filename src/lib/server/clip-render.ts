@@ -1,10 +1,11 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { mkdtemp, rm, writeFile } from 'fs/promises';
-import { tmpdir } from 'os';
+import { mkdtemp, mkdir, rm, readdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { runFfmpeg, probeVideo, probeDuration, rasterizeSvg, hasBinary } from './ffmpeg';
+import { DATA_DIR } from './paths';
 import {
+  CAPTION_ANCHORS,
   DEFAULT_CLIP_CONFIG,
   DEFAULT_ADVANCED_CONFIG,
   type ClipRenderConfig,
@@ -27,6 +28,45 @@ const execFileAsync = promisify(execFile);
  * phone footage, and the comments record why each one exists. The pipeline runs
  * in the numbered stages marked inline below.
  */
+
+/**
+ * Where a render does its working-out.
+ *
+ * Under `data/`, not the system temp directory. On this machine and on plenty
+ * of others `/tmp` is a tmpfs — which is to say RAM — and a render's staging
+ * files run to gigabytes, so the temporary copies of a clip were being held in
+ * memory and counted against a limit that has nothing to do with disk. `data/`
+ * is a real volume in production and a real directory locally, and it's where
+ * the finished file lands anyway, so the last move is a rename rather than a
+ * copy across filesystems.
+ */
+const STAGING_ROOT = join(DATA_DIR, 'renders');
+
+async function stagingDir(): Promise<string> {
+  await mkdir(STAGING_ROOT, { recursive: true });
+  return mkdtemp(join(STAGING_ROOT, 'clip-'));
+}
+
+/**
+ * Clears staging left behind by a render that never finished.
+ *
+ * The working directory is removed in a `finally`, which covers a failure and
+ * doesn't cover the process being killed — and each abandoned set is gigabytes.
+ * Called at startup, alongside the sweep that fails the jobs those renders
+ * belonged to.
+ */
+export async function clearAbandonedStaging(): Promise<number> {
+  const entries = await readdir(STAGING_ROOT, { withFileTypes: true }).catch(() => []);
+  let cleared = 0;
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.startsWith('clip-')) continue;
+    await rm(join(STAGING_ROOT, entry.name), { recursive: true, force: true }).catch(() => {});
+    cleared += 1;
+  }
+
+  return cleared;
+}
 
 /**
  * The intro can never take more than this fraction of the first clip, whatever
@@ -101,6 +141,10 @@ export interface ClipSourceInput {
   muted?: boolean | null;
   /** Overrides the project watermark setting; null inherits. */
   watermark?: boolean | null;
+  /** Where this placement begins on the timeline, in seconds. */
+  start?: number;
+  /** Which row it sits in; higher lanes are composited over lower ones. */
+  lane?: number;
   /** Degrees clockwise to turn the footage before anything else. */
   rotation?: number | null;
 }
@@ -119,6 +163,13 @@ export interface RenderInput {
   outroPath?: string | null;
   /** The beds, in the order they should be mixed. */
   audio?: ClipAudioInput[];
+  /**
+   * Render a proof: the same edit, made quickly and thrown away.
+   *
+   * For judging where things sit while you work, which needs the timing to be
+   * right and nothing else. See PROOF below for what it gives up.
+   */
+  proof?: boolean;
   outputPath: string;
 }
 
@@ -137,12 +188,45 @@ export interface RenderResult {
 }
 
 /**
+ * A staging file's encoder settings: fast, and good enough to survive.
+ *
+ * Nothing between the first stage and the last is ever looked at — each one is
+ * decoded by the next and deleted at the end — so the only two things its
+ * encoder settings decide are how long that pass takes and how much of the
+ * picture reaches the pass after it. The configured preset answers a question
+ * nobody asked of these files: how small they are.
+ *
+ * Measured on 1080x1920 footage, `veryfast` is 2.4x quicker than `fast` (2.90s
+ * against 6.91s for twenty seconds), and at this CRF it also throws away less —
+ * which matters, because on the composite path the picture is encoded three
+ * times before anyone sees it and each pass compounds the one before.
+ */
+const STAGING_PRESET = 'veryfast';
+const STAGING_CRF = 18;
+
+/**
+ * And a ceiling, because CRF alone has none.
+ *
+ * Film grain is random, and random doesn't compress: asked for CRF 18 with
+ * nothing to stop it, x264 encoded a grainy 155-second staging file at 165
+ * Mbit/s — 3.2GB, for something that gets decoded once and deleted. Four of
+ * those and a composite filled a 16GB tmpfs and the render died writing the
+ * one file anybody wanted.
+ *
+ * Generous rather than tight: twice what the finished clip is allowed, so clean
+ * footage is still governed by the CRF and only the pathological cases are
+ * caught. It is a ceiling, not a target.
+ */
+const stagingMaxrate = (adv: ClipAdvancedConfig) => Math.max(adv.maxrateMbps * 2, 16);
+
+/**
  * Encoder settings, derived from the advanced config.
  *
  * The bitrate cap stops grain and detail from bloating the file; bufsize is
  * kept at 1.6x maxrate, which is the ratio the original engine used. `final`
  * adds faststart, putting the moov atom up front for web playback — only worth
- * it on the file that actually gets served.
+ * it on the file that actually gets served, and a whole-file remux on one that
+ * isn't.
  */
 function encodeArgs(adv: ClipAdvancedConfig, final = false): string[] {
   const args = [
@@ -151,13 +235,13 @@ function encodeArgs(adv: ClipAdvancedConfig, final = false): string[] {
     '-pix_fmt',
     'yuv420p',
     '-preset',
-    adv.preset,
+    final ? adv.preset : STAGING_PRESET,
     '-crf',
-    String(adv.crf),
-    '-maxrate',
-    `${adv.maxrateMbps}M`,
-    '-bufsize',
-    `${(adv.maxrateMbps * 1.6).toFixed(1)}M`,
+    String(final ? adv.crf : Math.min(adv.crf, STAGING_CRF)),
+    ...(() => {
+      const cap = final ? adv.maxrateMbps : stagingMaxrate(adv);
+      return ['-maxrate', `${cap}M`, '-bufsize', `${(cap * 1.6).toFixed(1)}M`];
+    })(),
     '-r',
     String(adv.fps),
     '-c:a',
@@ -347,18 +431,46 @@ function buildFill(
   width: number,
   height: number,
   adv: ClipAdvancedConfig,
-  rotation?: number | null
+  rotation?: number | null,
+  /** The footage's displayed size, so a fill that would be invisible is skipped. */
+  source?: { width: number; height: number }
 ): string {
   const head = `[0:v]fps=${adv.fps},setpts=PTS-STARTPTS${rotateFilter(rotation)}`;
 
-  if (fill === 'black') {
+  /*
+   * Does the footage already fill the frame?
+   *
+   * Phone video shot for this and a clip rendered at 9:16 are the same shape,
+   * which is the common case, and a fill has nothing to do in it: there are no
+   * bars to put anything in. `crop` is what that reduces to — with matching
+   * aspects it crops nothing and is a plain scale — and it can't produce a
+   * black bar if the two are a hair apart, which `black` could.
+   */
+  let fills = false;
+  if (source && source.width > 0 && source.height > 0) {
+    const quarter = Math.abs((((rotation ?? 0) % 360) + 360) % 360) % 180 === 90;
+    const w = quarter ? source.height : source.width;
+    const h = quarter ? source.width : source.height;
+    fills = Math.abs(w / h - width / height) / (width / height) < 0.01;
+  }
+
+  if (fill === 'black' && !fills) {
     return (
       `${head},scale=${width}:${height}:force_original_aspect_ratio=decrease` +
       `:force_divisible_by=2,setsar=1,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black[filled]`
     );
   }
 
-  if (fill === 'crop') {
+  /*
+   * Also the answer for footage that already fits, whatever was asked for.
+   *
+   * A blurred background under a picture that covers every pixel of it is a
+   * boxblur nobody will ever see — and it costs more than twice as much as the
+   * scale it wraps, measured at 14.2s against 6.2s for twenty seconds of
+   * 1080x1920. The two produce identical frames here, so this is the same
+   * render, faster.
+   */
+  if (fill === 'crop' || fills) {
     return (
       `${head},scale=${width}:${height}:force_original_aspect_ratio=increase` +
       `:force_divisible_by=2,crop=${width}:${height},setsar=1[filled]`
@@ -396,21 +508,25 @@ function buildAss(ctx: AssContext, captions: TimedCaption[]): string {
   const capSize = Math.round(width / adv.captionSizeDivisor);
   const headSize = Math.round(width / adv.headlineSizeDivisor);
 
-  let alignment: number;
-  let marginV: number;
-  switch (config.captionPosition) {
-    case 'top':
-      alignment = 8;
-      marginV = Math.round((height * 8) / 100);
-      break;
-    case 'center':
-      alignment = 5;
-      marginV = 0;
-      break;
-    default:
-      alignment = 2;
-      marginV = Math.round((height * 24) / 100);
-  }
+  /*
+   * The default position, taken from the same table the anchor button writes.
+   *
+   * These used to be their own numbers here — 8% down for top, centred for
+   * middle, 24% up for bottom — measured from three different edges, while a
+   * caption you had anchored carried a `y` measured from the bottom. So an
+   * anchored caption and an unanchored one at the same setting landed in
+   * different places, and moving the anchors did nothing to the default.
+   *
+   * One table, one edge: `\an2`, and a margin up from the bottom.
+   */
+  const anchorId =
+    config.captionPosition === 'top'
+      ? 'top'
+      : config.captionPosition === 'center'
+        ? 'middle'
+        : 'bottom';
+  const alignment = 2;
+  const marginV = Math.round(height * (CAPTION_ANCHORS.find((a) => a.id === anchorId)?.y ?? 0.18));
 
   const primary = config.colorizeCaption ? assColor(accentColor) : '&H00FFFFFF';
 
@@ -443,9 +559,26 @@ function buildAss(ctx: AssContext, captions: TimedCaption[]): string {
   for (const caption of captions) {
     if (!caption.text?.trim()) continue;
     const style = caption.headline ? 'Head' : 'Cap';
+
+    /*
+     * A caption with a height of its own overrides the clip's.
+     *
+     * The Dialogue format has carried per-line margins all along — they were
+     * `0,0,0`, which means "use the style's". Setting MarginV places this line
+     * and no other, so several captions can sit at several heights in the same
+     * second, which is the whole point of asking.
+     *
+     * `\an2` comes with it because MarginV is measured from whichever edge the
+     * alignment anchors to. Without it, the same number would mean "up from the
+     * bottom" on one clip and "down from the top" on another.
+     */
+    const placed = typeof caption.y === 'number';
+    const marginV = placed ? Math.round(Math.min(1, Math.max(0, caption.y!)) * height) : 0;
+    const anchor = placed ? '{\\an2}' : '';
+
     lines.push(
-      `Dialogue: 0,${assTime(caption.start)},${assTime(caption.end)},${style},,0,0,0,,` +
-        `{\\fad(250,250)}${assText(caption.text)}`
+      `Dialogue: 0,${assTime(caption.start)},${assTime(caption.end)},${style},,0,0,${marginV},,` +
+        `${anchor}{\\fad(250,250)}${assText(caption.text)}`
     );
   }
 
@@ -470,17 +603,13 @@ async function renderPart(
     adv: ClipAdvancedConfig;
     width: number;
     height: number;
-    introSeconds: number;
-    logoBand: number;
-    hasIntroGraphic: boolean;
-    hasWatermarkGraphic: boolean;
     signal?: AbortSignal;
     onLog?: (line: string) => void;
     /** 0..1 within this source; the caller maps it onto the overall bar. */
     onProgress?: (fraction: number) => void;
   }
 ): Promise<string> {
-  const { tmp, config, adv, width, height, hasIntroGraphic, hasWatermarkGraphic } = ctx;
+  const { tmp, config, adv, width, height } = ctx;
   const partPath = join(tmp, `${String(index + 1).padStart(2, '0')}_part.mp4`);
 
   // Footage-only effects, ordered: speed -> zoom -> grade -> vignette -> grain.
@@ -500,43 +629,24 @@ async function renderPart(
   if (config.grain) effects.push(`noise=alls=${adv.grainStrength}:allf=t`);
 
   const chain = effects.length ? effects.join(',') : 'null';
-  const fill = buildFill(config.fill, width, height, adv, source.rotation);
-  const watermarkPos = `${adv.watermarkX}:${adv.watermarkY}`;
-
+  // Read here rather than further down, because the fill wants to know whether
+  // the footage already covers the frame before it decides to build one.
+  const probe = await probeVideo(source.path);
+  const fill = buildFill(config.fill, width, height, adv, source.rotation, probe);
   // Per-clip watermark override, falling back to the project setting.
-  const watermarkOn = hasWatermarkGraphic && (source.watermark ?? config.watermark);
+  /*
+   * No branding here any more; see the final pass.
+   *
+   * The logo and the watermark used to be composited onto each part, which made
+   * them properties of a piece of footage rather than of the clip. With
+   * placements that is plainly wrong: a timeline whose first shot lands fifteen
+   * seconds in got its opening logo fifteen seconds in, and the watermark
+   * blinked out over every gap, because there was no part underneath to carry
+   * it. They belong on the finished picture, at the times the clip says.
+   */
+  const silentIndex = 1;
 
-  const isIntro = index === 0 && config.intro && hasIntroGraphic;
-
-  // Input indices are computed rather than hardcoded: the watermark and intro
-  // graphics are now independent, so either can be absent and the numbering
-  // shifts. The order here must match the order the inputs are pushed below.
-  let cursor = 1;
-  const wmIndex = watermarkOn ? cursor++ : -1;
-  const introIndex = isIntro ? cursor++ : -1;
-  const silentIndex = cursor;
-
-  let filterGraph: string;
-  if (isIntro) {
-    const introSec = ctx.introSeconds;
-    const logoFadeOut = introSec > 0.6 ? introSec - 0.4 : 0.2;
-
-    const introBig =
-      `${fill};[filled]${chain}[base];` +
-      `[${introIndex}:v]format=rgba,fade=t=out:st=${logoFadeOut.toFixed(2)}:d=0.4:alpha=1[big];` +
-      `[base][big]overlay=(W-w)/2:H*${ctx.logoBand}-h/2:${OVERLAY_STILL}` +
-      `:enable='between(t,0,${introSec.toFixed(2)})'[b1]`;
-
-    filterGraph = watermarkOn
-      ? `${introBig};[${wmIndex}:v]format=rgba,fade=t=in:st=${introSec.toFixed(2)}:d=0.3:alpha=1[wm];` +
-        `[b1][wm]overlay=${watermarkPos}:${OVERLAY_STILL}` +
-        `:enable='gte(t,${introSec.toFixed(2)})'[v]`
-      : `${introBig};[b1]null[v]`;
-  } else {
-    filterGraph = watermarkOn
-      ? `${fill};[filled]${chain}[base];[base][${wmIndex}:v]overlay=${watermarkPos}:${OVERLAY_STILL}[v]`
-      : `${fill};[filled]${chain}[v]`;
-  }
+  const filterGraph = `${fill};[filled]${chain}[v]`;
 
   // Trim on the input side (fast seek); it's re-encoded downstream so it stays accurate.
   const seek: string[] = [];
@@ -550,7 +660,6 @@ async function renderPart(
 
   // A muted clip gets a silent track rather than no track: it still feeds the
   // music bed's sidechain, so the bed stays full over it instead of ducking.
-  const probe = await probeVideo(source.path);
   const silent = Boolean(source.muted) || !probe.hasAudio;
   if (source.muted) ctx.onLog?.(`Mute: clip ${index + 1} (music stays full here)`);
   if (source.rotation) ctx.onLog?.(`Rotate: clip ${index + 1} ${source.rotation}°`);
@@ -569,10 +678,6 @@ async function renderPart(
   }
 
   const args: string[] = ['-y', '-loglevel', 'error', ...seek, '-i', source.path];
-
-  // Order must match the indices computed alongside the filter graph above.
-  if (watermarkOn) args.push('-loop', '1', '-i', join(tmp, 'wm.png'));
-  if (isIntro) args.push('-loop', '1', '-i', join(tmp, 'logo.png'));
 
   let audioMap: string;
   if (silent) {
@@ -661,6 +766,102 @@ async function renderCard(
 }
 
 /** Joins parts with hard cuts (concat) or crossfade dissolves. */
+/**
+ * Whether the placements are a plain sequence — each starting where the one
+ * before it ended, all in one lane.
+ *
+ * Worth asking because the answer decides between two very different stages. A
+ * sequence can be joined with the concat demuxer, which is a stream copy;
+ * anything else has to be composited, which re-encodes. Every clip made before
+ * placements existed is a sequence, and most made after one will be too, so
+ * this keeps the cheap path for the common case rather than making everything
+ * pay for what only some clips use.
+ */
+function isSequential(sources: ClipSourceInput[], lengths: number[]): boolean {
+  let at = 0;
+  for (const [index, source] of sources.entries()) {
+    if ((source.lane ?? 0) !== 0) return false;
+    if (Math.abs((source.start ?? at) - at) > 0.05) return false;
+    at += lengths[index];
+  }
+  return true;
+}
+
+/**
+ * Lays the parts onto a canvas at the times they were placed.
+ *
+ * Concat can only say "then"; this says "at". Gaps come out black and silent,
+ * because a gap is something someone drew rather than an accident to be closed
+ * up, and overlaps are resolved by lane — the higher one covers the lower.
+ *
+ * Each part is shifted with `setpts` rather than trimmed into position, so the
+ * footage is untouched and only its timing moves. `enable` keeps it from
+ * showing outside its own window, which `eof_action=pass` alone would not.
+ *
+ * Returns the graph rather than running it. Laying out, dissolving into the
+ * outro and burning the captions were three encodes of every frame to produce
+ * one file, and each one threw away a little more of the picture on the way.
+ * They are one pass now, and this is the first fragment of it.
+ */
+function compositeGraph(
+  parts: string[],
+  sources: ClipSourceInput[],
+  lengths: number[],
+  width: number,
+  height: number,
+  adv: ClipAdvancedConfig,
+  /** Never shorter than this, whatever the footage does. See `contentEnd`. */
+  floor = 0
+): { inputs: string[]; graph: string[]; video: string; audio: string; duration: number } {
+  const placed = parts
+    .map((path, index) => ({
+      path,
+      start: sources[index]?.start ?? 0,
+      lane: sources[index]?.lane ?? 0,
+      length: lengths[index]
+    }))
+    .sort((a, b) => a.lane - b.lane || a.start - b.start);
+
+  const duration = placed.reduce((furthest, p) => Math.max(furthest, p.start + p.length), floor);
+
+  const inputs = [
+    // The canvas everything lands on, and the silence everything mixes into.
+    '-f',
+    'lavfi',
+    '-i',
+    `color=black:size=${width}x${height}:rate=${adv.fps}:d=${duration.toFixed(3)}`,
+    '-f',
+    'lavfi',
+    '-i',
+    `anullsrc=r=48000:cl=stereo:d=${duration.toFixed(3)}`
+  ];
+  for (const p of placed) inputs.push('-i', p.path);
+
+  const graph: string[] = [];
+  const beds: string[] = ['[1:a]'];
+  let picture = '[0:v]';
+
+  placed.forEach((p, index) => {
+    const input = index + 2;
+    const at = p.start.toFixed(3);
+    const until = (p.start + p.length).toFixed(3);
+    const delay = Math.round(p.start * 1000);
+
+    graph.push(`[${input}:v]setpts=PTS+${at}/TB[pv${index}]`);
+    graph.push(
+      `${picture}[pv${index}]overlay=eof_action=pass:enable='between(t,${at},${until})'[pc${index}]`
+    );
+    picture = `[pc${index}]`;
+
+    graph.push(`[${input}:a]adelay=${delay}|${delay},aformat=channel_layouts=stereo[pa${index}]`);
+    beds.push(`[pa${index}]`);
+  });
+
+  graph.push(`${beds.join('')}amix=inputs=${beds.length}:duration=first:normalize=0[pao]`);
+
+  return { inputs, graph, video: picture, audio: '[pao]', duration };
+}
+
 async function joinParts(
   tmp: string,
   parts: string[],
@@ -713,7 +914,7 @@ async function joinParts(
         `[${prevVideo}]`,
         '-map',
         `[${prevAudio}]`,
-        ...encodeArgs(adv, true),
+        ...encodeArgs(adv),
         output
       ],
       { signal }
@@ -776,7 +977,18 @@ function buildAudioGraph(
   config: ClipRenderConfig,
   adv: ClipAdvancedConfig,
   totalDuration: number,
-  audioChain: string
+  audioChain: string,
+  /**
+   * Where the footage's own sound comes from, and which input the first bed is.
+   *
+   * Both used to be fixed — the clip was always input 0 and the beds followed
+   * it — because this ran on a file that had already been made. Now it can also
+   * run on a body that is still being composed in the same graph, where the
+   * footage audio is a label and the inputs before the beds are a canvas, a
+   * silence and every placement.
+   */
+  clipAudio = '[0:a]',
+  bedOffset = 1
 ): string {
   /*
    * Padded back out to the clip's length before anything else.
@@ -796,6 +1008,43 @@ function buildAudioGraph(
   const volume = config.musicOnly ? 1 : adv.musicBedVolume;
 
   /*
+   * Copies of the footage audio, one per reader.
+   *
+   * An input pad like `[0:a]` can be read by as many filters as like; the
+   * output of a filter can be read by exactly one, and ffmpeg refuses the whole
+   * graph if it is read twice. That difference didn't matter while this only
+   * ever ran on a finished file. It does now.
+   *
+   * Counted rather than predicted: a bed that turns out to be zero-length is
+   * dropped below, and an `asplit` with an output nobody reads is refused just
+   * as firmly as a label read twice. So each read leaves a token behind, and
+   * the split is written at the end once the real number is known.
+   */
+  let reads = 0;
+  const footage = () => `\u0000clip${reads++}\u0000`;
+
+  /** Swaps the tokens for real labels, and writes the split they need. */
+  const withFootage = (graph: string): string => {
+    /*
+     * Nobody wants it, so it has to be thrown away on purpose.
+     *
+     * When the beds have replaced the footage — which is what muting every clip
+     * means — nothing here reads the clip's audio. That was free while it was
+     * an input pad, because an input nobody uses simply isn't decoded. It is a
+     * filter output now, and a filter output nobody consumes makes ffmpeg
+     * refuse the entire graph. `anullsink` is where it goes.
+     */
+    if (reads === 0) {
+      const isInputPad = /^\[\d+:a\]$/.test(clipAudio);
+      return isInputPad ? graph : `${clipAudio}anullsink;${graph}`;
+    }
+    if (reads === 1) return graph.replace(/\u0000clip0\u0000/, clipAudio);
+    const copies = Array.from({ length: reads }, (_, i) => `[clipa${i}]`);
+    const split = `${clipAudio}asplit=${reads}${copies.join('')}`;
+    return `${split};${graph.replace(/\u0000clip(\d+)\u0000/g, (_, i) => copies[Number(i)])}`;
+  };
+
+  /*
    * Where each bed actually plays, in timeline order.
    *
    * Sorted because the crossfades below are read off neighbours, and "the next
@@ -806,7 +1055,7 @@ function buildAudioGraph(
   const placed = tracks
     .map((track, index) => ({
       track,
-      input: index + 1,
+      input: index + bedOffset,
       start: track.start,
       // Null means "until the clip does", and a value past the end means the
       // same thing — the clip is the outer bound either way.
@@ -871,7 +1120,7 @@ function buildAudioGraph(
     // off silence, so it's skipped rather than quietly doing nothing.
     if (bed.track.duck && !config.musicOnly) {
       parts.push(`[${bed.input}:a]${chain}[raw${index}]`);
-      parts.push(`[raw${index}][0:a]${DUCK}[bed${index}]`);
+      parts.push(`[raw${index}]${footage()}${DUCK}[bed${index}]`);
     } else {
       parts.push(`[${bed.input}:a]${chain}[bed${index}]`);
     }
@@ -879,7 +1128,7 @@ function buildAudioGraph(
   });
 
   // Every track was zero-length or past the end of the clip.
-  if (beds.length === 0) return tail('[0:a]anull[amx]');
+  if (beds.length === 0) return withFootage(tail(`${footage()}anull[amx]`));
 
   /*
    * `longest` rather than `first`, because a bed can stop early: with the
@@ -888,10 +1137,10 @@ function buildAudioGraph(
    * would take every other bed down with it. Everything is already bounded —
    * each bed by its own end, the mix by `bounded` above.
    */
-  const sources = config.musicOnly ? beds : ['[0:a]', ...beds];
+  const sources = config.musicOnly ? beds : [footage(), ...beds];
   parts.push(`${sources.join('')}amix=inputs=${sources.length}:duration=longest:normalize=0[amx]`);
 
-  return tail(parts.join(';'));
+  return withFootage(tail(parts.join(';')));
 }
 
 /**
@@ -975,10 +1224,50 @@ export async function renderClip(
   // a project saved before a dial existed still renders with the default.
   const adv: ClipAdvancedConfig = { ...DEFAULT_ADVANCED_CONFIG, ...(config.advanced ?? {}) };
 
-  const { width, height } = DIMENSIONS[config.aspect] ?? DIMENSIONS['9:16'];
+  let { width, height } = DIMENSIONS[config.aspect] ?? DIMENSIONS['9:16'];
+
+  if (input.proof) {
+    /*
+     * What a proof gives up, and what it keeps.
+     *
+     * Everything here is chosen against measurements on fifteen seconds of
+     * 1080×1920: the full settings took 47.9s, this takes about 2.4s.
+     *
+     * Half size is the cheapest large saving and costs nothing that matters —
+     * a proof is for judging timing, not sharpness. The blurred fill is the
+     * single most expensive creative option, more than tripling even a small
+     * render, so it goes; black bars change what the edges look like and
+     * nothing about when anything happens. Loudnorm decodes every source in
+     * full before the encode even starts, which is a quarter of the work for a
+     * level nobody is judging yet.
+     *
+     * Grain, vignette, the grade and the branding all stay. They cost almost
+     * nothing by comparison, and dropping them would make the proof a worse
+     * answer to the question it exists for — which is what this will look like.
+     */
+    width = Math.round(width / 2 / 2) * 2;
+    height = Math.round(height / 2 / 2) * 2;
+    config.fill = 'black';
+    config.loudnorm = false;
+
+    /*
+     * Nothing burned on. A proof is the picture, and the editor draws the
+     * captions, the logo and the watermark over it in the browser — where a
+     * caption can be retyped and land instantly instead of costing a render.
+     *
+     * Which also makes the proof cheaper: no libass pass, and no still image
+     * composited over every frame of every source.
+     */
+    config.intro = false;
+    config.watermark = false;
+    adv.preset = 'ultrafast';
+    adv.crf = 30;
+    adv.audioBitrateKbps = 96;
+    onLog?.(`Proof: ${width}×${height}, black fill, no loudnorm`);
+  }
   const accentColor = config.logoColor || '#8b5cf6';
 
-  const tmp = await mkdtemp(join(tmpdir(), 'artistack-clip-'));
+  const tmp = await stagingDir();
   const progress = (percent: number) => onProgress?.(Math.round(clamp(percent, 0, 100)));
 
   /**
@@ -1068,10 +1357,6 @@ export async function renderClip(
           adv,
           width,
           height,
-          introSeconds,
-          logoBand,
-          hasIntroGraphic,
-          hasWatermarkGraphic,
           signal,
           onLog,
           onProgress: (fraction) => progress(sliceStart + fraction * sourceSlice)
@@ -1081,12 +1366,131 @@ export async function renderClip(
       mark(`source ${i + 1}/${input.sources.length}`);
     }
 
-    // ---- 3) join --------------------------------------------------------
-    let joined = await joinParts(tmp, parts, config.xfade, adv, signal);
-    progress(55 + joinBand);
-    mark('join');
+    // ---- 3) work out how the body goes together --------------------------
+    /*
+     * Two ways to put the parts together, and the placements decide which.
+     *
+     * Back to back in one lane is a sequence, and the concat demuxer copies the
+     * streams without touching them. Anything else — a gap, an overlap, a
+     * second lane — has to be composited onto a canvas. The cheap path is kept
+     * rather than retired because most clips are still sequences, and every
+     * clip made before placements existed is one.
+     *
+     * Neither is encoded here any more. The composite is a filter graph handed
+     * to the pass below; the join is a stream copy that costs nothing.
+     */
+    const lengths = await Promise.all(parts.map((part) => probeDuration(part).catch(() => 0)));
+    const sequential = isSequential(input.sources, lengths);
 
-    // ---- 4) outro dissolve into a graphic card ---------------------------
+    /*
+     * How long the clip is: the furthest end of anything on the timeline.
+     *
+     * It used to be the furthest end of the *footage*, so a bed or a caption
+     * running past the last shot was simply cut — the clip stopped when the
+     * pictures did and the music went with it. Which end of a timeline you are
+     * looking at shouldn't depend on what kind of thing is there.
+     *
+     * A bed with no end of its own is excluded, deliberately: "until the clip
+     * does" can't also decide when that is.
+     */
+    const contentEnd = Math.max(
+      ...(input.captions ?? []).map((c) => c.end),
+      ...(input.audio ?? []).map((a) => a.end ?? 0),
+      0
+    );
+
+    const bodyInputs: string[] = [];
+    const bodyGraph: string[] = [];
+    let bodyVideo: string;
+    let bodyAudio: string;
+    let bodyDuration: number;
+    let nextInput: number;
+
+    if (sequential) {
+      const joined = await joinParts(tmp, parts, config.xfade, adv, signal);
+      bodyInputs.push('-i', joined);
+      bodyVideo = '[0:v]';
+      bodyAudio = '[0:a]';
+      // Probed rather than summed: a crossfaded join is shorter than its parts.
+      const joinedLength = await probeDuration(joined);
+      bodyDuration = Math.max(joinedLength, contentEnd);
+
+      /*
+       * Black after the last frame, when something outlives the footage.
+       *
+       * `-t` can only cut; it cannot invent frames, so a bed running past the
+       * end of a joined body would have been silently trimmed back to it. The
+       * composite path needs none of this — its canvas is already the full
+       * length and the footage is laid onto it.
+       */
+      if (bodyDuration > joinedLength + 0.01) {
+        bodyGraph.push(
+          `[0:v]tpad=stop_mode=add:stop_duration=${(bodyDuration - joinedLength).toFixed(3)}:color=black[padded]`
+        );
+        bodyVideo = '[padded]';
+      }
+      nextInput = 1;
+    } else {
+      const composed = compositeGraph(
+        parts,
+        input.sources,
+        lengths,
+        width,
+        height,
+        adv,
+        contentEnd
+      );
+      bodyInputs.push(...composed.inputs);
+      bodyGraph.push(...composed.graph);
+      bodyVideo = composed.video;
+      bodyAudio = composed.audio;
+      bodyDuration = composed.duration;
+      // The canvas, the silence and every placement come before the beds.
+      nextInput = 2 + parts.length;
+      onLog?.(`Laid out ${parts.length} placement(s) on the timeline`);
+    }
+
+    progress(55 + joinBand);
+    mark(sequential ? 'join' : 'lay out');
+
+    // ---- 3b) branding, on the finished picture --------------------------
+    /*
+     * The logo and the watermark go on here, over the whole clip, at the times
+     * the timeline says — not onto whichever piece of footage happened to be
+     * first. Before the outro, so the closing card stays clean, which is what
+     * the per-part version did by accident and this one does on purpose.
+     */
+    const brandOn = !input.proof;
+    if (brandOn && hasIntroGraphic && config.intro && introSeconds > 0) {
+      const fadeAt = introSeconds > 0.6 ? introSeconds - 0.4 : 0.2;
+      bodyInputs.push('-loop', '1', '-i', join(tmp, 'logo.png'));
+      bodyGraph.push(
+        `[${nextInput}:v]format=rgba,fade=t=out:st=${fadeAt.toFixed(2)}:d=0.4:alpha=1[big]`
+      );
+      bodyGraph.push(
+        `${bodyVideo}[big]overlay=(W-w)/2:H*${logoBand}-h/2:${OVERLAY_STILL}` +
+          `:enable='between(t,0,${introSeconds.toFixed(2)})'[withlogo]`
+      );
+      bodyVideo = '[withlogo]';
+      nextInput += 1;
+    }
+
+    if (brandOn && hasWatermarkGraphic && config.watermark) {
+      const from = config.intro && hasIntroGraphic ? introSeconds : 0;
+      bodyInputs.push('-loop', '1', '-i', join(tmp, 'wm.png'));
+      bodyGraph.push(
+        `[${nextInput}:v]format=rgba,fade=t=in:st=${from.toFixed(2)}:d=0.3:alpha=1[wm]`
+      );
+      bodyGraph.push(
+        `${bodyVideo}[wm]overlay=${adv.watermarkX}:${adv.watermarkY}:${OVERLAY_STILL}` +
+          `:enable='gte(t,${from.toFixed(2)})'[withwm]`
+      );
+      bodyVideo = '[withwm]';
+      nextInput += 1;
+    }
+
+    // ---- 4) the outro dissolve, as part of the same graph ----------------
+    let totalDuration = bodyDuration;
     if (config.outro && hasOutroGraphic) {
       const outroCard = await renderCard(
         tmp,
@@ -1098,43 +1502,41 @@ export async function renderClip(
         adv,
         signal
       );
-      const bodyDuration = await probeDuration(joined);
       const overlap = adv.outroOverlapSeconds;
       const offset = Math.max(0, bodyDuration - overlap);
-      const withOutro = join(tmp, 'joined_outro.mp4');
 
-      await runFfmpeg(
-        [
-          '-y',
-          '-loglevel',
-          'error',
-          '-i',
-          joined,
-          '-i',
-          outroCard,
-          '-filter_complex',
-          `[0:v][1:v]xfade=transition=fade:duration=${overlap}:offset=${offset.toFixed(3)}[v];` +
-            `[0:a][1:a]acrossfade=d=${overlap}[a]`,
-          '-map',
-          '[v]',
-          '-map',
-          '[a]',
-          ...encodeArgs(adv, true),
-          withOutro
-        ],
-        { signal }
+      bodyInputs.push('-i', outroCard);
+      /*
+       * Both sides onto one timebase before the dissolve.
+       *
+       * `xfade` refuses inputs whose timebases differ, and now that the body is
+       * composed in this same graph rather than handed over as a file, they do:
+       * the canvas carries the lavfi source's 1/30 and the card carries the
+       * 1/15360 it was decoded with. Two files always happened to agree, which
+       * is why this never came up before.
+       */
+      bodyGraph.push(`${bodyVideo}fps=${adv.fps},settb=AVTB[xbody]`);
+      bodyGraph.push(`[${nextInput}:v]fps=${adv.fps},settb=AVTB[xcard]`);
+      bodyGraph.push(
+        `[xbody][xcard]xfade=transition=fade:duration=${overlap}:offset=${offset.toFixed(3)}[ov]`
       );
-      joined = withOutro;
+      bodyGraph.push(`${bodyAudio}[${nextInput}:a]acrossfade=d=${overlap}[oa]`);
+      bodyVideo = '[ov]';
+      bodyAudio = '[oa]';
+      nextInput += 1;
+
+      // The card adds its own length less the overlap it dissolves through.
+      totalDuration = bodyDuration + Math.max(0, adv.outroSeconds - overlap);
+      mark('outro');
     }
-    progress(finalStart);
-    mark('outro');
+    progress(finalStart - 1);
 
     // ---- 5) burn text, fades, music bed, encode -------------------------
-    const totalDuration = await probeDuration(joined);
     const videoFilters: string[] = [];
     let audioChain = '';
 
-    const captions = input.captions ?? [];
+    // Drawn over the video in the editor instead; see the proof block above.
+    const captions = input.proof ? [] : (input.captions ?? []);
     if (captions.length) {
       const ass = buildAss(
         {
@@ -1200,7 +1602,17 @@ export async function renderClip(
       }
     }
 
-    const finalArgs: string[] = ['-y', '-loglevel', 'error'];
+    /*
+     * One pass, from the placements to the file that gets posted.
+     *
+     * Laying the parts out, dissolving into the outro and burning the captions
+     * were three encodes of every frame, each one decoding what the last had
+     * just written and throwing away a little more of the picture. On a
+     * four-minute clip that was three quarters of an hour of encoding for four
+     * minutes of video. The stages above build filter graph instead of files,
+     * and this is where all of it finally runs.
+     */
+    const finalArgs: string[] = ['-y', '-loglevel', 'error', ...bodyInputs];
 
     if (tracks.length > 0) {
       onLog?.(
@@ -1214,7 +1626,6 @@ export async function renderClip(
             .join('')
       );
 
-      finalArgs.push('-i', joined);
       for (const track of tracks) {
         finalArgs.push(
           // -stream_loop makes a bed cover any length; the mix caps it to the video.
@@ -1226,29 +1637,67 @@ export async function renderClip(
           track.path
         );
       }
-
-      finalArgs.push(
-        '-filter_complex',
-        `[0:v]${videoChain}[v];` + buildAudioGraph(tracks, config, adv, totalDuration, audioChain),
-        '-map',
-        '[v]',
-        '-map',
-        '[a]',
-        '-shortest'
-      );
-    } else {
-      finalArgs.push('-i', joined, '-vf', videoChain);
-      if (audioChain) finalArgs.push('-af', audioChain);
     }
 
-    finalArgs.push(...encodeArgs(adv, true), input.outputPath);
+    const graph = [
+      ...bodyGraph,
+      `${bodyVideo}${videoChain}[v]`,
+      buildAudioGraph(tracks, config, adv, totalDuration, audioChain, bodyAudio, nextInput)
+    ];
+
+    finalArgs.push(
+      '-filter_complex',
+      graph.join(';'),
+      '-map',
+      '[v]',
+      '-map',
+      '[a]',
+      /*
+       * `-t` rather than `-shortest`. Every bed is looped on the way in, so
+       * nothing in this graph ends on its own any more — the canvas would run
+       * as long as the longest loop. The clip's length is known here, so it is
+       * simply stated.
+       */
+      '-t',
+      totalDuration.toFixed(3),
+      // The encoder and the file it writes. Left off, ffmpeg builds the graph,
+      // finds nothing for the mapped labels to go to, and reports it as an
+      // unconnected filter — which reads like a fault in the graph and isn't.
+      ...encodeArgs(adv, true),
+      input.outputPath
+    );
 
     mark('build filters');
-    await runFfmpeg(finalArgs, {
-      signal,
-      totalDuration,
-      onProgress: (fraction) => progress(finalStart + fraction * (96 - finalStart))
-    });
+    /*
+     * The graph goes in the log, and into the error if this pass fails.
+     *
+     * A filter graph that ffmpeg refuses is unreadable from the outside: it
+     * names one filter and one pad and says "invalid argument", and which of
+     * fifty chained filters actually went wrong is only answerable by reading
+     * the graph it was given. Without it every failure here is a guess.
+     */
+    onLog?.(`Filter graph:\n${graph.join(';\n')}`);
+    try {
+      await runFfmpeg(finalArgs, {
+        signal,
+        totalDuration,
+        onProgress: (fraction) => progress(finalStart + fraction * (96 - finalStart))
+      });
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : String(e);
+      /*
+       * The whole command, not just the graph.
+       *
+       * A graph that binds on its own can still be refused for what it was
+       * handed — an input whose stream isn't there, a map that names a label
+       * nothing produced, an option in the wrong place. None of that is visible
+       * from the graph alone, and ffmpeg's complaint names a filter either way.
+       */
+      const shown = finalArgs
+        .map((arg) => (/[\s;'"]/.test(arg) ? `'${arg.replace(/'/g, "'\\''")}'` : arg))
+        .join(' ');
+      throw new Error(`${reason}\n\nCommand:\nffmpeg ${shown}`);
+    }
 
     progress(96);
     mark('final encode');

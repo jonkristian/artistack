@@ -10,6 +10,7 @@ import {
   clipProjects,
   clipSources,
   clipAudio,
+  clipMedia,
   clipPosts,
   renderJobs,
   media,
@@ -18,6 +19,8 @@ import {
 import { user } from '$lib/server/auth-schema';
 import { auth } from '$lib/server/auth';
 import { desc, eq, asc } from 'drizzle-orm';
+import { queueWaveform, waveformIsCurrent } from '$lib/server/media-waveform';
+import { queuePreviewRendition } from '$lib/server/media-preview';
 import { videoSupported } from '$lib/server/ffmpeg';
 import { tagsFor, listTags } from '$lib/server/tags';
 import { projectedNextSlot } from '$lib/server/clip-queue';
@@ -45,6 +48,13 @@ export const load: PageServerLoad = async ({ request, params }) => {
     .where(eq(clipAudio.projectId, id))
     .orderBy(asc(clipAudio.position));
 
+  // What the clip has to work with, whether or not any of it is placed yet.
+  const pool = await db
+    .select()
+    .from(clipMedia)
+    .where(eq(clipMedia.projectId, id))
+    .orderBy(asc(clipMedia.position));
+
   // Only the most recent job drives the UI; older ones stay in the table for
   // debugging a failed render.
   const [latestJob] = await db
@@ -55,6 +65,34 @@ export const load: PageServerLoad = async ({ request, params }) => {
     .limit(1);
 
   const allMedia = await db.select().from(media).orderBy(desc(media.createdAt));
+
+  /*
+   * Anything this clip uses that hasn't got its waveform yet.
+   *
+   * Opening the editor is the moment one becomes worth having, and it covers
+   * files that arrived before this existed as well as any that failed the first
+   * time. The queue is idempotent and the generator returns early once the
+   * column is set, so the cost of asking again is a map lookup.
+   */
+  for (const row of audio) {
+    const item = allMedia.find((m) => m.id === row.mediaId);
+    // Not "has one" — "has the current one". Asking the weaker question is how
+    // a change to how these are drawn reaches nothing that already exists.
+    if (item && !waveformIsCurrent(item.waveformUrl)) queueWaveform(item.id);
+  }
+
+  /*
+   * And the footage's small copies, for the same reason.
+   *
+   * These were meant to be made on upload and never were — the temporary
+   * filename gave ffmpeg no extension to pick a muxer from, so every one failed
+   * into the log while every reader quietly fell back to the original. Asking
+   * again here catches everything uploaded before that was fixed.
+   */
+  for (const row of sources) {
+    const item = allMedia.find((m) => m.id === row.mediaId);
+    if (item && !item.previewUrl) queuePreviewRendition(item.id);
+  }
 
   const designatedIds = (clips?.graphicsMediaIds ?? []) as number[];
   const designatedGraphics = allMedia.filter((m) => designatedIds.includes(m.id));
@@ -67,12 +105,17 @@ export const load: PageServerLoad = async ({ request, params }) => {
 
   return {
     project,
+    /** The proof, when one exists — it drives the editor's own preview. */
+    proofMedia: project.proofMediaId
+      ? (allMedia.find((m) => m.id === project.proofMediaId) ?? null)
+      : null,
     posts,
     tags: (await tagsFor('clip', project.id)).map((t) => t.name),
     // The whole vocabulary, for the tag input's autocomplete.
     allTags: (await listTags()).map((t) => t.name),
     sources,
     audio,
+    pool,
     latestJob: latestJob ?? null,
     media: allMedia,
     // The images designated as clip graphics, resolved to media rows so the

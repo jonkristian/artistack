@@ -10,6 +10,8 @@ import {
   roleForMime,
   type UploadSession
 } from './schema';
+import { queuePreviewRendition } from './media-preview';
+import { queueWaveform } from './media-waveform';
 
 /**
  * Capability tokens for uploading from a phone.
@@ -111,6 +113,10 @@ export async function finalizeSessionUpload(
       role: roleForMime(file.mimeType)
     })
     .returning();
+
+  // Same as the library path: made after the fact, never waited for.
+  queuePreviewRendition(row.id);
+  queueWaveform(row.id);
 
   /*
    * An arriving file is filed by what it is: footage into the clip's sources,

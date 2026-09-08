@@ -7,6 +7,7 @@ import { sendScheduledDiscordReport } from './discord';
 import { refreshAllSocialStats } from './social-stats';
 import { announceRelease, releasesAwaitingAnnouncement } from './announce';
 import { recoverStaleJobs, processQueue } from './render-queue';
+import { clearAbandonedStaging } from './clip-render';
 import { runReleaseTick, checkPublishCoverage } from './clip-queue';
 import { remindStaleInvites } from './invites';
 import { env } from '$env/dynamic/private';
@@ -25,8 +26,13 @@ export function initScheduler(): void {
   console.log('[Scheduler] Initializing...');
 
   // A render in flight when the process died can never finish, so clear those
-  // before picking up anything still queued.
+  // before picking up anything still queued — and the working files it left
+  // behind with them, which run to gigabytes apiece.
   void recoverStaleJobs()
+    .then(async () => {
+      const cleared = await clearAbandonedStaging();
+      if (cleared) console.log(`[RenderQueue] Cleared ${cleared} abandoned working folder(s)`);
+    })
     .then(() => processQueue())
     .catch((e) => console.error('[Scheduler] Render queue startup failed:', e));
 

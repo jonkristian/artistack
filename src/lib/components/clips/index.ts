@@ -1,3 +1,7 @@
-export { default as ClipTimeline, type TimelineTrack } from './ClipTimeline.svelte';
-export { default as SourceClipControls } from './SourceClipControls.svelte';
-export { default as AudioTrackControls } from './AudioTrackControls.svelte';
+export {
+  default as ClipTimeline,
+  type TimelineClip,
+  type TimelineTrack
+} from './ClipTimeline.svelte';
+export { default as TimelineMinimap } from './TimelineMinimap.svelte';
+export { default as ClipOverlay } from './ClipOverlay.svelte';

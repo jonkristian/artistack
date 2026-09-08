@@ -8,13 +8,22 @@ import { requireUser } from '$lib/server/guards';
 import * as v from 'valibot';
 import { command } from '$app/server';
 import { db } from '$lib/server/db';
-import { media, blocks, settings, clipSources, clipAudio, roleForMime } from '$lib/server/schema';
+import {
+  media,
+  blocks,
+  settings,
+  clipSources,
+  clipAudio,
+  clipMedia,
+  roleForMime
+} from '$lib/server/schema';
 import type { GalleryBlockConfig } from '$lib/server/schema';
 import { eq } from 'drizzle-orm';
 import { readdir, unlink } from 'fs/promises';
 import { join } from 'path';
 import { mediaPath } from '$lib/server/paths';
-import { removeClipStrip } from '$lib/server/clip-strip';
+import { queuePreviewRendition, removePreview } from '$lib/server/media-preview';
+import { queueWaveform, removeWaveform } from '$lib/server/media-waveform';
 import { setTags, clearTags, pruneOrphanTags } from '$lib/server/tags';
 
 /** Where the clip studio caches its preset swatches, keyed `<mediaId>-<preset>.jpg`. */
@@ -97,6 +106,11 @@ export const addMedia = command(addMediaSchema, async (data) => {
     })
     .returning();
 
+  // Quietly, after the fact: the row is usable now and everything that reads a
+  // preview falls back to the original until this lands.
+  queuePreviewRendition(created.id);
+  queueWaveform(created.id);
+
   return { success: true, media: created };
 });
 
@@ -154,10 +168,11 @@ export const deleteMedia = command(deleteMediaSchema, async (id) => {
     // at the moment the file was removed.
     await db.delete(clipSources).where(eq(clipSources.mediaId, id));
     await db.delete(clipAudio).where(eq(clipAudio.mediaId, id));
+    // The pool as well, or a clip keeps offering a file that isn't there.
+    await db.delete(clipMedia).where(eq(clipMedia.mediaId, id));
 
     // Preset swatches are cached per source file, so they go with it.
     await removePresetPreviews(id);
-    await removeClipStrip(id);
 
     // Also remove from any gallery block configs that reference this media
     const galleryBlocks = await db.select().from(blocks).where(eq(blocks.type, 'gallery'));
@@ -181,6 +196,8 @@ export const deleteMedia = command(deleteMediaSchema, async (id) => {
       }
     }
 
+    await removePreview(item.previewUrl);
+    await removeWaveform(item.waveformUrl);
     await unlinkMediaFiles(item);
   }
 

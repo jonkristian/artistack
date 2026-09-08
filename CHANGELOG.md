@@ -1,6 +1,30 @@
-# 1.5.0 (06-09-2026)
+# 1.5.0 (08-09-2026)
 
-- A timeline under the clip editor: the rendered clip as a strip of its own frames, with the captions and the music lying on it. Drag a block to move it, drag its edges to retime it — the shape of an edit is a thing you look at, not a column of numbers you work out
+- Adding media and putting it on the timeline are two things now. A clip has a list of what it's made of, and each file goes onto the strip when you say so — which is what lets the same shot be used three times, cut differently each time, without picking it from the library three times
+- The timeline is where the editing happens. A block carries what belongs to it: where it comes in, what part of it plays, whether its own sound is on, and the way out. The panels that used to ask for those as numbers are gone — nobody was going to type seconds
+- A rail along the foot of each block shows the whole file with the part in use lit up, and dragging it slides that window through the footage without moving the block. Trimming an edge and dragging the block back is the same edit in two moves, and the second is the one you forget
+- Captions are written on the strip. The block is the field, with the size and the placement beside it, so the words and where they land are one place instead of two
+- An overview under the timeline: the whole clip in one row, always, to drag along. At any useful zoom on a four-minute clip the strip is a small window onto a long thing, and getting somewhere meant scrolling and guessing
+- Music shows its waveform, drawn at a common level whatever the file's own level is. Two beds eighteen decibels apart used to draw as a full shape beside a hairline, which is true and no use for lining one up against a cut
+- Hold shift while dragging a block and everything after it comes along, so a change early on doesn't mean moving the rest by hand
+- A quick render leaves the captions, the logo and the watermark out, and the editor draws them over the video instead. Retyping a caption lands immediately rather than costing a render — and the quick render got cheaper for not doing that work
+- Quick and Final is one switch: it chooses what you're watching and what Render will make, so the two can't disagree
+- A clip is as long as the longest thing on it. Music running past the last shot used to be cut off at the picture, which made which end you were looking at depend on what kind of thing was there
+- The logo and the watermark go onto the finished timeline rather than onto the first shot. A clip that opens on black is branded from its first frame instead of fifteen seconds in, and the watermark no longer blinks out over a gap
+- Rendering does in one pass what it did in four. Laying the shots out, dissolving into the outro and burning the captions were three encodes of every frame, each one decoding what the last had written
+- Whether music replaces the clip's own sound is read from the clips themselves — silence every shot and the beds are the soundtrack. It was a switch that could disagree with the row of mute buttons next to it
+- The dials that were only ever read and never shown: how far music sits under speech, the outro dissolve, the fade lengths, the caption margin, and the size of a big caption — which sat six per cent above a normal one, so the switch looked broken
+- The clip list says which platforms each one reached. It only knew how to report failure before, so a clip on three platforms and a clip on one looked the same
+- Fixed: cheap copies of uploaded footage were never made. Every one failed on a temporary filename ffmpeg wouldn't write to, quietly, because nothing waits for them and everything falls back to the original
+- Fixed: a quick render was made, stored, and then not shown — the pane kept the last full render while the note under it said otherwise. Invisible while a proof looked like a render
+- Fixed: the blurred background was built even when the footage already filled the frame, so every one of those pixels was blurred and then covered. More than twice the cost of the scale it wraps
+- Fixed: where a caption sits by default meant three different things in three places, measured from three different edges, so an anchored caption and an unanchored one on the same setting landed differently
+- Fixed: a bed placed past the end of a clip was drawn off the edge of the strip with no way to reach it, and then as a sliver too thin to grab
+- Fixed: a render interrupted by a restart left its working files behind — gigabytes apiece, in memory, since they were written to a temporary folder that isn't a disk
+- A timeline under the clip editor: what plays when, what's said over it and what it's scored with, on one time axis. Drag a block to move it, drag its edges to retime it — the shape of an edit is a thing you look at, not a column of numbers you work out. It's there from the first clip you add, before anything has been rendered
+- Captions can sit at the top, the middle or the bottom of the picture, one caption at a time rather than one setting for the clip — so a line across the middle for the whole video can run over others along the bottom. The frame icon on a caption moves it between the three, and the strip has a second caption row so a standing line and the ones coming and going underneath it don't have to be cut around each other
+- The timeline zooms on the wheel, plays on space and steps on the arrows — a tenth of a second, or a whole one with shift, which is finer than a drag can be asked to hit
+- Dragging a block moves the playhead with it, so the preview shows the frame you're landing on rather than the one you left. Blocks snap to each other's edges and to the ends of the clip, with a line showing what was caught
 - Drag the strip itself to pull the clip along, and click to put the playhead somewhere. A clip longer than the window used to mean hunting for a scrollbar at the bottom edge to reach footage you couldn't see
 - Dragging a caption or a track near either end pulls the timeline along with it, so a block can be moved somewhere that isn't on screen yet
 - Trimming a clip shows the clip. Play it, find the moment, mark it — rather than typing a number you had to work out somewhere else and only found out was wrong after a render
@@ -8,12 +32,14 @@
 - More than one piece of music on a clip, each with its own place: when it comes in, when it stops, and where in the song it plays from
 - Two tracks that overlap cross into each other automatically, over exactly the overlap you drew. There's nothing to set — if one runs past where the next begins, that IS the crossfade, and the two halves can't disagree about how long it lasts
 - Fades are a yes or no now. How long one takes has the same good answer nearly every time, so it's one setting for the clip in Advanced instead of a number on every track
-- Source clips, audio and captions are named Clips, Audio and Captions, in that order, and each row opens its settings underneath itself instead of over the page — so the timeline stays visible while you adjust the thing sitting on it
-- One Add media button for the whole clip, and one From phone. A file knows whether it's footage or music, so it goes where it belongs rather than asking you which list you meant. The phone QR sorts arrivals the same way
+- Everything a clip is made of is one list — footage and music together, as tiles rather than rows, since the picture is what you recognise a shot by
+- One Add media button for the whole clip, and one From phone, at the head of the list they fill. A file knows whether it's footage or music, so it goes where it belongs rather than asking you which list you meant. The phone QR sorts arrivals the same way
 - Removing a clip, a track or a caption offers to put it back. The studio saves as you go, so there's no Update to withhold and no draft to discard — the moment right after is the only chance to change your mind, and now it's offered
 - The Render button says when the clip has changed since the render you're looking at. It's driven by what a render is actually made of, so renaming a clip or rewriting its caption doesn't set it off — a warning that's usually wrong is one you stop reading
 - Tags are picked from a list rather than remembered and retyped. The point of a shared vocabulary is that reusing a tag is easier than inventing one, and a field that opened empty asked you to remember it instead. Anything new can still be typed straight in
-- The Look card is the templates and nothing else, with the frame and the rest behind Customise. Branding — which mark the clip wears, and where — is its own card, because it's decided once and then left alone
+- Look is the templates and nothing else, with the frame, the branding and every dial behind one more tile at the end of the row — the mark a clip wears is decided once and then left alone
+- A Quick render beside the real one: the same edit at half size with the expensive filters off, so judging where a caption sits takes seconds instead of most of a minute. It drives the editor's own player and its timeline and nothing else — it can't be reviewed, queued or published, and rendering for real replaces it
+- Rotating a clip now turns the footage itself rather than the edit using it. The turn is written into the file without re-encoding it, so a clip stored sideways is upright everywhere it appears — its thumbnail, the picker, the trim player, the render — and stays that way in every clip that uses it
 - Fixed: saving as you go was silent about failing. A refused save now says so and offers to try again, rather than looking exactly like a save that worked until the next reload
 - Fixed: Save as default captured what was there before your edit, not what you'd just written — pressing it is the first thing that blurs the field you were typing in. The first time round that meant it cleared the default instead of setting it
 - Fixed: a tag kept only as the default for new clips was deleted by the tidy-up that clears unused tags, since nothing was tagged with it. New clips then came up short a tag with nothing to say why

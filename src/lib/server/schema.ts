@@ -300,6 +300,26 @@ export const media = sqliteTable('media', {
    * mime type can't tell raw footage apart from a finished render — both are
    * video/mp4, but only one belongs in a clip's source list.
    */
+  /**
+   * A small copy of a video, for playing in the editor.
+   *
+   * Null until it's been made — which happens after the upload is answered, so
+   * nothing waits for it — and null forever for anything that isn't video.
+   * Every reader falls back to `url`, which is what they all did before.
+   *
+   * Never the renderer's input: that gets the footage as shot.
+   */
+  previewUrl: text('preview_url'),
+  /**
+   * A waveform picture of an audio file, drawn behind its block on the clip
+   * timeline.
+   *
+   * The whole file at a fixed width, so the block can show whichever slice of
+   * it is in use by scaling and offsetting the image rather than asking for a
+   * new one every time an edge moves. Null until made, and for anything that
+   * isn't audio.
+   */
+  waveformUrl: text('waveform_url'),
   role: text('role').$type<MediaRole>().notNull().default('asset'),
   /**
    * The picture a crop was taken from. Null for anything that isn't a
@@ -327,7 +347,15 @@ export const media = sqliteTable('media', {
  * a cover or a logo needed a particular shape. It's a row all the same, so the
  * file it wrote can be found and removed like any other.
  */
-export type MediaRole = 'asset' | 'source' | 'music' | 'render' | 'document' | 'crop';
+export type MediaRole =
+  | 'asset'
+  | 'source'
+  | 'music'
+  | 'render'
+  /** A quick, disposable render for judging placement. Never publishable. */
+  | 'proof'
+  | 'document'
+  | 'crop';
 
 /** Default role for a freshly uploaded file, before anything overrides it. */
 export function roleForMime(mimeType: string): MediaRole {
@@ -440,6 +468,15 @@ export const clipProjects = sqliteTable('clip_projects', {
    */
   renderFingerprint: text('render_fingerprint'),
   /**
+   * A quick proof render, for judging placement while you work.
+   *
+   * Drives the editor's player and its contact sheet, and nothing else — it is
+   * half size with the expensive filters off, and must never be the thing that
+   * reaches a platform. That is why it isn't `outputMediaId`.
+   */
+  proofMediaId: integer('proof_media_id'),
+  proofFingerprint: text('proof_fingerprint'),
+  /**
    * The graphic the last render actually used. Written by the renderer, so a
    * randomised pick is visible after the fact rather than a guess.
    */
@@ -504,6 +541,33 @@ export const uploadSessions = sqliteTable(
 
 export type UploadSession = typeof uploadSessions.$inferSelect;
 
+/**
+ * What a clip has to work with, before anything is placed.
+ *
+ * Adding media and placing it used to be one action — every `clip_sources` row
+ * is a placement — so a file could only be available by already being on the
+ * timeline, and using a shot three times meant three trips through the picker.
+ * The list beside the strip was the strip, written out a second time.
+ *
+ * A file appears here once per project. Placements point at the same media and
+ * there can be any number of them, or none at all.
+ */
+export const clipMedia = sqliteTable(
+  'clip_media',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    projectId: integer('project_id').notNull(),
+    mediaId: integer('media_id').notNull(),
+    /** The order the pool is listed in, which is the order things were added. */
+    position: integer('position').default(0),
+    createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
+  },
+  (table) => [
+    index('clip_media_project_id_idx').on(table.projectId),
+    uniqueIndex('clip_media_project_media_idx').on(table.projectId, table.mediaId)
+  ]
+);
+
 // Source clips for a project, in render order.
 export const clipSources = sqliteTable(
   'clip_sources',
@@ -512,6 +576,15 @@ export const clipSources = sqliteTable(
     projectId: integer('project_id').notNull(),
     mediaId: integer('media_id').notNull(),
     position: integer('position').default(0),
+    /**
+     * Where it begins on the timeline, and which row it sits in.
+     *
+     * A placement, not a queue entry. `position` survives as the order the
+     * Sources list shows things in; where a clip actually plays is `start`, and
+     * `lane` decides what covers what where two of them overlap.
+     */
+    start: real('start').default(0),
+    lane: integer('lane').default(0),
     // Trim window in seconds; null means use the whole clip.
     trimStart: integer('trim_start'),
     trimEnd: integer('trim_end'),
@@ -553,7 +626,9 @@ export const clipAudio = sqliteTable(
     fadeIn: integer('fade_in', { mode: 'boolean' }).default(true),
     fadeOut: integer('fade_out', { mode: 'boolean' }).default(true),
     /** Dip this bed under speech in the footage. */
-    duck: integer('duck', { mode: 'boolean' }).default(false)
+    duck: integer('duck', { mode: 'boolean' }).default(false),
+    /** Which row it sits in on the timeline. */
+    lane: integer('lane').default(0)
   },
   (table) => [index('clip_audio_project_id_idx').on(table.projectId)]
 );
@@ -570,6 +645,8 @@ export const renderJobs = sqliteTable(
     error: text('error'),
     log: text('log'), // tail of ffmpeg stderr, for debugging a failed render
     mediaId: integer('media_id'), // FK to media, on success
+    /** A quick proof rather than the real thing. Decides where the result lands. */
+    proof: integer('proof', { mode: 'boolean' }).default(false),
     startedAt: integer('started_at', { mode: 'timestamp' }),
     finishedAt: integer('finished_at', { mode: 'timestamp' }),
     createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())

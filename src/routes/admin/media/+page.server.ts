@@ -5,7 +5,7 @@ import { tagsForMany, listTags } from '$lib/server/tags';
 import { media, settings } from '$lib/server/schema';
 import { user } from '$lib/server/auth-schema';
 import { auth } from '$lib/server/auth';
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, ne } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -16,7 +16,16 @@ export const load: PageServerLoad = async ({ request }) => {
     throw redirect(302, '/login');
   }
 
-  const allMedia = await db.select().from(media).orderBy(desc(media.createdAt));
+  /*
+   * Proofs are left out. They're disposable renders the clip editor makes to
+   * look at while you work — one per rearrangement, superseded immediately —
+   * and a library that listed them would be mostly them.
+   */
+  const allMedia = await db
+    .select()
+    .from(media)
+    .where(ne(media.role, 'proof'))
+    .orderBy(desc(media.createdAt));
 
   // Get settings for press kit
   const [settingsData, clips] = await Promise.all([getSettings(), getClipSettings()]);

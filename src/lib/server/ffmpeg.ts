@@ -178,6 +178,11 @@ export interface VideoMetadata {
   hasAudio: boolean;
   /** Frames per second, rounded to 3 decimals. 0 when unknown. */
   fps: number;
+  /**
+   * How far the picture has to turn clockwise to look right, per the
+   * container. `width` and `height` above are already the turned ones.
+   */
+  rotation: number;
 }
 
 interface FfprobeStream {
@@ -244,8 +249,60 @@ export async function probeVideo(path: string): Promise<VideoMetadata> {
     height,
     duration: Number(probe.format?.duration ?? 0) || 0,
     hasAudio: streams.some((s) => s.codec_type === 'audio'),
-    fps
+    fps,
+    rotation: clockwiseFrom(rotation)
   };
+}
+
+/**
+ * The container's rotation as degrees clockwise, which is how a person thinks
+ * about it and the opposite of how the file stores it.
+ *
+ * A display matrix says how to turn the *display*, so a picture that needs a
+ * quarter turn clockwise to look right is written as -90. ffmpeg also
+ * normalises: asking for -270 comes back as 90. Both are handled here so that
+ * nothing above this line has to know either fact.
+ */
+function clockwiseFrom(stored: number): number {
+  return ((-stored % 360) + 360) % 360;
+}
+
+/** Containers that can carry a rotation without the picture being re-encoded. */
+const ROTATABLE = /\.(mp4|m4v|mov)$/i;
+
+export function canRotateLosslessly(path: string): boolean {
+  return ROTATABLE.test(path);
+}
+
+/**
+ * Writes a rotation into a copy of a video, without re-encoding it.
+ *
+ * `-display_rotation` is an input option — it must precede `-i` — and it
+ * replaces whatever the file already said rather than adding to it, so the
+ * caller passes the absolute angle it wants. With `-c copy` no frame is
+ * touched: measured at 0.05s on a 3-second 1080p file, byte-for-byte the same
+ * picture.
+ *
+ * Deliberately not `-metadata:s:v rotate=`, which current ffmpeg accepts and
+ * silently ignores — it writes the file with no rotation at all.
+ */
+export async function writeRotation(
+  source: string,
+  destination: string,
+  clockwiseDegrees: number
+): Promise<void> {
+  await runFfmpeg([
+    '-y',
+    '-loglevel',
+    'error',
+    '-display_rotation',
+    String(-(((clockwiseDegrees % 360) + 360) % 360)),
+    '-i',
+    source,
+    '-c',
+    'copy',
+    destination
+  ]);
 }
 
 /**
