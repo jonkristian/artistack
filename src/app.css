@@ -12,6 +12,21 @@ body {
  * bottom of the thing that wanted the height. Scrolling itself is untouched:
  * wheel, trackpad, keyboard and programmatic scrolling all still work.
  */
+/*
+ * A label on a timeline block, over whatever the block is showing.
+ *
+ * Every lane draws something behind its words — frames on a clip, a waveform on
+ * a bed, a flat colour on a caption — so the words are white with the picture
+ * pushed away from them rather than tinted to match their lane. Three lanes
+ * used three colours and the palest of them disappeared over a bright frame.
+ */
+@utility lane-label {
+  color: #fff;
+  text-shadow:
+    0 1px 2px rgb(0 0 0 / 0.9),
+    0 0 4px rgb(0 0 0 / 0.55);
+}
+
 @utility no-scrollbar {
   scrollbar-width: none;
   -ms-overflow-style: none;

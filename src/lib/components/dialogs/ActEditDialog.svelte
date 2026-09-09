@@ -6,6 +6,7 @@
   import { toast } from '$lib/stores/toast.svelte';
   import { createAct, updateAct } from '../../../routes/admin/data.remote';
   import type { Act, Media } from '$lib/server/schema';
+  import { dismissable } from '$lib/utils/dialog';
 
   /**
    * Who's in a line-up slot, and what that act looks like.
@@ -103,6 +104,7 @@
 
 <dialog
   bind:this={dialogEl}
+  use:dismissable
   class="fixed inset-0 m-auto h-fit w-full max-w-md rounded-xl border border-gray-700 bg-gray-900 p-0 text-white backdrop:bg-black/60"
   {onclose}
 >

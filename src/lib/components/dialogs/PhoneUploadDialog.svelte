@@ -116,13 +116,22 @@
     navigator.clipboard.writeText(qr.url);
     toast.success('Link copied');
   }
+  /** Whether the press that is finishing began on the darkened area too. */
+  let pressedBackdrop = $state(false);
 </script>
 
 {#if open}
+  <!-- Not a native <dialog>, so the press outside is caught here rather than by
+       the shared action: the darkened area is a real element, and a press that
+       both starts and ends on it is a press outside the panel. -->
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
     onkeydown={(e) => e.key === 'Escape' && close()}
+    onmousedown={(e) => (pressedBackdrop = e.target === e.currentTarget)}
+    onclick={(e) => {
+      if (e.target === e.currentTarget && pressedBackdrop) close();
+    }}
     role="dialog"
     aria-modal="true"
     aria-label="Upload from phone"

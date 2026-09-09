@@ -3,9 +3,10 @@
   import { goto, invalidateAll } from '$app/navigation';
   import { toast } from '$lib/stores/toast.svelte';
   import { formatDuration } from '$lib/utils/upload';
+  import { getPlatformIcon } from '$lib/utils/platforms';
   import {
+    CLIP_STATUS_DOTS,
     CLIP_STATUS_LABELS,
-    CLIP_STATUS_STYLES,
     PLATFORM_NAMES,
     type ClipStatus
   } from '$lib/clips/types';
@@ -97,13 +98,6 @@
         .filter(([, rows]) => rows.some((r) => r.status === 'live'))
         .map(([id]) => Number(id))
     )
-  );
-
-  const sourceCounts = $derived(
-    data.sources.reduce<Record<number, number>>((acc, s) => {
-      acc[s.projectId] = (acc[s.projectId] ?? 0) + 1;
-      return acc;
-    }, {})
   );
 
   /**
@@ -224,49 +218,86 @@
               {/if}
             </div>
 
-            {#if output?.durationMs}
+            <!-- Where the clip has got to, and how long it is, in one corner.
+                 Status was a word in the row below, which is the row the
+                 platform badges want — and next to Facebook, Instagram and
+                 TikTok, "Published" is the same fact twice, the second time
+                 more vaguely. A colour separates draft from review from
+                 published without spending a line on it; the word is on the dot
+                 for a pointer, and spelled out in the editor. -->
+            <div class="absolute top-2 right-2 flex items-center gap-1.5">
               <span
-                class="absolute top-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white tabular-nums"
-              >
-                {formatDuration(output.durationMs)}
-              </span>
-            {/if}
+                class="h-2 w-2 rounded-full ring-2 ring-black/50 {CLIP_STATUS_DOTS[
+                  project.status as ClipStatus
+                ] ?? 'bg-gray-500'}"
+                title={CLIP_STATUS_LABELS[project.status as ClipStatus] ?? project.status}
+              ></span>
+              {#if output?.durationMs}
+                <span
+                  class="rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white tabular-nums"
+                >
+                  {formatDuration(output.durationMs)}
+                </span>
+              {/if}
+            </div>
 
             <div class="p-3">
               <p class="truncate text-sm text-white group-hover:text-violet-300">{project.name}</p>
-              <div class="mt-1.5 flex items-center gap-2">
-                <span
-                  class="rounded px-1.5 py-0.5 text-[10px] font-medium {CLIP_STATUS_STYLES[
-                    project.status as ClipStatus
-                  ] ?? 'bg-gray-700 text-gray-300'}"
-                >
-                  {CLIP_STATUS_LABELS[project.status as ClipStatus] ?? project.status}
-                </span>
+              <!-- Wraps, because this row grew. It held one status chip and a
+                   source count and was sized for that; a clip on three
+                   platforms now adds three more, and they were running off the
+                   card — TikTok cut to a "T", and the source count pushed out
+                   of sight entirely. -->
+              <div class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                 <!-- Published, but nothing ever reported reaching a platform.
                      Catches the case where the posting workflow is down: it
                      can't raise its own alarm, so the absence has to. -->
-                <!-- Where it went, one badge per platform.
-                     Live is the only one that means the public can see it: a
-                     draft was uploaded for someone to post by hand, and a
-                     failure is a thing to go and look at. Colour says which
-                     without a word for it. -->
-                {#each postsFor(project.id) as post (post.platform)}
-                  <span
-                    class="rounded px-1.5 py-0.5 text-[10px] font-medium {post.status === 'live'
-                      ? 'bg-emerald-900 text-emerald-300'
-                      : post.status === 'draft'
-                        ? 'bg-amber-900 text-amber-300'
-                        : 'bg-red-900 text-red-300'}"
-                    title="{PLATFORM_NAMES[post.platform] ?? post.platform} — {post.status ===
-                    'live'
-                      ? 'live'
-                      : post.status === 'draft'
-                        ? 'uploaded, post it by hand'
-                        : 'failed'}"
-                  >
-                    {PLATFORM_NAMES[post.platform] ?? post.platform}
+                <!-- Where it went, in each platform's own mark.
+
+                     A name is what you want to read and four of them is most of
+                     a card this size; a plain dot fits but says only "somewhere".
+                     The mark says which without the width of the word, and the
+                     colour says how it went — green live, amber uploaded for
+                     someone to post by hand, red failed.
+
+                     The glyphs come from the same table the link buttons use, so
+                     a platform looks the same wherever it appears. Anything
+                     without one falls back to a dot rather than to nothing. -->
+                {#if postsFor(project.id).length}
+                  <span class="flex shrink-0 items-center gap-1.5">
+                    {#each postsFor(project.id) as post (post.platform)}
+                      {@const icon = getPlatformIcon(
+                        post.platform === 'x' ? 'twitter' : post.platform
+                      )}
+                      {@const tone =
+                        post.status === 'live'
+                          ? 'text-emerald-400'
+                          : post.status === 'draft'
+                            ? 'text-amber-400'
+                            : 'text-red-400'}
+                      {@const label = `${PLATFORM_NAMES[post.platform] ?? post.platform} — ${
+                        post.status === 'live'
+                          ? 'live'
+                          : post.status === 'draft'
+                            ? 'uploaded, post it by hand'
+                            : 'failed'
+                      }`}
+                      {#if icon}
+                        <svg
+                          class="h-3.5 w-3.5 {tone}"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
+                          aria-hidden="true"
+                        >
+                          <title>{label}</title>
+                          <path d={icon} />
+                        </svg>
+                      {:else}
+                        <span class="h-2 w-2 rounded-full bg-current {tone}" title={label}></span>
+                      {/if}
+                    {/each}
                   </span>
-                {/each}
+                {/if}
                 {#if project.status === 'published' && !confirmed.has(project.id)}
                   <span
                     class="rounded bg-amber-900 px-1.5 py-0.5 text-[10px] font-medium text-amber-300"
@@ -275,11 +306,6 @@
                     Unconfirmed
                   </span>
                 {/if}
-                <span class="text-xs text-gray-500">
-                  {sourceCounts[project.id] ?? 0} source{(sourceCounts[project.id] ?? 0) === 1
-                    ? ''
-                    : 's'}
-                </span>
               </div>
             </div>
           </a>

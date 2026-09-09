@@ -9,6 +9,7 @@
    */
   import { untrack } from 'svelte';
   import { DateTimePicker } from '$lib/components/ui';
+  import { dismissable } from '$lib/utils/dialog';
 
   interface Props {
     /** Where the next drip slot falls, so "next available" isn't an abstraction. */
@@ -71,6 +72,7 @@
 
 <dialog
   bind:this={dialogEl}
+  use:dismissable
   class="fixed inset-0 m-auto h-fit w-full max-w-md rounded-xl border border-gray-700 bg-gray-900 p-0 text-white backdrop:bg-black/60"
   {onclose}
 >

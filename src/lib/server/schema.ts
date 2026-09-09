@@ -18,7 +18,6 @@ export type {
   ClipAspect,
   ClipTone,
   ClipFill,
-  CaptionPosition,
   ClipRenderConfig
 } from '../clips/types';
 export { DEFAULT_CLIP_CONFIG } from '../clips/types';

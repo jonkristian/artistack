@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { tick, type Snippet } from 'svelte';
 
   interface Props {
     value: string;
@@ -7,24 +7,119 @@
     label?: string;
     open?: boolean;
     ontoggle?: (open: boolean) => void;
+    /**
+     * The colours already kept, offered as one click each.
+     *
+     * A wheel is the right control for finding a colour and the wrong one for
+     * using the same colour again: matching a sleeve's yellow by eye, twice, on
+     * two different screens, gets you two yellows.
+     */
+    swatches?: string[];
+    /** Keeps the current colour, or drops it. Only the screen that owns the shelf passes this. */
+    onkeep?: (color: string) => void;
+    /**
+     * Ways out of picking a colour: inheriting one, or having none.
+     *
+     * A list rather than a flag each, because which of them a control has
+     * depends on what it colours — text can be automatic, a panel can be
+     * automatic or absent, and a site's background can be neither.
+     */
+    actions?: { label: string; onclick: () => void }[];
+    /** Just the swatch, no hex beside it — for a control with no room to say it twice. */
+    compact?: boolean;
+    /** The trigger's own classes, for surfaces that don't look like a form. */
+    triggerClass?: string;
+    /**
+     * Classes for the wrapper the trigger sits in.
+     *
+     * It exists to anchor the popup and to catch clicks outside it, and it was
+     * doing a third thing nobody asked for: standing between the trigger and
+     * the row the trigger was supposed to line up with. Whatever the trigger
+     * does about its own height, it does it against this div and not against
+     * the row — so this has to be told how to sit in the row itself.
+     */
+    rootClass?: string;
+    /**
+     * What the button looks like, when a bare swatch isn't enough of a label.
+     *
+     * A square of colour says which colour and not what it colours, which is
+     * fine in a row of six under the words Background and Panels, and useless
+     * beside four other buttons on a caption. Given a snippet, the caller draws
+     * its own — an icon with the colour under it, the way every editor has
+     * drawn a text colour since about 1995.
+     */
+    trigger?: Snippet<[{ value: string; none: boolean }]>;
   }
 
-  let { value = '#8b5cf6', onchange, label, open, ontoggle }: Props = $props();
+  let {
+    value = '#8b5cf6',
+    onchange,
+    label,
+    open,
+    ontoggle,
+    swatches = [],
+    onkeep,
+    actions = [],
+    compact = false,
+    trigger,
+    rootClass = '',
+    triggerClass = 'flex items-center gap-2 rounded border border-gray-700 bg-gray-800/50 px-2 py-1.5 transition-colors hover:border-gray-500'
+  }: Props = $props();
+
+  /** Whether the colour on screen is one of the kept ones, which decides what Keep says. */
+  const kept = $derived(swatches.some((c) => c.toLowerCase() === value.toLowerCase()));
+
+  /*
+   * Whether there is a colour at all.
+   *
+   * Anything that isn't a hex is "none" — the swatch draws a line through
+   * itself instead of a colour, and the wheel opens on a sensible one rather
+   * than on nothing. It's a state the control can hold, not a caller's problem:
+   * "no panel" is as much an answer as a green one.
+   */
+  const none = $derived(!/^#[0-9a-f]{6}$/i.test(value));
 
   let wheelCanvas = $state<HTMLCanvasElement>();
   let squareCanvas = $state<HTMLCanvasElement>();
   let buttonEl: HTMLButtonElement;
+  let popupEl = $state<HTMLDivElement>();
   let internalOpen = $state(false);
   let popupPos = $state({ top: 0, left: 0 });
 
   // Use external control if provided, otherwise internal state
   const isOpen = $derived(open !== undefined ? open : internalOpen);
 
+  /**
+   * Puts the panel where it fits, rather than always below and to the right.
+   *
+   * It is `fixed`, so it is placed against the window and not against whatever
+   * it opens out of — which is what lets it escape a scroller like the clip
+   * timeline, and also what let it hang off the bottom of the screen when the
+   * swatch that opened it was already near the edge. Below if there's room,
+   * above if there isn't, and clamped into the window either way.
+   *
+   * The size is measured when the panel exists and guessed the first time,
+   * because the first placement happens in the same breath as the decision to
+   * show it. The effect below runs it again once it's real.
+   */
+  function placePopup() {
+    if (!buttonEl) return;
+
+    const rect = buttonEl.getBoundingClientRect();
+    const gap = 8;
+    const width = popupEl?.offsetWidth ?? 420;
+    const height = popupEl?.offsetHeight ?? 380;
+
+    let top = rect.bottom + gap;
+    if (top + height > window.innerHeight - gap) top = rect.top - gap - height;
+    top = Math.max(gap, Math.min(top, window.innerHeight - height - gap));
+
+    const left = Math.max(gap, Math.min(rect.left, window.innerWidth - width - gap));
+    popupPos = { top, left };
+  }
+
   function setOpen(newOpen: boolean) {
-    if (newOpen && buttonEl) {
-      const rect = buttonEl.getBoundingClientRect();
-      popupPos = { top: rect.bottom + 8, left: rect.left };
-    }
+    if (newOpen) placePopup();
     if (ontoggle) {
       ontoggle(newOpen);
     } else {
@@ -36,7 +131,9 @@
   let lightness = $state(50);
   let hexInput = $state('');
 
-  // Convert hex to HSL on value change
+  // Convert hex to HSL on value change. `hexToHsl` already answers with a
+  // middling violet for anything it can't read, which is what "none" needs the
+  // wheel to open on.
   $effect(() => {
     const hsl = hexToHsl(value);
     hue = hsl.h;
@@ -45,10 +142,11 @@
     hexInput = value;
   });
 
-  // Draw canvases when popup opens
+  // Draw canvases when popup opens, and place it now its size is known
   $effect(() => {
     if (isOpen) {
       tick().then(() => {
+        placePopup();
         drawWheel();
         drawSquare();
       });
@@ -247,23 +345,31 @@
 
 <svelte:window onclick={handleClickOutside} />
 
-<div class="color-wheel-container relative">
+<div class="color-wheel-container relative {rootClass}">
   {#if label}
     <span class="mb-2 block text-sm text-gray-400">{label}</span>
   {/if}
 
-  <button
-    bind:this={buttonEl}
-    type="button"
-    onclick={() => setOpen(!isOpen)}
-    class="flex items-center gap-2 rounded border border-gray-700 bg-gray-800/50 px-2 py-1.5 transition-colors hover:border-gray-500"
-  >
-    <div class="h-5 w-5 rounded" style="background-color: {value}"></div>
-    <span class="font-mono text-xs text-gray-400">{value}</span>
+  <button bind:this={buttonEl} type="button" onclick={() => setOpen(!isOpen)} class={triggerClass}>
+    {#if trigger}
+      {@render trigger({ value, none })}
+    {:else}
+      <!-- An empty square when there is no colour, and the word beside it says
+           so. It used to draw a line through itself as well, which was one
+           statement too many and the only crude mark on the control. -->
+      <div
+        class="h-5 w-5 rounded {none ? 'border border-dashed border-gray-500' : ''}"
+        style={none ? '' : `background-color: ${value}`}
+      ></div>
+      {#if !compact}
+        <span class="font-mono text-xs text-gray-400">{none ? 'None' : value}</span>
+      {/if}
+    {/if}
   </button>
 
   {#if isOpen}
     <div
+      bind:this={popupEl}
       class="fixed z-[100] rounded-xl border border-gray-600 bg-gray-900 p-4 shadow-2xl"
       style="top: {popupPos.top}px; left: {popupPos.left}px;"
     >
@@ -339,6 +445,52 @@
       <div class="mt-3 flex items-center gap-3">
         <div class="h-10 flex-1 rounded-lg" style="background-color: {hexInput}"></div>
       </div>
+
+      <!-- The shelf. Above the wheel would put it in the way of the thing it's
+           an alternative to; under the preview it reads as "or one of these". -->
+      {#if swatches.length > 0 || onkeep || actions.length > 0}
+        <div class="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-700 pt-3">
+          {#each swatches as swatch (swatch)}
+            <button
+              type="button"
+              title={swatch}
+              aria-label="Use {swatch}"
+              onclick={() => onchange?.(swatch)}
+              class="h-6 w-6 rounded border transition-transform hover:scale-110 {swatch.toLowerCase() ===
+              value.toLowerCase()
+                ? 'border-white'
+                : 'border-gray-600'}"
+              style="background-color: {swatch}"
+            ></button>
+          {/each}
+
+          {#if onkeep}
+            <button
+              type="button"
+              onclick={() => onkeep?.(value)}
+              class="rounded border border-gray-600 px-2 py-1 text-xs text-gray-300 transition-colors hover:bg-gray-800"
+            >
+              {kept ? 'Forget' : 'Keep'}
+            </button>
+          {/if}
+
+          {#each actions as action, i (action.label)}
+            <button
+              type="button"
+              onclick={() => {
+                action.onclick();
+                setOpen(false);
+              }}
+              class="rounded border border-gray-600 px-2 py-1 text-xs text-gray-300 transition-colors hover:bg-gray-800 {i ===
+              0
+                ? 'ml-auto'
+                : ''}"
+            >
+              {action.label}
+            </button>
+          {/each}
+        </div>
+      {/if}
     </div>
   {/if}
 </div>

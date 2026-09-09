@@ -52,6 +52,7 @@
 <script lang="ts">
   import { onDestroy, untrack } from 'svelte';
   import ToggleSwitch from '$lib/components/ui/ToggleSwitch.svelte';
+  import { dismissable } from '$lib/utils/dialog';
 
   interface Props {
     file: File | null;
@@ -366,6 +367,7 @@
 
 <dialog
   bind:this={dialogEl}
+  use:dismissable
   class="fixed inset-0 m-auto h-fit w-full max-w-sm rounded-xl border border-gray-700 bg-gray-900 p-0 text-white backdrop:bg-black/60"
   onclose={handleClose}
 >

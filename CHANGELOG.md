@@ -1,223 +1,166 @@
 # 1.5.0 (08-09-2026)
 
-- Adding media and putting it on the timeline are two things now. A clip has a list of what it's made of, and each file goes onto the strip when you say so — which is what lets the same shot be used three times, cut differently each time, without picking it from the library three times
-- The timeline is where the editing happens. A block carries what belongs to it: where it comes in, what part of it plays, whether its own sound is on, and the way out. The panels that used to ask for those as numbers are gone — nobody was going to type seconds
-- A rail along the foot of each block shows the whole file with the part in use lit up, and dragging it slides that window through the footage without moving the block. Trimming an edge and dragging the block back is the same edit in two moves, and the second is the one you forget
-- Captions are written on the strip. The block is the field, with the size and the placement beside it, so the words and where they land are one place instead of two
-- An overview under the timeline: the whole clip in one row, always, to drag along. At any useful zoom on a four-minute clip the strip is a small window onto a long thing, and getting somewhere meant scrolling and guessing
-- Music shows its waveform, drawn at a common level whatever the file's own level is. Two beds eighteen decibels apart used to draw as a full shape beside a hairline, which is true and no use for lining one up against a cut
-- Hold shift while dragging a block and everything after it comes along, so a change early on doesn't mean moving the rest by hand
-- A quick render leaves the captions, the logo and the watermark out, and the editor draws them over the video instead. Retyping a caption lands immediately rather than costing a render — and the quick render got cheaper for not doing that work
-- Quick and Final is one switch: it chooses what you're watching and what Render will make, so the two can't disagree
-- A clip is as long as the longest thing on it. Music running past the last shot used to be cut off at the picture, which made which end you were looking at depend on what kind of thing was there
-- The logo and the watermark go onto the finished timeline rather than onto the first shot. A clip that opens on black is branded from its first frame instead of fifteen seconds in, and the watermark no longer blinks out over a gap
-- Rendering does in one pass what it did in four. Laying the shots out, dissolving into the outro and burning the captions were three encodes of every frame, each one decoding what the last had written
-- Whether music replaces the clip's own sound is read from the clips themselves — silence every shot and the beds are the soundtrack. It was a switch that could disagree with the row of mute buttons next to it
-- The dials that were only ever read and never shown: how far music sits under speech, the outro dissolve, the fade lengths, the caption margin, and the size of a big caption — which sat six per cent above a normal one, so the switch looked broken
-- The clip list says which platforms each one reached. It only knew how to report failure before, so a clip on three platforms and a clip on one looked the same
-- Fixed: cheap copies of uploaded footage were never made. Every one failed on a temporary filename ffmpeg wouldn't write to, quietly, because nothing waits for them and everything falls back to the original
-- Fixed: a quick render was made, stored, and then not shown — the pane kept the last full render while the note under it said otherwise. Invisible while a proof looked like a render
-- Fixed: the blurred background was built even when the footage already filled the frame, so every one of those pixels was blurred and then covered. More than twice the cost of the scale it wraps
-- Fixed: where a caption sits by default meant three different things in three places, measured from three different edges, so an anchored caption and an unanchored one on the same setting landed differently
-- Fixed: a bed placed past the end of a clip was drawn off the edge of the strip with no way to reach it, and then as a sliver too thin to grab
-- Fixed: a render interrupted by a restart left its working files behind — gigabytes apiece, in memory, since they were written to a temporary folder that isn't a disk
-- A timeline under the clip editor: what plays when, what's said over it and what it's scored with, on one time axis. Drag a block to move it, drag its edges to retime it — the shape of an edit is a thing you look at, not a column of numbers you work out. It's there from the first clip you add, before anything has been rendered
-- Captions can sit at the top, the middle or the bottom of the picture, one caption at a time rather than one setting for the clip — so a line across the middle for the whole video can run over others along the bottom. The frame icon on a caption moves it between the three, and the strip has a second caption row so a standing line and the ones coming and going underneath it don't have to be cut around each other
-- The timeline zooms on the wheel, plays on space and steps on the arrows — a tenth of a second, or a whole one with shift, which is finer than a drag can be asked to hit
-- Dragging a block moves the playhead with it, so the preview shows the frame you're landing on rather than the one you left. Blocks snap to each other's edges and to the ends of the clip, with a line showing what was caught
-- Drag the strip itself to pull the clip along, and click to put the playhead somewhere. A clip longer than the window used to mean hunting for a scrollbar at the bottom edge to reach footage you couldn't see
-- Dragging a caption or a track near either end pulls the timeline along with it, so a block can be moved somewhere that isn't on screen yet
-- Trimming a clip shows the clip. Play it, find the moment, mark it — rather than typing a number you had to work out somewhere else and only found out was wrong after a render
-- Footage that was filmed sideways can be turned. Phones say which way up they were and the renderer has always believed them; this is for the screen recordings and odd exports that don't say, which no amount of asking the file will fix
-- More than one piece of music on a clip, each with its own place: when it comes in, when it stops, and where in the song it plays from
-- Two tracks that overlap cross into each other automatically, over exactly the overlap you drew. There's nothing to set — if one runs past where the next begins, that IS the crossfade, and the two halves can't disagree about how long it lasts
-- Fades are a yes or no now. How long one takes has the same good answer nearly every time, so it's one setting for the clip in Advanced instead of a number on every track
-- Everything a clip is made of is one list — footage and music together, as tiles rather than rows, since the picture is what you recognise a shot by
-- One Add media button for the whole clip, and one From phone, at the head of the list they fill. A file knows whether it's footage or music, so it goes where it belongs rather than asking you which list you meant. The phone QR sorts arrivals the same way
-- Removing a clip, a track or a caption offers to put it back. The studio saves as you go, so there's no Update to withhold and no draft to discard — the moment right after is the only chance to change your mind, and now it's offered
-- The Render button says when the clip has changed since the render you're looking at. It's driven by what a render is actually made of, so renaming a clip or rewriting its caption doesn't set it off — a warning that's usually wrong is one you stop reading
-- Tags are picked from a list rather than remembered and retyped. The point of a shared vocabulary is that reusing a tag is easier than inventing one, and a field that opened empty asked you to remember it instead. Anything new can still be typed straight in
-- Look is the templates and nothing else, with the frame, the branding and every dial behind one more tile at the end of the row — the mark a clip wears is decided once and then left alone
-- A Quick render beside the real one: the same edit at half size with the expensive filters off, so judging where a caption sits takes seconds instead of most of a minute. It drives the editor's own player and its timeline and nothing else — it can't be reviewed, queued or published, and rendering for real replaces it
-- Rotating a clip now turns the footage itself rather than the edit using it. The turn is written into the file without re-encoding it, so a clip stored sideways is upright everywhere it appears — its thumbnail, the picker, the trim player, the render — and stays that way in every clip that uses it
-- Fixed: saving as you go was silent about failing. A refused save now says so and offers to try again, rather than looking exactly like a save that worked until the next reload
-- Fixed: Save as default captured what was there before your edit, not what you'd just written — pressing it is the first thing that blurs the field you were typing in. The first time round that meant it cleared the default instead of setting it
-- Fixed: a tag kept only as the default for new clips was deleted by the tidy-up that clears unused tags, since nothing was tagged with it. New clips then came up short a tag with nothing to say why
+- A timeline under the clip editor: what plays when, what's said over it, what it's scored with. Each block carries its own settings — where it comes in, what part of it plays, its sound, the way out — so an edit is something you look at rather than a column of numbers
+- Adding media and placing it are two steps. A clip keeps a list of what it's made of, as tiles, and each file goes on the strip when you say so, so one shot can be used three times and cut differently each time. One Add media button for all of it: a file knows whether it's footage or music
+- The wheel zooms, space plays, the arrows step a tenth of a second. Drag the strip to pan, blocks snap to each other's edges, and dragging near either end pulls the timeline along
+- The whole clip sits in one row under the strip, to drag along
+- A rail under each block shows the whole file with the part in use lit. Drag it to slide that window through the footage without moving the block
+- Trimming shows the footage: play it, find the moment, mark it
+- Shift-drag a block and everything after it follows
+- Captions are written on the block, each at the top, middle or bottom of the picture. The three heights are dials in Advanced, and a caption remembers which one it's on
+- A caption can set its own colour and backdrop, or leave both to the clip. Colours worth reusing are kept in Appearance and offered by every picker
+- Shift+Enter, or a typed bar, breaks a caption's line
+- A block is a label and one button: the tools slide out where there's room and open in a window where there isn't. One icon set, matching lanes, and every dialog closes on an outside click
+- Several beds per clip, each with its own window and start point. Overlapping beds crossfade over exactly the overlap you drew. Fades are a yes or no
+- Beds show their waveform at a common level, so two files eighteen decibels apart can be compared
+- Silence every shot and the beds become the soundtrack — read from the clips rather than a switch that could disagree with them
+- A Quick render: half size, expensive filters off, captions and branding drawn over the video instead of burned in. Quick and Final is one switch, and a quick render can't be reviewed, queued or published
+- Rendering does in one pass what took four
+- A clip is as long as the longest thing on it, not the last shot
+- The logo and watermark go onto the finished timeline, so a clip opening on black is branded from its first frame
+- The dials that were read but never shown — ducking, the outro dissolve, fade lengths, the caption margin, the size of a big caption — are in Advanced, and move the preview as you type
+- Presets only touch the picture. They no longer set the audio fades or the outro card; a fade at the end is on by default instead
+- Look is the templates, with the frame, the branding and every dial behind one tile
+- The Render button says when the clip has changed since the render you're looking at, from what a render is actually made of — so renaming one doesn't set it off
+- Removing a clip, a track or a caption offers to put it back
+- Tags are picked from a list. Anything new can still be typed in
+- Sideways footage can be turned, written into the file without re-encoding, so it's upright everywhere it appears
+- The clip list shows which platforms each clip reached
+- Fixed: cheap copies of uploaded footage were never made — every one failed, silently, on a filename ffmpeg wouldn't write to
+- Fixed: a quick render was made and then not shown, while the pane kept the last full render
+- Fixed: the blurred background was built even when the footage already filled the frame, then covered up
+- Fixed: where a caption sits meant three things in three places, and the dials that place them were dropped on the way to the database
+- Fixed: the editor drew captions in violet whatever the brand colour was. The render had it right
+- Fixed: a bed placed past the end of a clip couldn't be reached
+- Fixed: an interrupted render left gigabytes of working files behind, in memory
+- Fixed: a refused save was silent. It says so now, and offers to try again
+- Fixed: Save as default captured the value from before your edit
+- Fixed: a tag kept only as a default was deleted by the tidy-up that clears unused ones
+- Fixed: double-clicking a caption's own field wrote a second caption underneath it
+- Fixed: a block's buttons hung off its end instead of shrinking to fit
+- Fixed: the colour picker opened off the screen when it was near the edge
 
 # 1.4.0 (05-09-2026)
 
-- A Releases block, so the records can sit on the front page or any other — it draws what's in Releases rather than keeping a second list, and each one leads to the release page it already has
-- The block shows all of them, only what's out, or only what's coming — upcoming reads soonest first, the way a tour does, and the rest newest first
-- As a grid of sleeves or as rows, two to four across; a single record centres and takes the room it deserves instead of sitting in a third of a line looking like the first of three that failed to load
-- Service buttons on a release row: Spotify, Apple Music and whatever else the record lists, one press from the front page. Before release day they say Save rather than Play, and every press goes through /go, so a play counted here is counted the same as one from the release page
-- A pre-save button too, for records with a pre-save link of their own
-- Releases, Shows and Shop blocks show a thumbnail beside each row in the editor — the sleeve, the poster, the product — so a list of names is a list of things
-- The block picker is a grid of four rather than a row that wrapped whenever a name was long
-- The sign-up block is drawn like the other blocks now, tinted and round-cornered with the fan-list envelope beside it, instead of an outlined box bolted to the page
-- Shows have an About field: what the night is, when it's a launch or a last night or a support slot worth explaining. Optional, and most gigs won't want one
-- Releases have one as well, separate from the description: the copy people read on the page, below the services. The description stays what a search result and a link preview show, which is a different job and a shorter one
-- A length meter under both, so it's visible while writing whether a description will survive the cut — around 160 characters in a search result, 200 in a link preview
-- The same meter on a clip's caption, marked at the fold rather than at a limit: roughly the first 100 characters show before "more", and 350 is as long as a caption wants to be. Neither stops you posting
-- An emoji picker on the caption, without the formatting either side of it — a caption is posted as plain text, so bold would arrive on TikTok as the letter b in angle brackets
-- Product descriptions are written in the same editor as the bio, and read that way on the page. Descriptions written before it still keep their line breaks
-- Signing up for the fan list now gets one email back: you're on the list, here's what to expect, and the way off it. It's the only thing that proves an address works, so a typo turns up now rather than on release day — and if someone else typed your address in, you find out at once
-- Only for someone who has actually just joined, so a form sent twice doesn't send two
-- A release-day email to the fan list: the sleeve, your words about the record, and a button to every service it's on, sent one message per person so the way off the list is theirs alone
-- It sends itself at 9am on the first morning on or after the release date, and there's a button on the release for when you'd rather it went now — once the store links actually resolve. Either way it can only happen once, and it refuses to send at all while the release has no services on it: an announcement with nowhere to listen spends the one message anyone opened for that record
-- Sign-ups are limited to ten an hour from one connection. The form has always had a honeypot and a bot filter; a limit matters more now that a sign-up sends mail, since an open endpoint that emails whoever it's told to is a way to have your domain send someone else's spam
-- Fixed a receipt from an old order reappearing over the page by itself, days later and with nothing in the address bar: closing it cleared the address but not what the page thought its address was
+- A Releases block: the records on the front page or any other, drawn from Releases rather than a second list, each leading to the release page it already has. All of them, only what's out, or only what's coming — upcoming soonest first, the rest newest first
+- As a grid of sleeves or as rows, two to four across. A single record centres rather than sitting in a third of a line
+- Service buttons on a release row, one press from the front page, and a pre-save button for records that have one. Before release day they say Save rather than Play, and every press goes through /go, so it counts like a play from the release page
+- Releases, Shows and Shop blocks show a thumbnail beside each row in the editor, the block picker is a grid of four, and the sign-up block is drawn like the rest instead of an outlined box bolted on
+- Shows and releases have an About field: the copy people read on the page, separate from the description a search result and a link preview show
+- A length meter under both, and on a clip's caption — marked at the fold rather than at a limit. About 160 characters in a search result, 200 in a link preview, 100 before a caption says "more". None of them stop you
+- An emoji picker on the caption, with no formatting either side of it: a caption is posted as plain text, so bold would arrive on TikTok as the letter b in angle brackets
+- Product descriptions are written in the same editor as the bio. Ones written before it keep their line breaks
+- Signing up for the fan list gets one email back: you're on the list, what to expect, the way off it. It's the only thing that proves an address works, so a typo turns up now rather than on release day. Only for someone who has just joined, so a form sent twice doesn't send two
+- A release-day email — the sleeve, your words, a button to every service — sent one message per person so the way off the list is theirs alone. It goes at 9am on the first morning on or after the release date, or when you press the button. Once only, and never while the release has no services on it
+- Sign-ups are limited to ten an hour from one connection: an open endpoint that emails whoever it's told to is a way to have your domain send someone else's spam
+- Fixed: an old order's receipt reappearing over the page days later, because closing it cleared the address bar but not what the page thought its address was
 
 # 1.3.0 (02-09-2026)
 
-- Shows are their own section: a gig is a fact about the band, not something a block owns, so deleting a block no longer deletes the tour
-- Every show is edited on its own page, with a poster, tickets and a line-up
-- A line-up is a list of acts in running order, each with the time they're on — drag to reorder
-- Acts are real: one row per band, so the same act on three nights is one thing you can rename or give a logo to, and its logo shows in the line-up — all edited from inside a show, with no separate screen to visit first
-- Your own band is flagged as yours, and can't be deleted from under the shows it played
-- Doors is its own field, distinct from when anyone plays; the show page only mentions doors when there is one, and takes the start from the first act
-- A show can have its own landing page, on a switch: on means visible, off means nobody can reach it, and the address survives being switched off
-- Show and release pages use the site's layout, so a change in Appearance reaches the things you send people to, not just the front page
-- The press kit no longer appears under a gig or a release — it's about the artist
-- Home is its own section again, so the dashboard is free to be an overview: what's coming, what's waiting on you, and thirty days of views
-- The navigation is three bands — the dashboard, the things you make, and the site itself — with Integrations and Users under Settings and Stats beside them
-- Ordinary pages are off by default: a music site is its front page, its releases and its shop
-- Custom pages render, so a page you create is a page people can reach
-- Shop: sell records, shirts and downloads from your own site, with stock on the things that run out
-- The basket and the whole checkout live in a panel over whatever you're reading, reached from a floating count that only appears once something is in it — buying a shirt never navigates you away from the page you came for
-- Products are shown as a cover with the name and price over it, with a details button for sizes and pressing notes
-- A shop block chooses two, three or four products per row; phones always show two, because a name laid over an 80px tile can't be read
-- Products are tagged with the same vocabulary clips and media already share, rather than a category of their own — so a shop block can show just the records or just the shirts, and "what is tagged merch" means one thing across the site
-- Checkout suggests addresses as you type and fills in the postcode, city and country from the one you pick — using the Google key you already have for venue lookups, from the server, so the key never reaches the page
-- The checkout form is four fields instead of eight: what the lookup answers isn't asked again, and the note is behind a link. Everything is still reachable by hand for an address the lookup can't find
-- Buyers can be added to the fan list from checkout, with a plain opt-out beside the email field. Only once a payment actually goes through, and never for someone who has unsubscribed before
-- Options: a product can come in sizes, colours or formats, each with its own stock, so you sell out of one without touching the rest. You name what varies, and the buyer is asked for it by that name — chosen in the product's details, carried through the basket, and printed on the order and the receipt
-- The basket opens as a window above the button rather than a full-height sidebar, and is a sheet up from the bottom on a phone
-- Appearance warns when a colour is too faint to read against the background, and says nothing otherwise. Only text, muted text and the accent: how far a panel sits from the page is a style choice, not a mistake
-- Button text is now black or white depending on how light the Accent is, on the site and in emails alike, instead of always white: a pale accent used to give you white on white
-- Payment goes through Vipps or PayPal. Vipps needs a registered company at their end; PayPal's sandbox needs nothing but a PayPal login, so the whole checkout can be walked before you have a merchant account anywhere
-- Money is reserved when someone buys and taken when you post the parcel; a download is charged and handed over straight away
-- Downloads arrive on an unguessable link that stops working if the order is refunded
-- An order keeps the name and price of what was bought, so a receipt stays true after a rename, a price change or a deletion
+- Shows are their own section: a gig is a fact about the band, not something a block owns, so deleting a block no longer deletes the tour. Each one is edited on its own page, with a poster, tickets and a line-up
+- A line-up is acts in running order with the time each is on, dragged to reorder. Acts are real rows, so the same act on three nights is one thing you can rename or give a logo to — edited from inside a show, with no separate screen to visit. Your own band is flagged as yours and can't be deleted from under the shows it played
+- Doors is its own field, distinct from when anyone plays: the page mentions it only when there is one, and takes the start from the first act
+- A show can have its own landing page, on a switch — on means visible, off means unreachable, and the address survives being switched off
+- Show and release pages use the site's layout, so a change in Appearance reaches the things you send people to
+- Home is its own section again, so the dashboard can be an overview: what's coming, what's waiting on you, thirty days of views
+- The navigation is three bands — the dashboard, the things you make, the site itself — with Integrations and Users under Settings, and Stats beside them
+- Ordinary pages are off by default, since a music site is its front page, its releases and its shop. Custom pages render, so a page you create is one people can reach
+- The press kit no longer appears under a gig or a release. It's about the artist
+- Shop: sell records, shirts and downloads from your own site, with stock on the things that run out. A Shop block puts a few of them on any page, drawn from the shop rather than a second list
+- The basket and the whole checkout live in a panel over whatever you're reading, reached from a floating count that appears once something is in it — buying a shirt never navigates you away. It opens above the button, or as a sheet from the bottom on a phone
+- Products show as a cover with the name and price over it, and a details button for sizes and pressing notes. A block chooses two, three or four per row; phones always show two, because a name over an 80px tile can't be read
+- Products are tagged with the vocabulary clips and media already share, so a block can show just the records or just the shirts, and "merch" means one thing across the site
+- A product can come in sizes, colours or formats, each with its own stock, so you sell out of one without touching the rest. You name what varies and the buyer is asked by that name, carried through the basket and printed on the order and the receipt
+- Checkout suggests addresses as you type and fills in the postcode, city and country — through the Google key you already have for venues, from the server, so the key never reaches the page. Four fields instead of eight, with everything still reachable by hand
+- Buyers can join the fan list from checkout, with a plain opt-out beside the email field. Only once a payment goes through, and never for someone who has unsubscribed
+- Payment through Vipps or PayPal. Vipps needs a registered company; PayPal's sandbox needs only a PayPal login, so the whole checkout can be walked before you have a merchant account anywhere. A test checkout takes no money at all — the order, the stock and the receipt are real
+- Money is reserved when someone buys and taken when you post the parcel. A download is charged and handed over at once, on an unguessable link that stops working if the order is refunded, and a paid file is no longer served from /uploads
+- An order keeps the name and price of what was bought, so a receipt stays true after a rename, a price change or a deletion, and shows a picture so it can be found on a shelf
+- Orders screen: what's been bought, who it goes to, what's still to post — marking one posted is what charges the card. It carries a count in the navigation, so a reservation about to lapse is visible from anywhere in the admin
 - Payment credentials are stored as secrets and never sent to the browser, not even on the settings screen that edits them
-- Orders screen: what's been bought, who it goes to, and what's still waiting to be posted — marking one posted is what charges the card. Orders sits under Shop in the navigation while you're in it, carrying a count of what's waiting, so a reservation about to lapse is visible from anywhere in the admin
-- A receipt email carrying the download links, so a buyer keeps them after the tab is closed
-- Every email the site sends — receipt, invite, password reset — uses one layout in your own colours, with a preview line in the inbox, a privacy link, and a button that stays a button in Outlook. Two of them had the default palette typed in, so anyone who changed their colours got somebody else's
-- Fixed email failing outright when SMTP was configured without a From address: it fell back to the username, and a username is only sometimes an email address
-- Settings can post you one of every email, so you can see how they look after changing a colour without waiting for a real order. It sends through the same code a real order does, so what you see is what a buyer gets
-- An invitation nobody used gets one reminder a week later, with a fresh link — most people mean to set a password and let the email slide down the inbox. Once only, so it's a nudge rather than nagging
-- An order shows a picture of what was bought, so it can be found on a shelf rather than read off a list
-- A file someone has to pay for is no longer served from /uploads, so the download link is the only way to reach it
-- A Shop block, so a few things for sale can sit on the front page or any other — it draws the shop rather than keeping a second list
-- A test checkout that takes no money, for walking the shop before you have a payment account: the order, the stock and the receipt are real, only the money is imaginary
-- Fixed the crop tool baking black bars into every image whose shape didn't match the frame
-- Crops can be portrait or landscape, and rounding is a separate switch rather than one of the shapes
-- Editing a crop reopens the original with the frame you used, so a second pass no longer crops the crop
-- Cropped images are in the media library, so deleting a picture takes its crops with it instead of leaving files nothing can reach
-- Dates and times follow the language you picked, not the browser's — no more American dates or AM/PM on a Norwegian site. Releases, Audience and the views chart were still ignoring it and now don't
-- Release pages: give a single or album its own address, with buttons to every service it's on
-- Pages are addressed flat — yoursite.com/a-release rather than behind a prefix — and reserved names are refused when you pick one
-- A release page shows a pre-save button until the release date passes, then platform buttons
-- Cover art is the link preview, so pasting a release into Discord or WhatsApp shows the sleeve without setting anything up
-- Clicks are counted per platform, with device and country, and shown on the release itself
-- A returning listener's service goes first, marked as the one they used last
-- Turn Releases on in Integrations; it stays hidden for sites that aren't music
-- Fan list: a sign-up form on release pages, and a block you can put on any page
-- Every sign-up records consent and carries a one-click unsubscribe link
-- A receipt tells a buyer they're on the fan list and how to leave it, when they are — and says nothing when they aren't
-- Audience section lists everyone with where they signed up, and exports plain CSV including unsubscribes
-- Ad pixels for Meta and TikTok, with a server-side conversion when someone opens a streaming link
+- Every email the site sends uses one layout in your own colours, with a preview line in the inbox, a privacy link and a button that stays a button in Outlook. Two of them had the default palette typed in
+- A receipt email carries the download links, so a buyer keeps them after the tab is closed, and tells them they're on the fan list and how to leave it when they are
+- Settings can post you one of every email, through the same code a real order uses
+- An invitation nobody used gets one reminder a week later with a fresh link. Once only
+- Appearance warns when a colour is too faint to read against the background, and says nothing otherwise — text, muted text and the accent only
+- Button text is black or white depending on how light the accent is, on the site and in emails alike. A pale accent used to give you white on white
 - Save a colour scheme by name and switch between them; applying one is an edit like any other, so Undo puts the old colours back
-- Media, Clips and Releases share one toolbar and bigger tiles, with filter and bulk actions on the same row as the New button
-- Fixed credentials being included in the HTML of every public page — rotate your SMTP password, webhook URLs and API keys
-- Fixed SMTP and pixel settings reporting success while saving nothing
-- Fixed link clicks losing campaign tags, so traffic from an ad now arrives attributed
-- Fixed the Apple Music icon rendering as a red rectangle, and TIDAL being invisible on a dark page
-- Fixed platform names reading as Apple_music and Youtube
-- Fixed the first-run setup card appearing on a site that was already set up
-- Adding a streaming link now offers only services you can listen on, not ticketing or social
+- Crops can be portrait or landscape, with rounding as its own switch. Editing one reopens the original with the frame you used, so a second pass no longer crops the crop, and crops live in the media library, so deleting a picture takes them with it
+- Media, Clips and Releases share one toolbar and bigger tiles, with filter and bulk actions on the same row as New
+- Release pages: a single or album with its own address and buttons to every service it's on, addressed flat — yoursite.com/a-release — with reserved names refused. A pre-save button until the release date passes, then platform buttons
+- Cover art is the link preview, so pasting a release into Discord or WhatsApp shows the sleeve
+- Clicks are counted per platform with device and country, shown on the release itself. A returning listener's service goes first, marked as the one they used last
+- Turn Releases on in Integrations; it stays hidden for sites that aren't music
+- Fan list: a sign-up form on release pages and a block for any page, recording consent and carrying a one-click unsubscribe. Audience lists everyone with where they signed up, and exports plain CSV including unsubscribes
+- Ad pixels for Meta and TikTok, with a server-side conversion when someone opens a streaming link
+- Dates and times follow the language you picked, not the browser's. Releases, Audience and the views chart were still ignoring it
+- Adding a streaming link offers only services you can listen on, not ticketing or social
+- Fixed: credentials were included in the HTML of every public page — rotate your SMTP password, webhook URLs and API keys
+- Fixed: SMTP and pixel settings reported success while saving nothing
+- Fixed: email failed outright when SMTP was configured without a From address. It fell back to the username, and a username is only sometimes an email address
+- Fixed: the crop tool baked black bars into every image whose shape didn't match the frame
+- Fixed: link clicks lost their campaign tags, so traffic from an ad now arrives attributed
+- Fixed: the Apple Music icon rendered as a red rectangle, TIDAL was invisible on a dark page, and platform names read as Apple_music and Youtube
+- Fixed: the first-run setup card appeared on a site that was already set up
 
 # 1.2.0 (25-08-2026)
 
-- Implemented responsive layouts across the admin: navigation slides in from a hamburger, and pages reflow instead of scrolling sideways
-- Editor and live preview swap with a toggle on narrow screens, on the dashboard, appearance and the clip editor
-- Drag and drop works on touch — reordering blocks, links, clip sources and gallery images, and dragging media into the press kit
-- Update and undo float within thumb reach while you have unsaved changes
-- Upload a bio, rider or one-sheet: media now takes PDF, Word, txt and markdown
-- Press kit ships the documents you put in it, instead of generating a bio.txt from the profile block
+- Responsive admin throughout: the navigation slides in from a hamburger, pages reflow instead of scrolling sideways, editor and preview swap with a toggle on narrow screens, and Update and Undo float within thumb reach while you have unsaved changes
+- Drag and drop works on touch — blocks, links, clip sources, gallery images, and media into the press kit
+- Upload a bio, rider or one-sheet: media takes PDF, Word, txt and markdown, and the press kit ships those documents rather than generating a bio.txt from the profile block
 - Filter media and clips by several types at once, from one menu instead of a row of tabs
 - Clip source rows collapse to a single line, with trim and mute behind a tap
-- Framing moved to the top of Look: aspect, and what to do with footage that doesn't fit
-- The blurred background says what it costs, so you can pick black bars or a crop instead
-- Look presets no longer change the framing, so switching look keeps the clip framed how you set it
+- Framing moved to the top of Look — aspect, and what to do with footage that doesn't fit. The blurred background says what it costs, and presets no longer change the framing
 - Render progress moves steadily instead of jumping between a handful of steps
 - Page titles dropped from the admin; on a phone the top bar says where you are
-- Page views chart keeps a readable day spacing and scrolls, rather than squeezing 30 days into a phone
-- Fixed a needless re-encode on single-source clips, cutting about a fifth off every render
-- Fixed the release announcement dropping the campaign link, so clicks from Discord count in Stats again
-- TikTok always reports as a draft to post by hand, since the workflow can only reach the inbox
-- Preview page hands over the post one piece at a time: caption, hashtags and link, each with a copy button
-- Release announcement links to the preview page when a platform is still waiting to be posted by hand
+- The page views chart keeps a readable day spacing and scrolls, rather than squeezing 30 days into a phone
+- TikTok always reports as a draft to post by hand, since the workflow can only reach the inbox. The preview page hands the post over one piece at a time — caption, hashtags, link — each with a copy button, and the release announcement links there while a platform is waiting
 - A platform's own message is quoted rather than shown as if it were Artistack's verdict
-- Fixed the browser's context menu interrupting a drag on long press
-- Fixed the drop indicator showing two positions for the same gap
-- Fixed favicon previews overlapping their filenames on a narrow screen
+- Fixed: a needless re-encode on single-source clips, worth about a fifth of every render
+- Fixed: the release announcement dropped the campaign link, so clicks from Discord count in Stats again
+- Fixed: the browser's context menu interrupted a drag on long press
+- Fixed: the drop indicator showed two positions for the same gap
+- Fixed: favicon previews overlapped their filenames on a narrow screen
 
 # 1.1.0 (24-08-2026)
 
-- Invite team members by name and email; they set their own password from a link
-- Everyone gets their own profile page for their name, email and password
-- Editors can now use Media and Clip Studio; appearance, integrations, settings and users stay admin-only
-- The admin menu only lists pages your role can actually open
-- Every admin action now checks your role when it runs, not just when the page loads
-- One dialog decides when a clip goes out: next slot, a date you pick, or now
-- Date and time pickers follow the site's language, with a 24-hour clock
-- Clip editor shows only the action each stage allows, colour-matched to its status
-- Branding moved in with Look, and the render button sits under the preview
-- Release announcement to Discord once the platforms report, with a link to each post
-- Discord alert when a release doesn't reach every platform within half an hour
-- Fixed YouTube stats never refreshing on their own
-- Fixed media already in the press kit not being draggable into Clip Graphics
-- Clip status colours run the pipeline from grey to green, with published in green
-- View site moved to an icon beside the artist name
+- Invite team members by name and email; they set their own password from a link, and everyone gets a profile page for their name, email and password
+- Editors can use Media and Clip Studio, while appearance, integrations, settings and users stay admin-only. The menu lists only what your role can open, and every action checks the role when it runs rather than when the page loads
 - Clip Studio: turn raw footage into branded, post-ready vertical video
-- Upload footage straight from a phone by scanning a QR code
-- Large uploads are sent in chunks, so a proxy's request size limit no longer blocks them
-- Large uploads show progress instead of an indefinite spinner
-- Fixed file pickers not opening in some mobile browsers
-- Clip editor leads with the clip's status and a full-width render button
-- Preview link sits in its own field with copy, regenerate and download
+- Upload footage straight from a phone by scanning a QR code. Large uploads go in chunks, so a proxy's size limit no longer blocks them, and show progress instead of an indefinite spinner
 - Timed captions burned in with libass, with a per-caption headline style
 - Music bed with player, in-point, crossfade takeover and ducking under speech
 - Look presets with preview stills rendered from your own footage
 - Clip graphics: designate logos in Media, then pick or randomise one per clip
-- Review flow with shareable preview links and Discord notifications
-- Release queue with scheduled publishing over a signed webhook
-- Published clips report back where they landed, per platform, with links to the posts
-- Platforms that only take an upload can report a draft, flagged as posted by hand
-- Published clips that no platform confirmed are flagged as unconfirmed
-- Separate Discord channels for clip reviews and release announcements
-- Clip reviews posted to Discord play the video inline instead of linking to it
-- Preview links expire after a week, refreshed each time a clip is sent for review
-- Post sheet generated per clip for posting, as markdown with frontmatter
+- One dialog decides when a clip goes out: next slot, a date you pick, or now. Date and time pickers follow the site's language, with a 24-hour clock
+- Review flow with shareable preview links and Discord notifications. Links expire after a week, refreshed each time a clip is sent for review
+- Release queue with scheduled publishing over a signed webhook. Published clips report back where they landed, per platform, with links to the posts; platforms that only take an upload report a draft, flagged as posted by hand, and clips no platform confirmed are flagged unconfirmed
+- Release announcement to Discord once the platforms report, with a link to each post, and an alert when a release doesn't reach every platform within half an hour. Reviews and announcements have separate channels, and a review plays the video inline
+- Post sheet generated per clip, as markdown with frontmatter
 - Campaign links (`/c/<slug>`) so Stats attributes traffic to the clip that drove it
 - Global tags shared between clips and media, with autocomplete
-- Media roles (images, footage, music, renders) with filter tabs and bulk delete
-- Re-rendering a clip replaces the previous render instead of accumulating files
+- Media roles — images, footage, music, renders — with filter tabs and bulk delete
 - Default tags and description saved once and applied to every new clip
-- Fixed tour date and link dialogs locking the page on save
-- Fixed intro, outro and watermark toggles being hidden when no clip graphic was designated
-- Fixed Norwegian characters being dropped from slugs (Tromsø, Blåbær)
-- Fixed the build failing when `data/` doesn't exist yet
-- Clips no longer fall back to the site favicon when no graphic is designated
-- Uploads rejected for size now say so, instead of failing with no explanation
+- Re-rendering a clip replaces the previous render instead of accumulating files
+- The clip editor leads with the clip's status and a full-width render button, shows only the action each stage allows, and runs its status colours from grey to green. Branding moved in with Look
+- The preview link sits in its own field, with copy, regenerate and download
+- View site moved to an icon beside the artist name
+- Uploads rejected for size say so, instead of failing with no explanation
 - Browser alerts replaced with toasts
 - Database migrations replace `drizzle-kit push`, which hung TTY-less deploys
 - SQLite runs in WAL mode, tuned for network-attached storage
-- `nixpacks.toml` installs ffmpeg, fontconfig and fonts so renders work in production
+- `nixpacks.toml` installs ffmpeg, fontconfig and fonts, so renders work in production
 - Health endpoint at `/healthz` for container orchestration
-- Signing secret can be generated in place rather than pasted in
-- Integrations cards share one icon treatment; Discord card renamed to Stats reports
+- The signing secret can be generated in place rather than pasted in
+- Integrations cards share one icon treatment; the Discord card is now Stats reports
 - Shared admin components for toggles, selection, tag input and media drop zones
+- Clips no longer fall back to the site favicon when no graphic is designated
+- Fixed: YouTube stats never refreshed on their own
+- Fixed: media already in the press kit couldn't be dragged into Clip Graphics
+- Fixed: tour date and link dialogs locked the page on save
+- Fixed: intro, outro and watermark toggles were hidden when no clip graphic was designated
+- Fixed: Norwegian characters were dropped from slugs (Tromsø, Blåbær)
+- Fixed: the build failed when `data/` doesn't exist yet
 
 # 1.0.0 (15-03-2026)
 

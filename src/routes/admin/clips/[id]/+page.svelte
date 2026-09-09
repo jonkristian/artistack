@@ -1,6 +1,7 @@
 <script lang="ts">
   import { beforeNavigate, goto, invalidateAll } from '$app/navigation';
   import { toast } from '$lib/stores/toast.svelte';
+  import { keepColor } from '$lib/brand-colors.remote';
   import MediaPicker from '$lib/components/ui/MediaPicker.svelte';
   import {
     EmojiPicker,
@@ -29,6 +30,9 @@
   import {
     DEFAULT_CLIP_CONFIG,
     DEFAULT_ADVANCED_CONFIG,
+    captionAnchors,
+    captionBackdrop,
+    captionColor,
     ADVANCED_GROUPS,
     CLIP_PRESETS,
     CLIP_STATUS_LABELS,
@@ -433,7 +437,7 @@
    * rendered yet — which is the whole point of it.
    */
   const introShown = $derived.by(() => {
-    const a = { ...DEFAULT_ADVANCED_CONFIG, ...(config.advanced ?? {}) };
+    const a = advanced;
     if (!config.intro) return 0;
 
     const first = timelineClips[0];
@@ -648,6 +652,7 @@
   async function patch(what: string, fields: Record<string, unknown>) {
     const saved = await autosave.run(what, () => updateProject({ id: selected.id, ...fields }));
     if (saved !== undefined) await invalidateAll();
+    return saved !== undefined;
   }
 
   async function patchConfig(what: string, changes: Partial<ClipRenderConfig>) {
@@ -657,13 +662,60 @@
   // Advanced dials are merged server-side, so sending one field leaves the rest
   // untouched.
   async function patchAdvanced(changes: Partial<ClipAdvancedConfig>) {
-    await patch('the advanced settings', { config: { advanced: changes } });
+    return await patch('the advanced settings', { config: { advanced: changes } });
   }
 
-  const advanced = $derived<ClipAdvancedConfig>({
+  /*
+   * The kept colours, and keeping one.
+   *
+   * Derived from the layout's copy so a reload is picked up, written over with
+   * what the save returns so the swatch appears on the press. The same shelf
+   * the appearance screen fills — a colour worth using on a caption is usually
+   * one worth having on the next clip too.
+   */
+  let brandColors = $derived<string[]>(data.brandColors ?? []);
+
+  async function keep(color: string) {
+    const result = await keepColor(color);
+    brandColors = result.colors;
+  }
+
+  /**
+   * The brand colour, resolved the way the render resolves it.
+   *
+   * The clip's own if it has one, then the site's, then violet — the same chain
+   * as `render-queue`, so the preview and the file agree about what the brand
+   * is.
+   */
+  const accent = $derived(config.logoColor || data.settings?.colorAccent || '#8b5cf6');
+
+  /** The dials as they are saved, which is what each field shows. */
+  const savedAdvanced = $derived<ClipAdvancedConfig>({
     ...DEFAULT_ADVANCED_CONFIG,
     ...(config.advanced ?? {})
   });
+
+  /*
+   * A dial you are still turning.
+   *
+   * The fields commit on blur, which is right for the database and wrong for
+   * the eye: `Caption top (% up)` is a number whose only meaning is where the
+   * caption lands, and nobody can judge 42 by reading it. Keystrokes land here
+   * at once so the preview moves under your hands, while the save still happens
+   * once, on the way out.
+   *
+   * Deliberately not fed back into the field's own `value`. Round-tripping a
+   * half-typed number through `Number()` turns "1." into "1" and eats the dot
+   * you were about to type after it; the input keeps its own text, and this
+   * only tells everything else what that text currently means.
+   *
+   * A failed save leaves the draft standing, the same bargain `patch` makes
+   * everywhere else — what you can see is what you last asked for.
+   */
+  let advancedDraft = $state<Partial<ClipAdvancedConfig>>({});
+
+  /** The dials as the preview should draw them: saved, then whatever is in hand. */
+  const advanced = $derived<ClipAdvancedConfig>({ ...savedAdvanced, ...advancedDraft });
 
   let showAdvanced = $state(false);
 
@@ -682,17 +734,22 @@
   /**
    * The Look grid. Labels say what you'd see rather than what the field is
    * called: "Caption box" described the ASS border style, not the effect.
+   *
+   * The two caption entries answer for the captions that haven't answered for
+   * themselves — each block can overrule them — so their hints say so. A toggle
+   * that looks like it governs every caption and governs only some of them is
+   * worse than one that admits it.
    */
   const LOOK_OPTIONS: { key: keyof ClipRenderConfig; label: string; hint: string }[] = [
     {
       key: 'colorizeCaption',
       label: 'Caption in brand colour',
-      hint: "Captions take the graphics variant's accent colour instead of white."
+      hint: 'Captions take the brand colour instead of white, unless one picks its own.'
     },
     {
       key: 'captionBackground',
       label: 'Caption backdrop',
-      hint: 'Sit captions on a dark panel instead of outlining them. Helps over busy footage.'
+      hint: 'Sit captions on a dark panel instead of outlining them, unless one says otherwise.'
     },
     { key: 'grain', label: 'Film grain', hint: 'Adds texture over the footage.' },
     { key: 'vignette', label: 'Vignette', hint: 'Darkens the corners.' },
@@ -749,6 +806,7 @@
 
   async function resetAdvanced() {
     if (!confirm('Reset every advanced dial to its default?')) return;
+    advancedDraft = {};
     await patchAdvanced({ ...DEFAULT_ADVANCED_CONFIG });
     toast.success('Advanced settings reset');
   }
@@ -1650,20 +1708,6 @@
                 </select>
               </div>
               <div>
-                <label class={labelClass} for="opt-cappos">Caption position</label>
-                <select
-                  id="opt-cappos"
-                  class={fieldClass}
-                  value={config.captionPosition}
-                  onchange={(e) =>
-                    patchConfig('the look', { captionPosition: e.currentTarget.value as never })}
-                >
-                  <option value="bottom">Bottom</option>
-                  <option value="center">Center</option>
-                  <option value="top">Top</option>
-                </select>
-              </div>
-              <div>
                 <label class={labelClass} for="opt-speed">Speed ({config.speed}×)</label>
                 <input
                   id="opt-speed"
@@ -1799,11 +1843,31 @@
                             type="number"
                             step={field.step ?? 1}
                             class={fieldClass}
-                            value={advanced[field.key] as number}
-                            onblur={(e) => {
+                            value={savedAdvanced[field.key] as number}
+                            oninput={(e) => {
                               const raw = e.currentTarget.value;
+                              if (raw === '' || Number.isNaN(Number(raw))) return;
+                              advancedDraft = { ...advancedDraft, [field.key]: Number(raw) };
+                            }}
+                            onblur={async (e) => {
+                              const el = e.currentTarget;
+                              const raw = el.value;
                               if (raw === '') return;
-                              patchAdvanced({ [field.key]: Number(raw) } as never);
+                              const ok = await patchAdvanced({ [field.key]: Number(raw) } as never);
+                              if (!ok) return;
+                              const { [field.key]: _saved, ...rest } = advancedDraft;
+                              advancedDraft = rest;
+                              /*
+                               * The server has the last word on what this says.
+                               *
+                               * `value` is bound to the saved number, so a save
+                               * that quietly kept the old one leaves the
+                               * expression unchanged and the field goes on
+                               * showing what you typed — which is how three
+                               * dials missing from the save schema looked
+                               * exactly like three dials that worked.
+                               */
+                              el.value = String(savedAdvanced[field.key]);
                             }}
                           />
                           {#if field.hint}
@@ -1918,11 +1982,11 @@
           <ClipOverlay
             {captions}
             {config}
-            adv={{ ...DEFAULT_ADVANCED_CONFIG, ...(config.advanced ?? {}) }}
+            adv={advanced}
             at={previewAt}
             graphic={activeGraphic?.thumbnailUrl || activeGraphic?.url || null}
             introSeconds={introShown}
-            accent={config.logoColor || '#8b5cf6'}
+            {accent}
           />
         {/if}
       </div>
@@ -2170,11 +2234,11 @@
           duration={layout.duration}
           clips={timelineClips}
           {captions}
-          defaultAnchor={config.captionPosition === 'top'
-            ? 'top'
-            : config.captionPosition === 'center'
-              ? 'middle'
-              : 'bottom'}
+          anchors={captionAnchors(advanced)}
+          swatches={brandColors}
+          onkeepcolor={keep}
+          inheritedColor={captionColor({}, config, accent)}
+          inheritedBackdrop={captionBackdrop({}, config)}
           oncaptions={setCaptions}
           selection={showing}
           {selectionPlaying}

@@ -67,6 +67,15 @@ export interface ClipAudioTrack {
  *   helps is the lower section, 0.382 — the broadcast lower third, under the
  *   face and over the furniture.
  */
+/**
+ * The three heights, as a share of the frame up from the bottom.
+ *
+ * Defaults, not constants: what "top" should mean depends on what is under it.
+ * Footage that fills the frame wants a caption clear of the platform's own
+ * furniture; a centred square cover leaves a band of black above it that a
+ * caption can have all to itself. So the three are dials, and this is where
+ * they start.
+ */
 export const CAPTION_ANCHORS = [
   // Below the watermark, which sits in the top-left corner: a top-anchored
   // caption is measured from the bottom, so at 0.76 its *bottom* was a quarter
@@ -79,6 +88,60 @@ export const CAPTION_ANCHORS = [
   { id: 'bottom', label: 'Bottom', y: 0.18 }
 ] as const;
 
+export type CaptionAnchorId = (typeof CAPTION_ANCHORS)[number]['id'];
+
+/**
+ * The anchors as this clip has them set.
+ *
+ * One place to ask, so the renderer, the editor's overlay and the timeline's
+ * own icon can't develop different ideas of where "top" is — which they did
+ * once already, from three copies of three numbers.
+ */
+export function captionAnchors(
+  adv: Pick<
+    ClipAdvancedConfig,
+    'captionTopPercent' | 'captionMiddlePercent' | 'captionBottomPercent'
+  >
+): { id: CaptionAnchorId; label: string; y: number }[] {
+  const at: Record<CaptionAnchorId, number> = {
+    top: adv.captionTopPercent / 100,
+    middle: adv.captionMiddlePercent / 100,
+    bottom: adv.captionBottomPercent / 100
+  };
+  return CAPTION_ANCHORS.map((a) => ({ id: a.id, label: a.label, y: at[a.id] ?? a.y }));
+}
+
+/**
+ * Which of the three heights a caption is on.
+ *
+ * Captions written before `anchor` existed carry the height itself. The only
+ * way to set it was to cycle through these same three, so the nearest one is
+ * the one that was meant — matched against the table's own defaults rather than
+ * this clip's dials, because the defaults are what it was written from.
+ */
+export function captionAnchorOf(caption: {
+  anchor?: CaptionAnchorId;
+  y?: number;
+}): CaptionAnchorId {
+  if (caption.anchor) return caption.anchor;
+  if (typeof caption.y !== 'number') return 'bottom';
+
+  let best: (typeof CAPTION_ANCHORS)[number] = CAPTION_ANCHORS[0];
+  for (const a of CAPTION_ANCHORS) {
+    if (Math.abs(a.y - caption.y) < Math.abs(best.y - caption.y)) best = a;
+  }
+  return best.id;
+}
+
+/** Where a caption actually sits, as a fraction of the height up from the bottom. */
+export function captionY(
+  caption: { anchor?: CaptionAnchorId; y?: number },
+  adv: Parameters<typeof captionAnchors>[0]
+): number {
+  const id = captionAnchorOf(caption);
+  return captionAnchors(adv).find((a) => a.id === id)?.y ?? 0.18;
+}
+
 /** A caption shown over the footage between two timestamps (seconds). */
 export interface TimedCaption {
   start: number;
@@ -87,12 +150,42 @@ export interface TimedCaption {
   /** Big and centred instead of lower-third — the `!` prefix in a caption. */
   headline?: boolean;
   /**
-   * How far up the frame it sits, as a fraction of the height from the bottom.
+   * Its own colour, when it wants one.
    *
-   * Absent means "wherever the clip's caption position says", which is what
-   * every caption did before this existed and still does until one is moved.
-   * Set, it wins — a clip can want most of its captions along the bottom and
-   * one of them across the middle.
+   * Absent is the ordinary case and means the clip decides — white, or the
+   * brand colour if `colorizeCaption` is on. A caption sets this when it needs
+   * to be read against a shot the others aren't over, and it holds a colour
+   * rather than a name so that it stays what you picked.
+   */
+  color?: string | null;
+  /**
+   * The panel behind it: a colour, `'none'`, or nothing said.
+   *
+   * A colour rather than a switch, for the same reason the text is one — the
+   * two are read together, and a caption that needs to be legible over a busy
+   * shot usually needs a particular backdrop rather than the idea of one.
+   *
+   * Absent leaves it to the clip. `'none'` is a caption saying it wants no
+   * panel even though the clip says otherwise, which a switch could say and an
+   * ordinary colour could not.
+   */
+  background?: string | null;
+  /**
+   * Which of the three heights it sits at.
+   *
+   * The name of a height rather than the height itself, so that moving `Caption
+   * top` in Advanced moves every caption that is on it. A caption used to store
+   * the number, which meant it was pinned to wherever the dial happened to be
+   * the moment you cycled it, and turning the dial afterwards did nothing.
+   */
+  anchor?: CaptionAnchorId;
+  /**
+   * The older form of the above: the height itself, as a fraction up from the
+   * bottom.
+   *
+   * Only ever written by cycling through the three anchors, so it can be read
+   * back as whichever one it is nearest to. Kept for captions saved before
+   * `anchor` existed; nothing writes it now.
    */
   y?: number;
   /**
@@ -195,7 +288,6 @@ export type ClipRotation = (typeof CLIP_ROTATIONS)[number];
 export type ClipAspect = '9:16' | '1:1' | '16:9';
 export type ClipTone = 'none' | 'bw' | 'warm' | 'cool' | 'vintage';
 export type ClipFill = 'blur' | 'black' | 'crop';
-export type CaptionPosition = 'top' | 'center' | 'bottom';
 
 /**
  * The renderer's numeric internals — everything that used to be a constant in
@@ -267,6 +359,12 @@ export interface ClipAdvancedConfig {
   headlineSizeDivisor: number;
   /** Left/right caption margin in pixels. */
   captionMarginX: number;
+  /** How solid the panel behind a caption is, 0–100. */
+  captionBackdropPercent: number;
+  /** Where each caption anchor sits, as a percentage up from the bottom. */
+  captionTopPercent: number;
+  captionMiddlePercent: number;
+  captionBottomPercent: number;
   /** Font family for on-screen text. Empty picks the best available. */
   fontFamily: string;
 
@@ -331,6 +429,7 @@ export const DEFAULT_ADVANCED_CONFIG: ClipAdvancedConfig = {
   watermarkY: 40,
 
   captionSizeDivisor: 18,
+  captionBackdropPercent: 50,
   /*
    * A headline was 64px against a caption's 60 — six per cent, which nobody can
    * see and which made the aA switch look broken. Half as big again is the
@@ -338,6 +437,9 @@ export const DEFAULT_ADVANCED_CONFIG: ClipAdvancedConfig = {
    */
   headlineSizeDivisor: 12,
   captionMarginX: 80,
+  captionTopPercent: 72,
+  captionMiddlePercent: 38.2,
+  captionBottomPercent: 18,
   fontFamily: '',
 
   blurStrength: 24,
@@ -453,10 +555,29 @@ export const ADVANCED_GROUPS: {
         hint: 'The aA switch. Lower than the one beside it, or big is not big'
       },
       {
+        key: 'captionTopPercent',
+        label: 'Caption top (% up)',
+        step: 1,
+        hint: 'Where the frame icon puts a caption at the top. Higher is higher'
+      },
+      { key: 'captionMiddlePercent', label: 'Caption middle (% up)', step: 0.5 },
+      {
+        key: 'captionBottomPercent',
+        label: 'Caption bottom (% up)',
+        step: 1,
+        hint: 'Below about 15 the platforms start drawing their own captions over it'
+      },
+      {
         key: 'captionMarginX',
         label: 'Caption side margin (px)',
         step: 4,
         hint: 'Where lines wrap, measured in the finished frame'
+      },
+      {
+        key: 'captionBackdropPercent',
+        label: 'Caption backdrop (% solid)',
+        step: 5,
+        hint: 'How much of the picture the panel behind a caption covers up'
       }
     ]
   },
@@ -478,7 +599,6 @@ export interface ClipRenderConfig {
   aspect: ClipAspect;
 
   // Caption look
-  captionPosition: CaptionPosition;
   colorizeCaption: boolean; // caption in the brand accent colour
   captionBackground: boolean; // dark box behind the caption
 
@@ -542,7 +662,6 @@ export interface ClipRenderConfig {
 
 export const DEFAULT_CLIP_CONFIG: ClipRenderConfig = {
   aspect: '9:16',
-  captionPosition: 'bottom',
   colorizeCaption: true,
   captionBackground: false,
   fill: 'blur',
@@ -554,7 +673,9 @@ export const DEFAULT_CLIP_CONFIG: ClipRenderConfig = {
   speed: 1,
   videoFadeOut: false,
   audioFadeIn: false,
-  audioFadeOut: false,
+  // On, because every preset used to turn it on and none of them should have to:
+  // music that stops dead at the last frame sounds like a mistake in any look.
+  audioFadeOut: true,
   intro: true,
   outro: false,
   watermark: true,
@@ -569,6 +690,12 @@ export const DEFAULT_CLIP_CONFIG: ClipRenderConfig = {
  * Applying a preset overwrites only the creative options it names — sources,
  * text, music and anything in Advanced are left alone, so switching presets to
  * compare them doesn't cost you the rest of your setup.
+ *
+ * A preset is about the picture: the grade, the grain, the motion, how one shot
+ * meets the next. It deliberately says nothing about the sound or about whether
+ * there is an outro card, because neither is a look — a fade on the music and a
+ * card on the end are decisions about the clip, and pressing Cinematic to see a
+ * grade shouldn't quietly make either for you.
  */
 export interface ClipPreset {
   id: string;
@@ -588,8 +715,6 @@ export const CLIP_PRESETS: ClipPreset[] = [
       vignette: false,
       zoom: false,
       videoFadeOut: false,
-      audioFadeIn: false,
-      audioFadeOut: true,
       xfade: false,
       captionBackground: false,
       colorizeCaption: true
@@ -598,17 +723,14 @@ export const CLIP_PRESETS: ClipPreset[] = [
   {
     id: 'punchy',
     label: 'Punchy',
-    description: 'Warm and contrasty, captions centred. Built to stop a scroll.',
+    description: 'Warm and contrasty, built to stop a scroll.',
     config: {
       tone: 'warm',
       grain: false,
       vignette: true,
       zoom: true,
       videoFadeOut: false,
-      audioFadeIn: false,
-      audioFadeOut: true,
       xfade: true,
-      captionPosition: 'center',
       captionBackground: false,
       colorizeCaption: true
     }
@@ -623,13 +745,9 @@ export const CLIP_PRESETS: ClipPreset[] = [
       vignette: true,
       zoom: true,
       videoFadeOut: true,
-      audioFadeIn: true,
-      audioFadeOut: true,
       xfade: true,
-      captionPosition: 'bottom',
       captionBackground: false,
-      colorizeCaption: false,
-      outro: true
+      colorizeCaption: false
     }
   },
   {
@@ -642,12 +760,45 @@ export const CLIP_PRESETS: ClipPreset[] = [
       vignette: false,
       zoom: false,
       videoFadeOut: true,
-      audioFadeIn: true,
-      audioFadeOut: true,
       xfade: false,
-      captionPosition: 'bottom',
       captionBackground: true,
       colorizeCaption: false
     }
   }
 ];
+
+/**
+ * What colour a caption is drawn in, here and in the render.
+ *
+ * One answer in one place, asked by the overlay and by `buildAss`: the
+ * caption's own colour if it has one, otherwise the clip's choice between the
+ * brand colour and white.
+ */
+export function captionColor(
+  caption: { color?: string | null },
+  config: { colorizeCaption?: boolean },
+  accent: string
+): string {
+  return caption.color || (config.colorizeCaption ? accent : '#ffffff');
+}
+
+/** A caption asking for no panel at all, as against not having been asked. */
+export const NO_BACKDROP = 'none';
+
+/**
+ * What colour the panel behind a caption is, or `null` for no panel.
+ *
+ * One answer for the overlay and the render. The caption's own if it gave one,
+ * otherwise the clip's switch, which means black — the neutral scrim it has
+ * always drawn. How solid that panel is belongs to the clip either way, since
+ * it is about legibility rather than about this caption.
+ */
+export function captionBackdrop(
+  caption: { background?: string | null },
+  config: { captionBackground?: boolean }
+): string | null {
+  const own = caption.background;
+  if (own === NO_BACKDROP) return null;
+  if (own) return own;
+  return config.captionBackground ? '#000000' : null;
+}

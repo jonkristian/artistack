@@ -20,10 +20,29 @@
    * than a second copy of it.
    */
   import { beginDragGesture } from '$lib/utils/drag';
+  import { slide } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
   import TimelineMinimap from './TimelineMinimap.svelte';
   import { STRIP_PX_PER_SECOND } from '$lib/clips/strip';
   import { secs, tidy } from '$lib/clips/time';
-  import { CAPTION_ANCHORS } from '$lib/clips/types';
+  import { captionAnchorOf, NO_BACKDROP } from '$lib/clips/types';
+  import CaptionDialog from './CaptionDialog.svelte';
+  import TrackDialog from './TrackDialog.svelte';
+  import {
+    Icon,
+    Play,
+    Pause,
+    SpeakerWave,
+    SpeakerXMark,
+    MusicalNote,
+    Cog6Tooth,
+    AdjustmentsHorizontal,
+    Swatch,
+    XMark
+  } from 'svelte-hero-icons';
+  import { insertAtCursor } from '$lib/utils/text';
+  import { ColorWheel } from '$lib/components/ui';
+  import type { CaptionAnchorId } from '$lib/clips/types';
   import type { ClipAudioTrack, TimedCaption } from '$lib/clips/types';
   import type { LayoutBlock } from '$lib/clips/layout';
 
@@ -77,8 +96,19 @@
     captions: TimedCaption[];
     /** Committed on release, not during the drag — one write per gesture. */
     oncaptions: (next: TimedCaption[]) => void;
-    /** Where a caption sits when it hasn't been given a height of its own. */
-    defaultAnchor: (typeof CAPTION_ANCHORS)[number]['id'];
+    /**
+     * The three heights as this clip has them set, so the icon on a block shows
+     * where a caption will actually land rather than where it would by default.
+     */
+    anchors: { id: CaptionAnchorId; label: string; y: number }[];
+    /** The colours kept in Appearance, offered on the caption picker. */
+    swatches?: string[];
+    /** Puts a colour on that shelf, or takes it off. */
+    onkeepcolor?: (color: string) => void;
+    /** What a caption is drawn in when it hasn't picked a colour of its own. */
+    inheritedColor?: string;
+    /** The panel colour a caption gets when it hasn't picked one; null for none. */
+    inheritedBackdrop?: string | null;
     tracks: TimelineTrack[];
     onaudio: (
       id: number,
@@ -148,7 +178,11 @@
     duration,
     clips,
     captions,
-    defaultAnchor,
+    anchors,
+    swatches = [],
+    onkeepcolor,
+    inheritedColor = '#ffffff',
+    inheritedBackdrop = null,
     oncaptions,
     tracks,
     onaudio,
@@ -184,7 +218,28 @@
    * footage. Captions and beds carry a word and a number, which is what a line
    * of text is for, so they give up the room the clips need.
    */
-  const LANE_HEIGHTS = { clip: 58, caption: 34, audio: 44 } as const;
+  /**
+   * Where a caption lands before anyone moves it.
+   *
+   * There was a clip-wide caption position beside the aspect and the tone that
+   * decided this, and it read as the setting for where captions go — but a
+   * caption you had touched carried its own height and ignored it, so the two
+   * disagreed and the visible one lost. The block is the control now, and this
+   * is only its starting point.
+   */
+  const DEFAULT_ANCHOR: CaptionAnchorId = 'bottom';
+
+  /*
+   * Two heights, not three, and close enough together to read as a grid.
+   *
+   * A caption and a bed are both a line of text on a coloured bar, so they are
+   * the same. Footage is a picture, and a picture wants the room — but the gap
+   * used to be 58 against 34, which with one type size on all of them looked
+   * like a mistake in the tall lane rather than a photograph in it. Fourteen
+   * pixels says "this one has a picture in it"; twenty-four said "these are
+   * different kinds of thing".
+   */
+  const LANE_HEIGHTS = { clip: 52, caption: 38, audio: 38 } as const;
   const LANE_GAP = 5;
   /** Above the first lane and below the last, so nothing sits on the edge. */
   const LANE_INSET = 6;
@@ -695,30 +750,68 @@
   const MIN_BLOCK_PX = 30;
 
   /**
-   * Which anchor a caption is actually sitting at.
+   * The narrowest a caption block gets, which is wider than the rest.
    *
-   * Falls back to the clip's own caption position, so the control shows where
-   * the line really is rather than an empty state — a caption nobody has moved
-   * is still somewhere.
+   * A caption is the one block with something on it at every width — the cog,
+   * and the handles either side of it. Thirty pixels can't hold them, and a
+   * button drawn outside the box it belongs to looks like a rendering fault
+   * rather than a short caption.
+   */
+  const MIN_CAPTION_PX = 56;
+
+  /**
+   * Which anchor a caption is on, as a position in the cycle.
+   *
+   * A caption that has never been moved is on the default one, so the icon
+   * shows where the line really is rather than an empty state.
    */
   function anchorOf(caption: TimedCaption): number {
-    if (typeof caption.y !== 'number') {
-      return CAPTION_ANCHORS.findIndex((a) => a.id === defaultAnchor);
-    }
-    let best = 0;
-    for (let i = 1; i < CAPTION_ANCHORS.length; i += 1) {
-      if (
-        Math.abs(CAPTION_ANCHORS[i].y - caption.y) < Math.abs(CAPTION_ANCHORS[best].y - caption.y)
-      )
-        best = i;
-    }
-    return best;
+    const at = anchors.findIndex((a) => a.id === captionAnchorOf(caption));
+    return at === -1 ? anchors.findIndex((a) => a.id === DEFAULT_ANCHOR) : at;
   }
 
-  /** Top, middle, bottom, round again. Three places is a cycle, not a menu. */
+  /*
+   * How a line break looks while you are typing it.
+   *
+   * A caption is stored with a real newline in it, which is what the render
+   * wants and what the preview draws — but the field on a block is an
+   * `<input>`, and an input cannot hold one at all. So the break is shown as a
+   * character on the way in and turned back on the way out. Shift+Enter puts
+   * one in, and typing the bar does the same thing, which is how someone who
+   * never hears about Shift+Enter finds it anyway.
+   *
+   * A pipe because it looks like what it does, and because nobody has ever
+   * wanted one in a caption.
+   */
+  /*
+   * One size and one weight for every button on a block.
+   *
+   * They were set one at a time as each was drawn — 17 here, 19 there, four
+   * different stroke widths — which is invisible while you write it and the
+   * first thing you see in a row of five.
+   *
+   * 1.5 because that is what Heroicons' outline set draws at, and the icons
+   * this file draws itself have to sit beside the ones it imports. At 2 they
+   * were quietly bolder than their neighbours, which reads as a different size
+   * rather than a different weight.
+   */
+  const ICON = 17;
+  const STROKE = 1.5;
+
+  const BREAK = '|';
+  const typed = (text: string) => text.replace(/\n/g, BREAK);
+  const written = (text: string) => text.replace(/\|/g, '\n');
+
+  /**
+   * Top, middle, bottom, round again. Three places is a cycle, not a menu.
+   *
+   * Stores the anchor's name, not its height — the height belongs to the dial
+   * in Advanced, and a caption that had copied the number stopped following it.
+   * The old `y` goes with it, so nothing is left behind to disagree.
+   */
   function cycleAnchor(index: number) {
-    const next = CAPTION_ANCHORS[(anchorOf(captions[index]) + 1) % CAPTION_ANCHORS.length];
-    oncaptions(captions.map((c, i) => (i === index ? { ...c, y: next.y } : c)));
+    const next = anchors[(anchorOf(captions[index]) + 1) % anchors.length];
+    oncaptions(captions.map((c, i) => (i === index ? { ...c, anchor: next.id, y: undefined } : c)));
   }
 
   /**
@@ -739,6 +832,93 @@
    * text field in the same sense that a keyhole is a window.
    */
   const roomToType = (span: Span) => (span.end - span.start) * pxPerSecond >= 170;
+
+  /**
+   * Whether a block can carry its own controls, or has to hand them to a dialog.
+   *
+   * One line, not a sequence of them. Dropping the buttons one at a time as a
+   * block narrows sounds tidier and isn't: there is no order in which the last
+   * one standing is the one you wanted, and a band where the colour had gone
+   * but the cog that holds it hadn't arrived yet is a caption you cannot colour
+   * at all. Five buttons in forty pixels didn't shrink to fit either — they
+   * spilled out over whatever was beside them, so a short caption looked like a
+   * broken long one.
+   *
+   * A block a second and a half long at a zoom that shows the whole clip is
+   * normal, not an edge case, so the dialog is a real place rather than a
+   * fallback — and zooming in still brings the buttons back.
+   *
+   * The numbers are measured, not guessed. Everything on a block is 32 wide
+   * with its margin, the trim handles are 8 each, and a shot's thumbnail is 48:
+   * a caption open is a grip, four tools and the button that opened them, which
+   * is 208 before a single letter is drawn. Guessed at 130 they didn't shrink
+   * to fit, they hung off the end — which is why blocks looked like their
+   * background had stopped short of their buttons.
+   */
+  /**
+   * How the tools come and go.
+   *
+   * Sideways, because that is the direction they take up room in: a group
+   * appearing at full width shoves the label out of the way in one frame, and
+   * the eye reads that as the block changing rather than as tools arriving.
+   * Short enough not to be a wait — this happens every time you look at a
+   * block, not once.
+   */
+  const SLIDE = { axis: 'x' as const, duration: 160, easing: cubicOut };
+
+  /*
+   * How a time is written on a block, wherever it is written.
+   *
+   * One value, because a bed's times and a caption's are the same kind of fact
+   * and were coming out at three different strengths — 45, 70, and full where a
+   * block had no name to compete with. Dimmer than the name it sits beside, so
+   * the eye lands on the words first, but only just: at 70 they were reading as
+   * disabled rather than as secondary.
+   */
+  const TIME = 'shrink-0 tabular-nums opacity-85';
+  /** And the rarer question beside it — which part of the file this is. */
+  const RANGE = 'shrink-0 tabular-nums opacity-60';
+
+  const TOOL_PX = 32;
+  const TRIMS_PX = 16;
+  const CHROME_PX = {
+    clip: TRIMS_PX + 48 + 3 * TOOL_PX,
+    caption: TRIMS_PX + 6 * TOOL_PX,
+    audio: TRIMS_PX + 6 * TOOL_PX
+  } as const;
+
+  /** Room for the tools and for enough of the block's name to know what it is. */
+  const roomForTools = (kind: keyof typeof CHROME_PX, span: Span) =>
+    (span.end - span.start) * pxPerSecond >= CHROME_PX[kind] + 60;
+
+  /**
+   * Which block has its tools out, if any.
+   *
+   * One at a time, deliberately. The strip's job is to show a whole edit at
+   * once, and five blocks with their settings open is the crowded row this was
+   * meant to get rid of. Opening one puts the last one away.
+   */
+  let tools = $state<{ kind: 'clip' | 'caption' | 'audio'; key: number } | null>(null);
+  const toolsOut = (kind: 'clip' | 'caption' | 'audio', key: number) =>
+    tools?.kind === kind && tools.key === key;
+
+  /**
+   * The button every block ends with.
+   *
+   * Slides the tools out where there is room for them, and opens the dialog
+   * where there isn't — the same gesture either way, so nobody has to know
+   * which of the two they are about to get.
+   */
+  function toggleTools(kind: 'clip' | 'caption' | 'audio', key: number, span: Span) {
+    if (!roomForTools(kind, span)) {
+      opened = { kind, key };
+      return;
+    }
+    tools = toolsOut(kind, key) ? null : { kind, key };
+  }
+
+  /** The block whose dialog is open, when the block itself had no room. */
+  let opened = $state<{ kind: 'clip' | 'caption' | 'audio'; key: number } | null>(null);
 
   /** Where a pointer is on the strip, in seconds. */
   function secondsAt(clientX: number): number {
@@ -1013,6 +1193,16 @@
   }
 
   function addCaptionHere(e: MouseEvent) {
+    /*
+     * Empty strip only.
+     *
+     * The handler sits on the lane so that a double-click anywhere free makes a
+     * caption there, and a click inside a block reaches it too — double-clicking
+     * a caption's own field to select the word you'd mistyped wrote a second
+     * caption underneath it.
+     */
+    if ((e.target as HTMLElement | null)?.closest('[data-block]')) return;
+
     const start = snap(secondsAt(e.clientX));
     const end = snap(Math.min(canvas, start + newCaptionLength()));
     if (end - start < MIN_SPAN) return;
@@ -1698,13 +1888,11 @@
        words on a pale peak on a mid-green block is three similar tones fighting,
        and the one that loses is the name. Costs nothing on a caption, which has
        nothing behind it. -->
-  <span
-    class="flex h-full min-w-0 flex-1 items-center gap-1.5 px-1 [text-shadow:0_1px_2px_rgb(0_0_0_/_0.7)]"
-  >
+  <span class="flex h-full min-w-0 flex-1 items-center gap-1.5 px-1">
     {#if roomy}
       <span class="min-w-0 flex-1 truncate text-left">{label}</span>
     {/if}
-    <span class="min-w-0 flex-1 truncate text-right tabular-nums {roomy ? 'opacity-70' : ''}">
+    <span class="min-w-0 flex-1 truncate text-right {roomy ? TIME : 'tabular-nums'}">
       {secs(at.start)}–{secs(at.end)}
     </span>
   </span>
@@ -1781,15 +1969,9 @@
     }}
     title={running ? `Pause ${label}` : `Play ${label} on its own`}
     aria-label={running ? `Pause ${label}` : `Play ${label} on its own`}
-    class="my-0.5 ml-0.5 flex w-6 shrink-0 items-center justify-center self-stretch rounded bg-white/10 transition-colors hover:bg-white/25"
+    class="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded bg-white/10 transition-colors hover:bg-white/25"
   >
-    <svg class="h-3 w-3" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
-      {#if running}
-        <path d="M3 1.5h2.2v9H3zM6.8 1.5H9v9H6.8z" />
-      {:else}
-        <path d="M3 1.5v9l7-4.5-7-4.5z" />
-      {/if}
-    </svg>
+    <Icon src={running ? Pause : Play} size={`${ICON}`} />
   </button>
 {/snippet}
 
@@ -1867,8 +2049,14 @@
         {@const win = clipWindow(clip, at)}
         <!-- Only leave room under the contents when there is a rail to leave it
            for. An untrimmed block has nothing to slip and draws none, and the
-           gap where one would have been read as a block sitting too high. -->
-        {@const foot = railed(win, clip.length) ? 'mb-2.5' : 'mb-1'}
+           gap where one would have been read as a block sitting too high.
+
+           Held by the block rather than by the thumbnail, which is how the bed
+           lane has always done it. The thumbnail used to carry the whole margin
+           on its own, so it cleared the rail and the label and the buttons
+           beside it did not — they went on centring themselves against the full
+           height and sat low against everything else on the block. -->
+        {@const rail = railed(win, clip.length) ? 8 : 0}
         {@const running =
           selectionPlaying && selection?.kind === 'clip' && selection.id === clip.id}
         <!-- What is playing, which is the one thing the old contact sheet
@@ -1879,7 +2067,8 @@
            one in doesn't leave a gap: everything after it moves up, which is
            what a sequence means and what the render does. -->
         <div
-          class="absolute flex items-center overflow-hidden rounded border border-gray-500/70 bg-gray-700/70 text-[10px] text-gray-200 {drag?.kind ===
+          data-block
+          class="lane-label absolute flex items-center overflow-hidden rounded border border-gray-500/70 bg-gray-700/70 text-[12px] {drag?.kind ===
             'clip' && drag.key === clip.id
             ? 'ring-2 ring-gray-300'
             : selection?.kind === 'clip' && selection.id === clip.id
@@ -1889,7 +2078,7 @@
             at.end - at.start
           )}; min-width: {MIN_BLOCK_PX}px; top: {laneTop(
             drag?.kind === 'clip' && drag.key === clip.id ? drag.lane : clip.lane
-          )}px; height: {LANE_HEIGHTS.clip}px"
+          )}px; height: {LANE_HEIGHTS.clip}px; padding-bottom: {rail}px"
           title="{clip.label} · {secs(at.start)}–{secs(at.end)}{clip.from
             ? ` · plays from ${secs(clip.from)}s`
             : ''}"
@@ -1908,7 +2097,7 @@
              One is smaller, reads faster, and gives the thumbnail the height it
              wanted — a frame the size of a line of text says which colour the
              shot is and nothing else. -->
-          <div class="relative mt-1 {foot} ml-1 w-11 shrink-0 self-stretch">
+          <div class="relative my-1 ml-1 w-11 shrink-0 self-stretch">
             {#if clip.poster}
               <img src={clip.poster} alt="" class="h-full w-full rounded object-cover" />
             {:else}
@@ -1928,13 +2117,7 @@
               <span
                 class="flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white"
               >
-                <svg class="h-2.5 w-2.5" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
-                  {#if running}
-                    <path d="M3 1.5h2.2v9H3zM6.8 1.5H9v9H6.8z" />
-                  {:else}
-                    <path d="M3.5 1.5v9l7-4.5-7-4.5z" />
-                  {/if}
-                </svg>
+                <Icon src={running ? Pause : Play} size="12" />
               </span>
             </button>
           </div>
@@ -1952,83 +2135,69 @@
                  question — which part of the footage this is — and only shown
                  when something was cut, since 0 to the end is the file. -->
               {#if clip.to - clip.from < clip.length - 0.05}
-                <span class="shrink-0 tabular-nums opacity-45">
+                <span class={RANGE}>
                   {secs(clip.from)}–{secs(clip.to)}
                 </span>
               {/if}
-              <span class="shrink-0 tabular-nums opacity-70">{secs(at.end - at.start)}s</span>
+              <span class={TIME}>{secs(at.end - at.start)}s</span>
             {/if}
           </button>
-          <!-- Said outright, the way a caption says its own.
+          <!-- The tools, out only when asked for.
+
+               They used to sit on every block at every width, which is five
+               things to look past on a strip you are reading, and a row of
+               them on a short block that hung off its own end. -->
+          {#if toolsOut('clip', clip.id)}
+            <div class="flex items-center" transition:slide={SLIDE}>
+              <!-- Said outright, the way a caption says its own.
 
                A single menu was fewer pixels and one more press for everything
                behind it, while a caption right underneath showed its whole set
                as icons. Two rows of blocks answering the same question two
                different ways is worse than either answer. -->
-          <button
-            type="button"
-            onpointerdown={(e) => e.stopPropagation()}
-            onclick={() => onmute(clip.id, !clip.muted)}
-            title={clip.muted ? 'Its own sound is off' : 'Its own sound is on'}
-            aria-label="{clip.muted ? 'Unmute' : 'Mute'} {clip.label}"
-            aria-pressed={clip.muted}
-            class="ml-2 flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors {clip.muted
-              ? 'bg-white text-gray-900 shadow-sm'
-              : 'bg-black/40 text-white/55 hover:bg-black/60 hover:text-white'}"
-          >
-            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M11 5 6.5 9H3v6h3.5L11 19V5z" />
-              {#if clip.muted}
-                <path
-                  d="M15.5 9.5l5 5m0-5l-5 5"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                />
-              {:else}
-                <path
-                  d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                />
-              {/if}
-            </svg>
-          </button>
-          <button
-            type="button"
-            onpointerdown={(e) => e.stopPropagation()}
-            onclick={() => onremove('clip', clip.id)}
-            title="Take it off the timeline"
-            aria-label="Remove {clip.label}"
-            class="mr-1 ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded bg-black/35 text-white transition-colors hover:bg-red-500/60"
-          >
-            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-          <button
-            type="button"
-            aria-label="Trim the end of {clip.label}"
-            onpointerdown={(e) => startDrag(e, 'clip', clip.id, 'end', clipSpan(clip), clip.lane)}
-            class="h-full w-2 shrink-0 cursor-ew-resize rounded-r bg-gray-400/70 hover:bg-gray-200"
-          ></button>
+              <button
+                type="button"
+                onpointerdown={(e) => e.stopPropagation()}
+                onclick={() => onmute(clip.id, !clip.muted)}
+                title={clip.muted ? 'Its own sound is off' : 'Its own sound is on'}
+                aria-label="{clip.muted ? 'Unmute' : 'Mute'} {clip.label}"
+                aria-pressed={clip.muted}
+                class="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors {clip.muted
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'bg-black/40 text-white/55 hover:bg-black/60 hover:text-white'}"
+              >
+                <Icon src={clip.muted ? SpeakerXMark : SpeakerWave} size={`${ICON}`} />
+              </button>
+              <button
+                type="button"
+                onpointerdown={(e) => e.stopPropagation()}
+                onclick={() => onremove('clip', clip.id)}
+                title="Take it off the timeline"
+                aria-label="Remove {clip.label}"
+                class="mr-1 ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded bg-black/35 text-white transition-colors hover:bg-red-500/60"
+              >
+                <Icon src={XMark} size={`${ICON}`} />
+              </button>
+              <button
+                type="button"
+                aria-label="Trim the end of {clip.label}"
+                onpointerdown={(e) =>
+                  startDrag(e, 'clip', clip.id, 'end', clipSpan(clip), clip.lane)}
+                class="h-full w-2 shrink-0 cursor-ew-resize rounded-r bg-gray-400/70 hover:bg-gray-200"
+              ></button>
+            </div>
+          {/if}
+          {@render toolsButton('clip', clip.id, clipSpan(clip), clip.label)}
           {@render extent('clip', clip.id, win.from, win.to, clip.length, 'bg-gray-200/80')}
         </div>
       {/each}
 
       {#each captions as caption, index (index)}
         {@const at = shown('caption', index, captionSpan(caption))}
-        {@const anchor = CAPTION_ANCHORS[anchorOf(caption)]}
+        {@const anchor = anchors[anchorOf(caption)]}
         <div
-          class="absolute flex items-center rounded border border-violet-400/70 bg-violet-600/80 text-[10px] text-white shadow {drag?.kind ===
+          data-block
+          class="lane-label absolute flex items-center rounded border border-violet-400/70 bg-violet-600/80 text-[12px] shadow {drag?.kind ===
             'caption' && drag.key === index
             ? 'ring-2 ring-violet-300'
             : pickedCaption === index
@@ -2036,7 +2205,7 @@
               : ''}"
           style="left: {percent(at.start)}; width: {percent(
             at.end - at.start
-          )}; min-width: {MIN_BLOCK_PX}px; top: {laneTop(
+          )}; min-width: {MIN_CAPTION_PX}px; top: {laneTop(
             CAPTIONS_AT +
               (drag?.kind === 'caption' && drag.key === index ? drag.lane : (caption.lane ?? 0))
           )}px; height: {LANE_HEIGHTS.caption}px"
@@ -2069,36 +2238,56 @@
               aria-label="Move caption {index + 1}"
               onpointerdown={(e) =>
                 startDrag(e, 'caption', index, 'move', captionSpan(caption), caption.lane ?? 0)}
-              class="my-0.5 ml-0.5 flex w-5 shrink-0 cursor-grab items-center justify-center self-stretch rounded bg-black/20 transition-colors hover:bg-black/40 active:cursor-grabbing"
+              class="ml-1 flex h-7 w-7 shrink-0 cursor-grab items-center justify-center rounded bg-black/20 transition-colors hover:bg-black/40 active:cursor-grabbing"
             >
-              <svg class="h-3 w-3 text-white/70" viewBox="0 0 12 12" fill="currentColor">
-                <circle cx="4" cy="3" r="1" /><circle cx="8" cy="3" r="1" />
-                <circle cx="4" cy="6" r="1" /><circle cx="8" cy="6" r="1" />
-                <circle cx="4" cy="9" r="1" /><circle cx="8" cy="9" r="1" />
+              <!-- Six dots, drawn here because no icon set has a grip and the
+                   nearest thing in this one — two stacked lines — reads as an
+                   equals sign. Filled dots on the same 24 box as everything
+                   else, at a size that leaves the handle some air: it is the
+                   quietest thing on the block and should look it. -->
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                class="text-white/60"
+                aria-hidden="true"
+              >
+                <circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" />
+                <circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" />
+                <circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" />
               </svg>
             </button>
             <input
-              value={caption.text}
+              value={typed(caption.text)}
               placeholder="Say something"
               aria-label="Caption {index + 1} text"
+              title="{typed(caption.text) || 'Say something'} · {secs(at.start)}–{secs(at.end)}"
               data-caption={index}
               onpointerdown={(e) => e.stopPropagation()}
               onfocus={() => (pickedCaption = index)}
               onkeydown={(e) => {
-                // Enter is "done", not a newline: a caption is one line here.
-                if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur();
+                const field = e.currentTarget as HTMLInputElement;
+                // Enter is "done"; with shift it's a second line.
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (e.shiftKey) insertAtCursor(field, BREAK);
+                  else field.blur();
+                }
                 e.stopPropagation();
               }}
               onchange={(e) =>
                 oncaptions(
                   captions.map((c, i) =>
-                    i === index ? { ...c, text: (e.currentTarget as HTMLInputElement).value } : c
+                    i === index
+                      ? { ...c, text: written((e.currentTarget as HTMLInputElement).value) }
+                      : c
                   )
                 )}
-              class="h-full min-w-0 flex-1 bg-transparent px-1 text-[11px] text-white placeholder:text-white/40 focus:outline-none"
+              class="h-full min-w-0 flex-1 bg-transparent px-1 text-[12px] text-white placeholder:text-white/40 focus:outline-none"
             />
             {#if (at.end - at.start) * pxPerSecond >= 260}
-              <span class="shrink-0 px-1 tabular-nums opacity-60">
+              <span class="{TIME} px-1">
                 {secs(at.start)}–{secs(at.end)}
               </span>
             {/if}
@@ -2106,12 +2295,12 @@
             <button
               type="button"
               aria-label="Move caption {index + 1}"
-              title={caption.text || 'Empty caption'}
+              title="{typed(caption.text) || 'Empty caption'} · {secs(at.start)}–{secs(at.end)}"
               onpointerdown={(e) =>
                 startDrag(e, 'caption', index, 'move', captionSpan(caption), caption.lane ?? 0)}
               class="flex h-full min-w-0 flex-1 cursor-grab items-center active:cursor-grabbing"
             >
-              {@render blockText(caption.text || '—', at)}
+              {@render blockText(typed(caption.text) || '—', at)}
             </button>
           {/if}
           <!-- Where it sits in the picture, on the block rather than in a lane
@@ -2119,82 +2308,169 @@
                third of the strip's height to say it. The icon is the frame with
                the line drawn where the caption will be, so it reports as well
                as sets. -->
-          <button
-            type="button"
-            onpointerdown={(e) => e.stopPropagation()}
-            onclick={() => cycleAnchor(index)}
-            title="Caption sits at the {anchor.label.toLowerCase()} — click to move it"
-            aria-label="Caption {index + 1} sits at the {anchor.label.toLowerCase()}"
-            class="my-0.5 mr-0.5 flex w-7 shrink-0 items-center justify-center self-stretch rounded bg-black/40 text-white/80 transition-colors hover:bg-black/60 hover:text-white"
-          >
-            <svg class="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor">
-              <rect
-                x="1.5"
-                y="1.5"
-                width="13"
-                height="13"
-                rx="2"
-                stroke-width="1.2"
-                opacity="0.5"
-              />
-              <line
-                x1="4"
-                x2="12"
-                y1={anchor.id === 'top' ? 5 : anchor.id === 'middle' ? 8 : 11}
-                y2={anchor.id === 'top' ? 5 : anchor.id === 'middle' ? 8 : 11}
-                stroke-width="2"
-                stroke-linecap="round"
-              />
-            </svg>
-          </button>
-          <!-- Small or big, next to where it sits: the two things about a caption
+          {#if toolsOut('caption', index)}
+            <div class="flex items-center" transition:slide={SLIDE}>
+              <button
+                type="button"
+                onpointerdown={(e) => e.stopPropagation()}
+                onclick={() => cycleAnchor(index)}
+                title="Caption sits at the {anchor.label.toLowerCase()} — click to move it"
+                aria-label="Caption {index + 1} sits at the {anchor.label.toLowerCase()}"
+                class="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded bg-black/40 text-white transition-colors hover:bg-black/60"
+              >
+                <!-- Drawn here rather than taken from the set, because none of
+                   them is this: a frame with the caption's line in it, where the
+                   caption's line will be. Lucide's align icons say "aligned to
+                   the top" in the abstract; this says where the words go, which
+                   is the question being asked. On the library's grid all the
+                   same — 24, stroke 2, round ends — so it sits in the row
+                   without announcing itself. -->
+                <svg
+                  width={ICON}
+                  height={ICON}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width={STROKE}
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="2.75" y="2.75" width="18.5" height="18.5" rx="2.5" />
+                  <line
+                    x1="7"
+                    x2="17"
+                    y1={anchor.id === 'top' ? 7.5 : anchor.id === 'middle' ? 12 : 16.5}
+                    y2={anchor.id === 'top' ? 7.5 : anchor.id === 'middle' ? 12 : 16.5}
+                  />
+                </svg>
+              </button>
+              <!-- What colour it's in.
+
+             The swatch shows the colour the caption is actually drawn in, its
+             own or the clip's, so a row of blocks reads as the row of captions
+             does. Auto in the picker gives the clip its say back — without it,
+             touching the colour once would cut that caption off from the brand
+             for good.
+
+             `stopPropagation` on the way in because the picker sits inside a
+             block you can drag: without it, reaching for the wheel would pick
+             the caption up and slide it. -->
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div class="contents" onpointerdown={(e) => e.stopPropagation()}>
+                <ColorWheel
+                  compact
+                  value={caption.color || inheritedColor}
+                  {swatches}
+                  onkeep={onkeepcolor}
+                  trigger={textColour}
+                  onchange={(c) =>
+                    oncaptions(
+                      captions.map((cap, i) => (i === index ? { ...cap, color: c } : cap))
+                    )}
+                  actions={[
+                    {
+                      label: 'Auto',
+                      onclick: () =>
+                        oncaptions(
+                          captions.map((cap, i) => (i === index ? { ...cap, color: null } : cap))
+                        )
+                    }
+                  ]}
+                  rootClass="flex items-center"
+                  triggerClass="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded bg-black/40 transition-colors hover:bg-black/60"
+                />
+              </div>
+
+              <!-- And the panel behind it, which is a colour with the same three
+               ways out: this one, the clip's, or none at all.
+
+               A second wheel rather than a switch because the two are read
+               together — a caption is legible or not by what its text and its
+               panel do to each other, and picking one while the other is a
+               toggle somewhere else is how you end up with yellow on yellow. -->
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div class="contents" onpointerdown={(e) => e.stopPropagation()}>
+                <ColorWheel
+                  compact
+                  value={caption.background ?? inheritedBackdrop ?? 'none'}
+                  {swatches}
+                  onkeep={onkeepcolor}
+                  trigger={panelColour}
+                  onchange={(c) =>
+                    oncaptions(
+                      captions.map((cap, i) => (i === index ? { ...cap, background: c } : cap))
+                    )}
+                  actions={[
+                    {
+                      label: 'None',
+                      onclick: () =>
+                        oncaptions(
+                          captions.map((cap, i) =>
+                            i === index ? { ...cap, background: NO_BACKDROP } : cap
+                          )
+                        )
+                    },
+                    {
+                      label: 'Auto',
+                      onclick: () =>
+                        oncaptions(
+                          captions.map((cap, i) =>
+                            i === index ? { ...cap, background: null } : cap
+                          )
+                        )
+                    }
+                  ]}
+                  rootClass="flex items-center"
+                  triggerClass="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded bg-black/40 text-white transition-colors hover:bg-black/60"
+                />
+              </div>
+              <!-- Small or big, next to where it sits: the two things about a caption
              that are decided by looking at the picture rather than by reading
              the words. Lit when it's the big one. -->
-          <button
-            type="button"
-            onpointerdown={(e) => e.stopPropagation()}
-            onclick={() =>
-              oncaptions(
-                captions.map((c, i) => (i === index ? { ...c, headline: !c.headline } : c))
-              )}
-            title={caption.headline ? 'Big — click for normal size' : 'Normal — click for big'}
-            aria-label="Caption {index + 1} size"
-            aria-pressed={Boolean(caption.headline)}
-            class="my-0.5 mr-0.5 flex w-7 shrink-0 items-center justify-center self-stretch rounded transition-colors {caption.headline
-              ? 'bg-white text-gray-900 shadow-sm'
-              : 'bg-black/40 text-white/55 hover:bg-black/60 hover:text-white'}"
-          >
-            <span class="leading-none font-semibold tracking-tight">
-              <span class="text-[8px]">a</span><span class="text-[12px]">A</span>
-            </span>
-          </button>
-          <!-- Removing it, said outright.
+              <button
+                type="button"
+                onpointerdown={(e) => e.stopPropagation()}
+                onclick={() =>
+                  oncaptions(
+                    captions.map((c, i) => (i === index ? { ...c, headline: !c.headline } : c))
+                  )}
+                title={caption.headline ? 'Big — click for normal size' : 'Normal — click for big'}
+                aria-label="Caption {index + 1} size"
+                aria-pressed={Boolean(caption.headline)}
+                class="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors {caption.headline
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'bg-black/40 text-white/55 hover:bg-black/60 hover:text-white'}"
+              >
+                <!-- No icon set draws "Aa" — heroicons included — and a letter
+                   saying its own size is clearer than anything that would stand
+                   in for it. Sized off ICON so it grows with the row. -->
+                <span class="leading-none font-semibold tracking-tight" style="font-size: {ICON}px">
+                  <span class="text-[0.6em]">a</span><span>A</span>
+                </span>
+              </button>
+              <!-- Removing it, said outright.
 
              Delete on the keyboard only reaches a caption that isn't being
              typed in, and clicking one puts the cursor in it — so the obvious
              gesture and the obvious key pointed at each other. A button on the
              block has neither problem, and is the same answer the rows in Media
              give. -->
-          <button
-            type="button"
-            onpointerdown={(e) => e.stopPropagation()}
-            onclick={() => {
-              pickedCaption = null;
-              oncaptionremove(index);
-            }}
-            title="Remove this caption"
-            aria-label="Remove caption {index + 1}"
-            class="my-0.5 mr-0.5 flex w-7 shrink-0 items-center justify-center self-stretch rounded bg-black/35 text-white transition-colors hover:bg-red-500/60"
-          >
-            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
+              <button
+                type="button"
+                onpointerdown={(e) => e.stopPropagation()}
+                onclick={() => {
+                  pickedCaption = null;
+                  oncaptionremove(index);
+                }}
+                title="Remove this caption"
+                aria-label="Remove caption {index + 1}"
+                class="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded bg-black/35 text-white transition-colors hover:bg-red-500/60"
+              >
+                <Icon src={XMark} size={`${ICON}`} />
+              </button>
+            </div>
+          {/if}
+          {@render toolsButton('caption', index, captionSpan(caption), `caption ${index + 1}`)}
           <button
             type="button"
             aria-label="Caption {index + 1} end"
@@ -2215,7 +2491,8 @@
            now is one in every way that matters: it starts, it runs, it stops.
            The only tell is the colour and the lane it sits in. -->
         <div
-          class="absolute isolate flex items-center overflow-hidden rounded border border-emerald-400/60 bg-emerald-700/75 text-[10px] text-emerald-50 {drag?.kind ===
+          data-block
+          class="lane-label absolute isolate flex items-center overflow-hidden rounded border border-emerald-400/60 bg-emerald-700/75 text-[12px] {drag?.kind ===
             'audio' && drag.key === track.id
             ? 'ring-2 ring-emerald-300'
             : selection?.kind === 'audio' && selection.id === track.id
@@ -2275,71 +2552,68 @@
           >
             {@render blockText(track.label, at)}
           </button>
-          <!-- Fades, ducking and removal, said the way a caption and a clip say
+          {#if toolsOut('audio', track.id)}
+            <div class="flex items-center" transition:slide={SLIDE}>
+              <!-- Fades, ducking and removal, said the way a caption and a clip say
                theirs. A bed has more to say than either, which is exactly why it
                had a menu — but a menu is a place things go to be forgotten, and
                these three are the whole of what a bed does. -->
-          {#each [{ key: 'fadeIn' as const, on: track.fadeIn, label: 'Fade in', d: 'M4 18h16V8z' }, { key: 'fadeOut' as const, on: track.fadeOut, label: 'Fade out', d: 'M4 18h16L4 8z' }] as f, i (f.key)}
-            <button
-              type="button"
-              onpointerdown={(e) => e.stopPropagation()}
-              onclick={() => onaudio(track.id, { [f.key]: !f.on })}
-              title="{f.label} — {f.on ? 'on' : 'off'}"
-              aria-label="{f.label} for {track.label}"
-              aria-pressed={f.on}
-              class="{i === 0
-                ? 'ml-2'
-                : 'ml-1'} flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors {f.on
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'bg-black/40 text-white/55 hover:bg-black/60 hover:text-white'}"
-            >
-              <svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d={f.d} />
-              </svg>
-            </button>
-          {/each}
-          <button
-            type="button"
-            onpointerdown={(e) => e.stopPropagation()}
-            onclick={() => onaudio(track.id, { duck: !track.duck })}
-            title="Duck under speech — {track.duck ? 'on' : 'off'}"
-            aria-label="Duck {track.label} under speech"
-            aria-pressed={track.duck}
-            class="ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors {track.duck
-              ? 'bg-white text-gray-900 shadow-sm'
-              : 'bg-black/40 text-white/55 hover:bg-black/60 hover:text-white'}"
-          >
-            <!-- A level that dips and comes back, which is what ducking is. -->
-            <svg
-              class="h-3.5 w-3.5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M3 9h5l2.5 7 3-10L16 9h5" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            onpointerdown={(e) => e.stopPropagation()}
-            onclick={() => onremove('audio', track.id)}
-            title="Take it off the timeline"
-            aria-label="Remove {track.label}"
-            class="mr-1 ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded bg-black/35 text-white transition-colors hover:bg-red-500/60"
-          >
-            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
+              {#each [{ key: 'fadeIn' as const, on: track.fadeIn, label: 'Fade in', d: 'M4 18h16V8z' }, { key: 'fadeOut' as const, on: track.fadeOut, label: 'Fade out', d: 'M4 18h16L4 8z' }] as f, i (f.key)}
+                <button
+                  type="button"
+                  onpointerdown={(e) => e.stopPropagation()}
+                  onclick={() => onaudio(track.id, { [f.key]: !f.on })}
+                  title="{f.label} — {f.on ? 'on' : 'off'}"
+                  aria-label="{f.label} for {track.label}"
+                  aria-pressed={f.on}
+                  class="{i === 0
+                    ? 'ml-2'
+                    : 'ml-1'} flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors {f.on
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'bg-black/40 text-white/55 hover:bg-black/60 hover:text-white'}"
+                >
+                  <!-- Kept hand-drawn, like the placement icon: a ramp is what a
+                   fade looks like, and no icon set draws one. Filled rather
+                   than stroked, but on the same box as the rest so the row
+                   stays a row. -->
+                  <svg
+                    width={ICON}
+                    height={ICON}
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path d={f.d} />
+                  </svg>
+                </button>
+              {/each}
+              <button
+                type="button"
+                onpointerdown={(e) => e.stopPropagation()}
+                onclick={() => onaudio(track.id, { duck: !track.duck })}
+                title="Duck under speech — {track.duck ? 'on' : 'off'}"
+                aria-label="Duck {track.label} under speech"
+                aria-pressed={track.duck}
+                class="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors {track.duck
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'bg-black/40 text-white/55 hover:bg-black/60 hover:text-white'}"
+              >
+                <!-- A level that dips and comes back, which is what ducking is. -->
+                <Icon src={MusicalNote} size={`${ICON}`} />
+              </button>
+              <button
+                type="button"
+                onpointerdown={(e) => e.stopPropagation()}
+                onclick={() => onremove('audio', track.id)}
+                title="Take it off the timeline"
+                aria-label="Remove {track.label}"
+                class="mr-1 ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded bg-black/35 text-white transition-colors hover:bg-red-500/60"
+              >
+                <Icon src={XMark} size={`${ICON}`} />
+              </button>
+            </div>
+          {/if}
+          {@render toolsButton('audio', track.id, trackSpan(track), track.label)}
           <button
             type="button"
             aria-label="{track.label} end"
@@ -2395,3 +2669,106 @@
     onscrub={scrubTo}
   />
 </div>
+
+<!-- Outside the strip, so a modal isn't a child of something that pans. -->
+{#if opened?.kind === 'caption' && captions[opened.key]}
+  {@const caption = captions[opened.key]}
+  {@const index = opened.key}
+  <CaptionDialog
+    {caption}
+    {index}
+    {anchors}
+    anchor={anchors[anchorOf(caption)].id}
+    {swatches}
+    {inheritedColor}
+    {inheritedBackdrop}
+    {onkeepcolor}
+    onchange={(patch) => oncaptions(captions.map((c, i) => (i === index ? { ...c, ...patch } : c)))}
+    onremove={() => oncaptionremove(index)}
+    onclose={() => (opened = null)}
+  />
+{/if}
+
+<!-- A shot or a bed, same shell, when their blocks were too small as well. -->
+{#if opened?.kind === 'clip'}
+  {@const clip = clips.find((c) => c.id === opened?.key)}
+  {#if clip}
+    <TrackDialog
+      kind="clip"
+      label={clip.label}
+      muted={clip.muted}
+      onmute={(muted) => onmute(clip.id, muted)}
+      onremove={() => onremove('clip', clip.id)}
+      onclose={() => (opened = null)}
+    />
+  {/if}
+{/if}
+
+{#if opened?.kind === 'audio'}
+  {@const track = tracks.find((t) => t.id === opened?.key)}
+  {#if track}
+    <TrackDialog
+      kind="audio"
+      label={track.label}
+      fadeIn={track.fadeIn}
+      fadeOut={track.fadeOut}
+      duck={track.duck}
+      onaudio={(patch) => onaudio(track.id, patch)}
+      onremove={() => onremove('audio', track.id)}
+      onclose={() => (opened = null)}
+    />
+  {/if}
+{/if}
+
+<!-- Two buttons that say what they open, in the same white as the rest of the
+     row.
+
+     They were drawn in the colours they set for a while, and before that the
+     block itself was. Both are true and neither is legible: a control's job in
+     a row of five is to be found, and a dark caption colour on a dark button is
+     a control you have to hunt for. The colour is shown where you go to change
+     it, which is the moment you are asking about it. -->
+<!-- The one button every block ends with.
+     Where there is room it slides the tools out beside the label; where there
+     isn't, the same press opens the dialog. Lit while its tools are showing,
+     because a row of blocks should say which one you are working on. -->
+{#snippet toolsButton(kind: 'clip' | 'caption' | 'audio', key: number, span: Span, what: string)}
+  <button
+    type="button"
+    onpointerdown={(e) => e.stopPropagation()}
+    onclick={() => toggleTools(kind, key, span)}
+    title={roomForTools(kind, span) ? 'Settings' : 'Settings — opens in a window'}
+    aria-label="Settings for {what}"
+    aria-expanded={toolsOut(kind, key)}
+    class="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors {toolsOut(
+      kind,
+      key
+    )
+      ? 'bg-white text-gray-900 shadow-sm'
+      : 'bg-black/40 text-white hover:bg-black/60'}"
+  >
+    <Icon src={roomForTools(kind, span) ? AdjustmentsHorizontal : Cog6Tooth} size={`${ICON}`} />
+  </button>
+{/snippet}
+
+{#snippet textColour()}
+  <svg
+    width={ICON}
+    height={ICON}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width={STROKE}
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M5.5 16.5 12 4.5l6.5 12" />
+    <path d="M8.25 12h7.5" />
+    <path d="M4 20.5h16" />
+  </svg>
+{/snippet}
+
+{#snippet panelColour()}
+  <Icon src={Swatch} size={`${ICON}`} />
+{/snippet}

@@ -18,7 +18,7 @@ import {
 import { user } from '$lib/server/auth-schema';
 import { auth } from '$lib/server/auth';
 import { getGoogleConfig } from '$lib/server/social-stats';
-import { getSettings } from '$lib/server/settings';
+import { getSettings, getBrandColors } from '$lib/server/settings';
 import { asc, desc, eq, and, ne } from 'drizzle-orm';
 import type { LayoutServerLoad } from './$types';
 
@@ -45,7 +45,8 @@ export const load: LayoutServerLoad = async ({ request }) => {
     allBlocks,
     googleConfig,
     allReleases,
-    allPages
+    allPages,
+    brandColors
   ] = await Promise.all([
     db
       .select()
@@ -103,7 +104,10 @@ export const load: LayoutServerLoad = async ({ request }) => {
      * the draft is built from, and a route fetching its own would shadow it
      * in merged page data.
      */
-    db.select().from(pages).orderBy(asc(pages.position), asc(pages.id))
+    db.select().from(pages).orderBy(asc(pages.position), asc(pages.id)),
+    // The shelf of kept colours. Loaded here because every picker in the admin
+    // offers it, not just the one on the appearance screen.
+    getBrandColors()
   ]);
 
   /*
@@ -127,6 +131,7 @@ export const load: LayoutServerLoad = async ({ request }) => {
     },
     profile: profileData ?? null,
     settings: settingsData ?? null,
+    brandColors: brandColors.colors,
     links: allLinks,
     /*
      * Shows carry their line-up flattened onto them, in running order. The

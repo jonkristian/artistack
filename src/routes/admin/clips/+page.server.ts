@@ -2,11 +2,11 @@ import { redirect } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import { requireFeature } from '$lib/server/guards';
 import { getClipSettings, getClipPublishingSettings } from '$lib/server/settings';
-import { clipProjects, clipSources, clipPosts, media, settings } from '$lib/server/schema';
+import { clipProjects, clipPosts, media, settings } from '$lib/server/schema';
 import { getQueue } from '$lib/server/clip-queue';
 import { user } from '$lib/server/auth-schema';
 import { auth } from '$lib/server/auth';
-import { desc, eq, asc } from 'drizzle-orm';
+import { desc } from 'drizzle-orm';
 import { videoSupported } from '$lib/server/ffmpeg';
 import type { PageServerLoad } from './$types';
 
@@ -30,13 +30,6 @@ export const load: PageServerLoad = async ({ request }) => {
    * it says.
    */
   const projects = await db.select().from(clipProjects).orderBy(desc(clipProjects.createdAt));
-
-  // Only the project/media pairing is needed here: the grid shows a poster and
-  // a source count, not the full editor's worth of rows.
-  const sources = await db
-    .select({ projectId: clipSources.projectId })
-    .from(clipSources)
-    .orderBy(asc(clipSources.position));
 
   const allMedia = await db.select().from(media).orderBy(desc(media.createdAt));
 
@@ -68,7 +61,6 @@ export const load: PageServerLoad = async ({ request }) => {
   return {
     posts,
     projects,
-    sources,
     media: allMedia,
     queue: await getQueue(),
     renderingAvailable: await videoSupported(),

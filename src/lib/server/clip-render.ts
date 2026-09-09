@@ -5,7 +5,10 @@ import { join } from 'path';
 import { runFfmpeg, probeVideo, probeDuration, rasterizeSvg, hasBinary } from './ffmpeg';
 import { DATA_DIR } from './paths';
 import {
-  CAPTION_ANCHORS,
+  captionAnchors,
+  captionBackdrop,
+  captionColor,
+  captionY,
   DEFAULT_CLIP_CONFIG,
   DEFAULT_ADVANCED_CONFIG,
   type ClipRenderConfig,
@@ -499,7 +502,7 @@ interface AssContext {
 /**
  * Builds the .ass subtitle file carrying the timed captions.
  *
- * Two styles share one look — Cap (lower-third, positioned by captionPosition)
+ * Two styles share one look — Cap (lower-third) and Head (big)
  * and Head (big, centred). A caption uses Head when it is flagged as one.
  */
 function buildAss(ctx: AssContext, captions: TimedCaption[]): string {
@@ -509,32 +512,60 @@ function buildAss(ctx: AssContext, captions: TimedCaption[]): string {
   const headSize = Math.round(width / adv.headlineSizeDivisor);
 
   /*
-   * The default position, taken from the same table the anchor button writes.
+   * Where the style puts a caption, before any caption says otherwise.
    *
-   * These used to be their own numbers here — 8% down for top, centred for
-   * middle, 24% up for bottom — measured from three different edges, while a
-   * caption you had anchored carried a `y` measured from the bottom. So an
-   * anchored caption and an unanchored one at the same setting landed in
-   * different places, and moving the anchors did nothing to the default.
-   *
-   * One table, one edge: `\an2`, and a margin up from the bottom.
+   * Every line overrides this with its own `MarginV` and `\an2`, so it is only
+   * the fallback — but it comes from the same table the anchor button writes
+   * to, measured from the same edge. These used to be their own numbers here,
+   * 8% down for top and 24% up for bottom, and an anchored caption and an
+   * unanchored one at the same setting landed in different places.
    */
-  const anchorId =
-    config.captionPosition === 'top'
-      ? 'top'
-      : config.captionPosition === 'center'
-        ? 'middle'
-        : 'bottom';
+  const anchorId = 'bottom';
   const alignment = 2;
-  const marginV = Math.round(height * (CAPTION_ANCHORS.find((a) => a.id === anchorId)?.y ?? 0.18));
+  const marginV = Math.round(
+    height * (captionAnchors(adv).find((a) => a.id === anchorId)?.y ?? 0.18)
+  );
 
+  // What a caption is drawn in unless it carries its own; each line states its
+  // colour anyway, so this is what an empty style would fall back to.
   const primary = config.colorizeCaption ? assColor(accentColor) : '&H00FFFFFF';
 
-  // BorderStyle 3 draws an opaque box behind the text; 1 is outline + shadow.
-  const borderStyle = config.captionBackground ? 3 : 1;
-  const backColor = config.captionBackground ? '&H80000000' : '&H00000000';
-  const outline = config.captionBackground ? 8 : 4;
-  const shadow = config.captionBackground ? 0 : 2;
+  /*
+   * A style per voice per backdrop, because ASS has no inline tag for a panel.
+   *
+   * Colour and height are stated on the line itself, so a caption can differ
+   * from its neighbours without a style of its own. The panel can't be: it is
+   * `BorderStyle`, which lives on the style and nowhere else. So the backdrops
+   * the captions actually ask for are collected first, and each line names the
+   * style for the one it wanted — two clips' worth of captions in one colour
+   * still make one style, and nobody writes styles that go unused.
+   *
+   * BorderStyle 3 draws the panel; 1 is outline and shadow. The heavier outline
+   * is what gives the panel its padding, and the big voice takes one more pixel
+   * of it than the normal one.
+   */
+  const backdrops: (string | null)[] = [];
+  for (const caption of captions) {
+    const backdrop = captionBackdrop(caption, config);
+    if (!backdrops.includes(backdrop)) backdrops.push(backdrop);
+  }
+  if (backdrops.length === 0) backdrops.push(null);
+
+  /*
+   * `BackColour` is `&HAABBGGRR`, where the alpha runs the other way from the
+   * one anybody expects: 00 is solid and FF is invisible. So the dial, which
+   * asks how solid the panel is, is inverted on the way in.
+   */
+  const veil = Math.round((1 - Math.min(100, Math.max(0, adv.captionBackdropPercent)) / 100) * 255)
+    .toString(16)
+    .padStart(2, '0')
+    .toUpperCase();
+
+  const styleLine = (name: string, size: number, backdrop: string | null, extraOutline = 0) =>
+    `Style: ${name},${font},${size},${primary},&H00000000,` +
+    `${backdrop ? `&H${veil}${assColor(backdrop).slice(4)}` : '&H00000000'},1,` +
+    `${backdrop ? 3 : 1},${(backdrop ? 8 : 4) + extraOutline},${backdrop ? 0 : 2},` +
+    `${alignment},${adv.captionMarginX},${adv.captionMarginX},${marginV}`;
 
   const lines: string[] = [
     '[Script Info]',
@@ -546,11 +577,20 @@ function buildAss(ctx: AssContext, captions: TimedCaption[]): string {
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold,' +
       ' BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV',
-    `Style: Cap,${font},${capSize},${primary},&H00000000,${backColor},1,` +
-      `${borderStyle},${outline},${shadow},${alignment},` +
-      `${adv.captionMarginX},${adv.captionMarginX},${marginV}`,
-    `Style: Head,${font},${headSize},${primary},&H00000000,${backColor},1,` +
-      `${borderStyle},${outline + 1},${shadow},5,24,24,0`,
+    ...backdrops.map((backdrop, i) => styleLine(`Cap${i}`, capSize, backdrop)),
+    /*
+     * A headline is a caption in a bigger voice, not one in a different place.
+     *
+     * This style used to anchor centre with no margin, so a big caption landed
+     * in the middle of the frame while the editor — and every normal caption —
+     * put it where the clip's caption position said. Pressing its anchor button
+     * fixed it, because that writes a `y` and the line's own `\an2` overrides
+     * the style: so it was wrong exactly once, before anyone had touched it.
+     *
+     * Same alignment, same margins as Cap. The size and the heavier outline are
+     * what make it a headline.
+     */
+    ...backdrops.map((backdrop, i) => styleLine(`Head${i}`, headSize, backdrop, 1)),
     '',
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text'
@@ -558,7 +598,9 @@ function buildAss(ctx: AssContext, captions: TimedCaption[]): string {
 
   for (const caption of captions) {
     if (!caption.text?.trim()) continue;
-    const style = caption.headline ? 'Head' : 'Cap';
+    const style = `${caption.headline ? 'Head' : 'Cap'}${backdrops.indexOf(
+      captionBackdrop(caption, config)
+    )}`;
 
     /*
      * A caption with a height of its own overrides the clip's.
@@ -572,13 +614,21 @@ function buildAss(ctx: AssContext, captions: TimedCaption[]): string {
      * alignment anchors to. Without it, the same number would mean "up from the
      * bottom" on one clip and "down from the top" on another.
      */
-    const placed = typeof caption.y === 'number';
-    const marginV = placed ? Math.round(Math.min(1, Math.max(0, caption.y!)) * height) : 0;
-    const anchor = placed ? '{\\an2}' : '';
+    const marginV = Math.round(Math.min(1, Math.max(0, captionY(caption, adv))) * height);
+    const anchor = '{\\an2}';
+
+    /*
+     * Stated per line rather than left to the style.
+     *
+     * `\1c` takes `&HBBGGRR&` where the style's `PrimaryColour` takes an alpha
+     * pair as well, so the two spellings of one colour are not interchangeable
+     * — hence the slice rather than a second formatter.
+     */
+    const colour = `{\\1c&H${assColor(captionColor(caption, config, accentColor)).slice(4)}&}`;
 
     lines.push(
       `Dialogue: 0,${assTime(caption.start)},${assTime(caption.end)},${style},,0,0,${marginV},,` +
-        `${anchor}{\\fad(250,250)}${assText(caption.text)}`
+        `${anchor}${colour}{\\fad(250,250)}${assText(caption.text)}`
     );
   }
 
@@ -1326,8 +1376,9 @@ export async function renderClip(
     }
 
     // The big logo's vertical act, kept clear of wherever the caption lands.
-    const logoBand =
-      config.captionPosition === 'top' ? 0.62 : config.captionPosition === 'center' ? 0.4 : 0.36;
+    // Low enough to stay clear of a caption at the default height, which is
+    // where an unanchored one lands.
+    const logoBand = 0.36;
 
     progress(5);
 

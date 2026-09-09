@@ -6,6 +6,7 @@
   import { fieldClass } from '$lib/utils/classes';
   import { toast } from '$lib/stores/toast.svelte';
   import { saveScheme, removeScheme } from './data.remote';
+  import { keepColor } from '$lib/brand-colors.remote';
   import type { ThemeSettings } from '$lib/server/settings';
   import { resolveTheme } from '$lib/themes';
   import * as draft from '$lib/stores/pageDraft.svelte';
@@ -86,6 +87,23 @@
     { id: 'simple', name: 'Simple', description: 'Clean, centered layout without card' }
   ];
 
+  /*
+   * The kept colours, held locally so the shelf reacts to Keep at once.
+   *
+   * Saved straight to the database rather than into the draft, unlike the six
+   * colours above: a shelf is not part of the look being published, and having
+   * to press Update to keep a colour you are about to use reads as a bug.
+   *
+   * Derived from the layout's copy and written over with what the save returns,
+   * so the swatch appears on the press rather than on the next load.
+   */
+  let brandColors = $derived<string[]>(data.brandColors ?? []);
+
+  async function keep(color: string) {
+    const result = await keepColor(color);
+    brandColors = result.colors;
+  }
+
   const activeLayout = $derived(resolveTheme(draftData.appearance.layout));
 
   // Live preview settings (merges draft appearance onto server settings)
@@ -107,6 +125,8 @@
             label="Background"
             open={openPicker === 'bg'}
             ontoggle={(o) => (openPicker = o ? 'bg' : null)}
+            swatches={brandColors}
+            onkeep={keep}
           />
           <ColorWheel
             value={draftData.appearance.colorCard}
@@ -114,6 +134,8 @@
             label="Panels"
             open={openPicker === 'card'}
             ontoggle={(o) => (openPicker = o ? 'card' : null)}
+            swatches={brandColors}
+            onkeep={keep}
           />
           <ColorWheel
             value={draftData.appearance.colorAccent}
@@ -121,6 +143,8 @@
             label="Accent"
             open={openPicker === 'accent'}
             ontoggle={(o) => (openPicker = o ? 'accent' : null)}
+            swatches={brandColors}
+            onkeep={keep}
           />
           <ColorWheel
             value={draftData.appearance.colorText}
@@ -128,6 +152,8 @@
             label="Text"
             open={openPicker === 'text'}
             ontoggle={(o) => (openPicker = o ? 'text' : null)}
+            swatches={brandColors}
+            onkeep={keep}
           />
           <ColorWheel
             value={draftData.appearance.colorTextMuted}
@@ -135,6 +161,8 @@
             label="Muted"
             open={openPicker === 'muted'}
             ontoggle={(o) => (openPicker = o ? 'muted' : null)}
+            swatches={brandColors}
+            onkeep={keep}
           />
           <ColorWheel
             value={draftData.appearance.colorIcon}
@@ -142,6 +170,8 @@
             label="Icons"
             open={openPicker === 'icon'}
             ontoggle={(o) => (openPicker = o ? 'icon' : null)}
+            swatches={brandColors}
+            onkeep={keep}
           />
         </div>
 

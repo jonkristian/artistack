@@ -47,7 +47,15 @@ const timedCaptionSchema = v.object({
   end: v.number(),
   text: v.string(),
   headline: v.optional(v.boolean()),
-  /** Where it sits in the frame, as a fraction of the height from the bottom. */
+  /** Its own colour, when the clip's choice isn't right for this one. */
+  color: v.optional(v.nullable(v.pipe(v.string(), v.regex(/^#[0-9A-Fa-f]{6}$/)))),
+  /** Its own panel colour, or 'none'; absent leaves it to the clip. */
+  background: v.optional(
+    v.nullable(v.union([v.literal('none'), v.pipe(v.string(), v.regex(/^#[0-9A-Fa-f]{6}$/))]))
+  ),
+  /** Which of the three heights it sits at. */
+  anchor: v.optional(v.picklist(['top', 'middle', 'bottom'])),
+  /** The height itself — the older form of `anchor`, still read, never written. */
   y: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
   /** Which timeline row it's drawn in. Nothing to do with the render. */
   lane: v.optional(v.pipe(v.number(), v.minValue(0)))
@@ -85,6 +93,12 @@ const advancedSchema = v.partial(
 
     captionSizeDivisor: v.pipe(v.number(), v.minValue(1)),
     headlineSizeDivisor: v.pipe(v.number(), v.minValue(1)),
+    // The three heights a caption can sit at, as a share of the frame up from
+    // the bottom. Anywhere in the frame is allowed — off it is not.
+    captionBackdropPercent: v.pipe(v.number(), v.minValue(0), v.maxValue(100)),
+    captionTopPercent: v.pipe(v.number(), v.minValue(0), v.maxValue(100)),
+    captionMiddlePercent: v.pipe(v.number(), v.minValue(0), v.maxValue(100)),
+    captionBottomPercent: v.pipe(v.number(), v.minValue(0), v.maxValue(100)),
     captionMarginX: v.pipe(v.number(), v.minValue(0)),
     fontFamily: v.string(),
 
@@ -108,7 +122,6 @@ const advancedSchema = v.partial(
 const configSchema = v.partial(
   v.object({
     aspect: v.picklist(['9:16', '1:1', '16:9']),
-    captionPosition: v.picklist(['top', 'center', 'bottom']),
     colorizeCaption: v.boolean(),
     captionBackground: v.boolean(),
     fill: v.picklist(['blur', 'black', 'crop']),

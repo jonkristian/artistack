@@ -20,7 +20,7 @@
    * them. Ratios survive the difference between a 1080-wide render and a
    * 340-wide element; pixels would not.
    */
-  import { CAPTION_ANCHORS } from '$lib/clips/types';
+  import { captionBackdrop, captionColor, captionY } from '$lib/clips/types';
   import type { ClipRenderConfig, ClipAdvancedConfig, TimedCaption } from '$lib/clips/types';
 
   let {
@@ -75,34 +75,30 @@
   /**
    * Where a caption sits, exactly as `buildAss` places it.
    *
-   * Anchored or not, it is the same sum: a share of the height, up from the
-   * bottom. An anchored caption carries its own `y`; one without takes the
-   * anchor its clip is set to.
-   *
-   * Both the render and this read `CAPTION_ANCHORS`, so there is one table and
-   * moving a number in it moves the caption in both places. It used to be three
-   * sets of numbers measured from three different edges, and an anchored
-   * caption could sit somewhere an unanchored one at the same setting did not.
+   * The same one sum in both places, from the same table: the anchor the
+   * caption is on, at the height this clip's dials put that anchor. It used to
+   * be three sets of numbers measured from three different edges, and a caption
+   * could sit somewhere here that it did not sit in the render.
    */
-  function placeCaption(caption: TimedCaption): string {
-    const anchor = CAPTION_ANCHORS.find((a) => a.id === defaultAnchor);
-    return `bottom: ${(caption.y ?? anchor?.y ?? 0.18) * 100}%`;
+  const placeCaption = (caption: TimedCaption) => `bottom: ${captionY(caption, adv) * 100}%`;
+
+  /**
+   * The panel behind a caption, at the solidity the clip asks for.
+   *
+   * Written as `rgb(... / ...)` rather than a Tailwind class because the colour
+   * is data: there is no class for "whatever this caption picked", and a hex
+   * with an alpha pair appended is the one spelling browsers and libass agree
+   * to disagree about.
+   */
+  function panel(backdrop: string | null): string {
+    if (!backdrop) return '';
+    const hex = backdrop.replace('#', '');
+    const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    return `background-color: rgb(${r} ${g} ${b} / ${adv.captionBackdropPercent}%)`;
   }
 
-  const defaultAnchor = $derived(
-    config.captionPosition === 'top'
-      ? 'top'
-      : config.captionPosition === 'center'
-        ? 'middle'
-        : 'bottom'
-  );
-
-  const colour = $derived(config.colorizeCaption ? accent : '#ffffff');
-
   /** The same band the render puts the big logo in, kept clear of the caption. */
-  const logoBand = $derived(
-    config.captionPosition === 'top' ? 0.62 : config.captionPosition === 'center' ? 0.4 : 0.36
-  );
+  const logoBand = 0.36;
 </script>
 
 <!-- `container-type: size` so the text can be sized in `cqh` — a share of this
@@ -114,19 +110,24 @@
   aria-hidden="true"
 >
   {#each showing as caption, index (index)}
+    <!-- `pre-line` so a caption written across two lines is drawn across two,
+         the way `assText` turns the same newline into libass's `\N`. -->
     <div
-      class="absolute right-0 left-0 text-center leading-tight font-bold"
+      class="absolute right-0 left-0 text-center leading-tight font-bold whitespace-pre-line"
       style="{placeCaption(caption)}; padding-inline: {(adv.captionMarginX / frame.w) *
-        100}cqw; font-size: {caption.headline
-        ? headSize
-        : capSize}cqh; color: {colour}; {config.captionBackground
+        100}cqw; font-size: {caption.headline ? headSize : capSize}cqh; color: {captionColor(
+        caption,
+        config,
+        accent
+      )}; {captionBackdrop(caption, config)
         ? ''
         : 'text-shadow: 0 0 0.18em #000, 0 0 0.06em #000, 0.02em 0.03em 0.05em #000;'}"
     >
       <span
-        class={config.captionBackground
-          ? 'bg-black/50 box-decoration-clone px-[0.35em] py-[0.12em]'
+        class={captionBackdrop(caption, config)
+          ? 'box-decoration-clone px-[0.35em] py-[0.12em]'
           : ''}
+        style={panel(captionBackdrop(caption, config))}
       >
         {caption.text}
       </span>

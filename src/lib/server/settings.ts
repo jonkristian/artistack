@@ -47,6 +47,18 @@ const colorSchemes = v.object({
   schemes: v.record(v.string(), theme)
 });
 
+/**
+ * The colours this artist actually uses, as a shelf every picker can reach.
+ *
+ * Not the same thing as `theme`, which is six named jobs — a background, a
+ * card, an accent. This is a sleeve's yellow that belongs to a record and not
+ * to the site, kept because it is wanted again next week on a caption. Ordered
+ * as saved, since that is the order they were thought of in.
+ */
+const brandColors = v.object({
+  colors: v.array(v.string())
+});
+
 const features = v.object({
   pressKit: v.boolean(),
   showPressKit: v.boolean(),
@@ -197,6 +209,11 @@ export const SETTING_KEYS = {
     secret: false,
     defaults: { schemes: {} as Record<string, v.InferOutput<typeof theme>> }
   },
+  brandColors: {
+    schema: brandColors,
+    secret: false,
+    defaults: { colors: [] as string[] }
+  },
   features: {
     schema: features,
     secret: false,
@@ -312,6 +329,7 @@ export type SiteSettings = SettingValue<'site'>;
 export type ThemeSettings = SettingValue<'theme'>;
 export type FeatureSettings = SettingValue<'features'>;
 export type ColorSchemes = SettingValue<'colorSchemes'>;
+export type BrandColors = SettingValue<'brandColors'>;
 export type MailSettings = SettingValue<'mail'>;
 export type DiscordSettings = SettingValue<'discord'>;
 export type ClipSettings = SettingValue<'clips'>;
@@ -411,6 +429,30 @@ export async function deleteColorScheme(name: string): Promise<void> {
   delete next[name];
   await setSetting('colorSchemes', { schemes: next });
 }
+export const getBrandColors = () => getSetting('brandColors');
+
+/**
+ * Put a colour on the shelf, or take it off if it is already there.
+ *
+ * One call for both because a swatch is one control: the button under a picker
+ * says "keep this" when the colour is new and "forget it" when it isn't, and
+ * asking the caller to know which is asking it to race.
+ *
+ * Any picker can call it. A colour worth using on one caption is usually worth
+ * having on the next clip, and making people go to the appearance screen to
+ * write it down is how it ends up matched by eye instead.
+ */
+export async function toggleBrandColor(color: string): Promise<string[]> {
+  const hex = color.toLowerCase();
+  const { colors } = await getBrandColors();
+  const next = colors.some((c) => c.toLowerCase() === hex)
+    ? colors.filter((c) => c.toLowerCase() !== hex)
+    : [...colors, hex];
+
+  await setSetting('brandColors', { colors: next });
+  return next;
+}
+
 export const getMailSettings = () => getSetting('mail');
 export const getDiscordSettings = () => getSetting('discord');
 export const getClipSettings = () => getSetting('clips');
