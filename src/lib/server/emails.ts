@@ -1,5 +1,6 @@
 import { sendEmail } from './email';
 import { renderEmail, siteName, escapeHtml } from './email-template';
+import { platformsInCategory, platformLabel } from '$lib/utils/platforms';
 
 /**
  * The emails this app sends, one function each.
@@ -102,7 +103,24 @@ export async function sendReleaseEmail(
       : `${origin}${release.coverUrl}`
     : null;
 
-  const services = links
+  /*
+   * Ten at most. A release delivered widely can carry thirty services, and an
+   * email that lists them all buries the record under a wall of buttons — the
+   * ones people actually use are at the top of the list anyway, because that's
+   * the order the site keeps them in.
+   *
+   * The rest aren't lost: the page has every one, and the line below says so
+   * rather than leaving someone to assume their service was skipped. It says it
+   * without counting them, because the number is only true at the moment of
+   * sending — distributors bring services up at their own pace, some on the day
+   * and some later, so a page that had eleven when the email went out may have
+   * fourteen by the time it's read.
+   */
+  const SERVICE_LIMIT = 10;
+  const shown = links.slice(0, SERVICE_LIMIT);
+  const remaining = links.length - shown.length;
+
+  const services = shown
     .map(
       (link) =>
         `<a href="${origin}/go/${link.id}" style="display:inline-block;margin:0 8px 8px 0;padding:8px 14px;border:1px solid currentColor;border-radius:999px;text-decoration:none;font-size:14px;color:inherit;">${escapeHtml(
@@ -124,7 +142,12 @@ export async function sendReleaseEmail(
       }
       <p style="margin:0 0 12px;">It's out. Thanks for waiting.</p>
       ${release.body ?? ''}
-      ${services ? `<p style="margin:16px 0 0;">${services}</p>` : ''}`,
+      ${services ? `<p style="margin:16px 0 0;">${services}</p>` : ''}
+      ${
+        remaining > 0
+          ? `<p style="margin:8px 0 0;font-size:13px;opacity:0.7;">Not your service? <a href="${url}" style="color:inherit;">They're all on the page</a>.</p>`
+          : ''
+      }`,
     action: { label: 'Listen now', url },
     footer: `You're getting this because you asked ${escapeHtml(
       site
@@ -150,9 +173,10 @@ export async function sendReleaseEmail(
  * the same senders production uses, so a preview can't drift from the thing it
  * previews.
  *
- * The order it renders is never written down. Nothing here touches the
+ * The order it renders is never written down. Nothing here writes to the
  * database — a sample must not put a sale in your books or an address on your
- * fan list.
+ * fan list. The release sample reads one row, because the useful question is
+ * what your own record will look like rather than an invented one's.
  */
 export async function sendSampleEmails(
   to: string,
@@ -290,23 +314,105 @@ export async function sendSampleEmails(
     sendWelcomeEmail(to, 'sample-token-not-a-real-one', origin)
   );
 
-  /* Release day, which otherwise can't be looked at until there is one. */
-  await attempt('A release is out', () =>
+  /*
+   * Release day, which otherwise can't be looked at until there is one — and by
+   * then it has already gone to the list, once, unrepeatably.
+   *
+   * Built from the newest real release when there is one, because the question
+   * this answers is "what will my fans get", and an invented record with no
+   * sleeve answers a different one. The sleeve and the row of services are most
+   * of what a release email is; a preview missing both isn't a preview of much.
+   *
+   * Falls back to something made up on a site with no releases yet, so the
+   * sample run never has a hole in it.
+   */
+  const real = await newestReleaseForPreview();
+  await attempt(real ? `A release is out — ${real.title}` : 'A release is out', () =>
     sendReleaseEmail(
-      {
+      real?.release ?? {
         title: 'Sample Single',
         coverUrl: null,
         body: '<p>Recorded in a room with the door shut. Three minutes, no chorus, worth it.</p>',
         slug: 'sample-single'
       },
-      [
-        { id: 0, platform: 'spotify', label: 'Spotify' },
-        { id: 0, platform: 'apple_music', label: 'Apple Music' }
-      ],
+      // Its own services when it has any. A real release still short of them —
+      // which is every release before the day — borrows a full set, because
+      // two buttons don't show what a row of ten does to the layout.
+      real?.links.length ? real.links : sampleServices(),
       { to, token: 'sample-token-not-a-real-one' },
       origin
     )
   );
 
   return { sent, failed };
+}
+
+/**
+ * The newest release, as the release email needs it.
+ *
+ * Only for the sample: it reads the same fields `announceRelease` does, so what
+ * arrives in the preview is what the list would get, and placeholder links are
+ * filtered out for the same reason they are there — a button that goes to
+ * example.com misrepresents the email rather than previewing it.
+ */
+async function newestReleaseForPreview(): Promise<{
+  title: string;
+  release: { title: string; coverUrl: string | null; body: string | null; slug: string };
+  links: { id: number; platform: string; label: string | null }[];
+} | null> {
+  const { db } = await import('./db');
+  const { releases, pages, links: linkTable } = await import('./schema');
+  const { eq, and, desc, asc } = await import('drizzle-orm');
+  const { isPlaceholderUrl } = await import('$lib/utils/platforms');
+
+  const [row] = await db
+    .select({
+      id: releases.id,
+      title: releases.title,
+      coverUrl: releases.coverUrl,
+      body: releases.body,
+      slug: pages.slug
+    })
+    .from(releases)
+    .innerJoin(pages, eq(pages.id, releases.pageId))
+    .orderBy(desc(releases.releaseDate))
+    .limit(1);
+
+  if (!row) return null;
+
+  const found = await db
+    .select({
+      id: linkTable.id,
+      platform: linkTable.platform,
+      label: linkTable.label,
+      url: linkTable.url
+    })
+    .from(linkTable)
+    .where(and(eq(linkTable.releaseId, row.id), eq(linkTable.visible, true)))
+    .orderBy(asc(linkTable.position));
+
+  return {
+    title: row.title,
+    release: { title: row.title, coverUrl: row.coverUrl, body: row.body, slug: row.slug },
+    links: found
+      .filter((link) => !isPlaceholderUrl(link.url))
+      .map(({ id, platform, label }) => ({ id, platform, label }))
+  };
+}
+
+/**
+ * A believable row of services, for a release that hasn't got its own yet.
+ *
+ * Taken from the app's own list rather than typed out here, so it stays the
+ * services this site can actually hold — and in the same order, which puts the
+ * ones people use at the front. Twelve rather than ten, so the sample also
+ * shows the "all of them are on the page" line doing its job.
+ *
+ * The ids lead nowhere on purpose. A sample must not add clicks to the numbers
+ * for a real release.
+ */
+function sampleServices(): { id: number; platform: string; label: string | null }[] {
+  return platformsInCategory('streaming')
+    .slice(0, 12)
+    .map((platform) => ({ id: 0, platform, label: platformLabel(platform) }));
 }

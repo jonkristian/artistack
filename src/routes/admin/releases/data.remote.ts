@@ -136,3 +136,24 @@ export const announceReleaseNow = command(v.object({ id: v.number() }), async ({
 
   return announceRelease(id, url.origin);
 });
+
+/**
+ * Ask the stores where this record ended up, now.
+ *
+ * The scheduler does this hourly on its own, and on release morning that's
+ * usually soon enough. This is for the times it isn't: standing at five past
+ * midnight watching for the record to appear, or wanting a straight answer
+ * about why a service is still missing. Same function the tick calls, so the
+ * answer is the one the tick would have got.
+ */
+export const findStoreLinksNow = command(v.object({ id: v.number() }), async ({ id }) => {
+  await requireUser();
+
+  const { fillStoreLinks, storefrontFromLocale } = await import('$lib/server/store-links');
+  const { getSettings } = await import('$lib/server/settings');
+
+  const settings = await getSettings();
+  const filled = await fillStoreLinks(id, storefrontFromLocale(settings?.locale));
+
+  return { filled };
+});

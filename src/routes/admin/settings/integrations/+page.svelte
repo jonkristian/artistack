@@ -691,8 +691,8 @@
             </svg>
           </div>
           <div>
-            <h3 class="font-semibold text-white">Spotify for Artists</h3>
-            <p class="text-xs text-gray-500">Track followers and popularity stats</p>
+            <h3 class="font-semibold text-white">Spotify</h3>
+            <p class="text-xs text-gray-500">Find a release on Spotify from its ISRC</p>
           </div>
         </div>
         {#if data.socialStats.spotify}
@@ -746,20 +746,13 @@
           <p class="mt-1 text-xs text-gray-400">ID: {spotifyDetectedId}</p>
         </div>
       {:else}
-        <div class="mb-4 rounded-lg border border-yellow-800/50 bg-yellow-900/20 p-3">
-          <div class="flex items-center gap-2 text-sm text-yellow-400">
-            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-              />
-            </svg>
-            No Spotify artist link found
-          </div>
-          <p class="mt-1 text-xs text-gray-400">
-            Add a Spotify artist link to your page first, or it will be detected automatically.
+        <!-- Not a warning any more: the artist link was only ever needed for the
+             follower stats, and those left this tier of the API in March 2026.
+             Release lookups work from the ISRC alone. -->
+        <div class="mb-4 rounded-lg border border-gray-800 bg-gray-800/50 p-3">
+          <p class="text-xs text-gray-400">
+            No Spotify artist link on the site yet — optional. Credentials are enough to find a
+            release from its ISRC on release day.
           </p>
         </div>
       {/if}
@@ -794,10 +787,7 @@
         <div class="flex items-center gap-3">
           <button
             onclick={saveSpotifySettings}
-            disabled={savingSpotify ||
-              !spotifyDetectedId ||
-              !spotifyClientId ||
-              !spotifyClientSecret}
+            disabled={savingSpotify || !spotifyClientId || !spotifyClientSecret}
             class="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
           >
             {savingSpotify ? 'Connecting...' : data.socialStats.spotify ? 'Update' : 'Connect'}

@@ -394,3 +394,26 @@ export function extractSoundCloudUsername(url: string): string | null {
     return null;
   }
 }
+
+/**
+ * A URL that stands in for one nobody has yet.
+ *
+ * RFC 2606 reserves example.com and its siblings for documentation, which is
+ * where seed rows and half-filled forms tend to land. Worth naming, because a
+ * placeholder is worse than a missing link: a release carrying four of them
+ * looks ready to announce, and every check that counts links agrees — right up
+ * until the mailing goes out with four buttons that go nowhere.
+ *
+ * Anything that isn't a URL at all counts too. It can't be pressed either.
+ */
+export function isPlaceholderUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+    return (
+      ['example.com', 'example.org', 'example.net', 'localhost'].includes(host) ||
+      /\.(example|invalid|test|localhost)$/.test(host)
+    );
+  } catch {
+    return true;
+  }
+}

@@ -1,4 +1,4 @@
-# 1.5.0 (08-09-2026)
+# 1.5.0 (09-09-2026)
 
 - A timeline under the clip editor: what plays when, what's said over it, what it's scored with. Each block carries its own settings — where it comes in, what part of it plays, its sound, the way out — so an edit is something you look at rather than a column of numbers
 - Adding media and placing it are two steps. A clip keeps a list of what it's made of, as tiles, and each file goes on the strip when you say so, so one shot can be used three times and cut differently each time. One Add media button for all of it: a file knows whether it's footage or music
@@ -26,6 +26,11 @@
 - Tags are picked from a list. Anything new can still be typed in
 - Sideways footage can be turned, written into the file without re-encoding, so it's upright everywhere it appears
 - The clip list shows which platforms each clip reached
+- The services on a release fill themselves in. Once a record is out, the site finds it from the codes printed on it — the ISRC and UPC — and adds the Spotify, Apple Music, Deezer and TIDAL links as each shop publishes. It looks every hour on release day, so the fan-list email that goes at nine has working buttons on it
+- A Find links button on the release, for when you'd rather not wait for the hour. Before release day it says so plainly: delivered to a distributor is not the same as being in the shops, and nothing can be found until the day
+- Spotify connects with an id and secret alone. It used to insist on first finding an artist link and pulling follower numbers — numbers Spotify stopped handing out in March — so credentials that worked perfectly well were turned away for failing a test about something else
+- The release-day email lists ten services at most and says the rest are on the page. A record delivered widely can reach thirty shops, and thirty buttons buries it
+- The sample emails show your own newest release, with its sleeve and your words, instead of an invented one. What you want to see is what your list will get
 - Fixed: cheap copies of uploaded footage were never made — every one failed, silently, on a filename ffmpeg wouldn't write to
 - Fixed: a quick render was made and then not shown, while the pane kept the last full render
 - Fixed: the blurred background was built even when the footage already filled the frame, then covered up
@@ -39,6 +44,8 @@
 - Fixed: double-clicking a caption's own field wrote a second caption underneath it
 - Fixed: a block's buttons hung off its end instead of shrinking to fit
 - Fixed: the colour picker opened off the screen when it was near the edge
+- Fixed: a release carrying placeholder links counted as ready to announce. The check that holds the release-day email until there are services to press counted rows rather than working addresses, so a record still holding example.com links would have gone to the whole list with four buttons leading nowhere — and the list is marked told before the first email goes out, deliberately, so it could never have been sent again
+- Fixed: no gap between the streaming links and the fan list on a release
 
 # 1.4.0 (05-09-2026)
 

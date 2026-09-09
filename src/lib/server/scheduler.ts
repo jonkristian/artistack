@@ -6,6 +6,7 @@ import { settings, integrations } from './schema';
 import { sendScheduledDiscordReport } from './discord';
 import { refreshAllSocialStats } from './social-stats';
 import { announceRelease, releasesAwaitingAnnouncement } from './announce';
+import { fillStoreLinks, releasesNeedingStoreLinks, storefrontFromLocale } from './store-links';
 import { recoverStaleJobs, processQueue } from './render-queue';
 import { clearAbandonedStaging } from './clip-render';
 import { runReleaseTick, checkPublishCoverage } from './clip-queue';
@@ -122,6 +123,34 @@ async function runScheduledTasks(): Promise<void> {
         }
       }
     }
+    /*
+     * Task 2b: find where a new record ended up.
+     *
+     * Before the announcement below rather than beside it: the stores publish
+     * at midnight and the mailing goes at nine, so the links a fan presses in
+     * that email are the ones this fills in during the hours between. On the
+     * same tick, in the right order, a release can go out with working buttons
+     * without anyone being awake for it.
+     *
+     * Once a day it also asks about records that aren't out yet, in case one
+     * has a pre-order up — those have an address weeks early, and a release
+     * page that can point at it should. Once a day rather than hourly because
+     * hardly any release has one, and one that appears at noon is no worse for
+     * being found the next morning.
+     *
+     * Quiet on almost every tick — a release drops out of the query as soon as
+     * its services are real, so this asks about nothing at all most hours.
+     */
+    try {
+      const storefront = storefrontFromLocale(settingsData.locale);
+      const ids = await releasesNeedingStoreLinks({ includeUpcoming: now.getHours() === 9 });
+      for (const id of ids) {
+        await fillStoreLinks(id, storefront);
+      }
+    } catch (e) {
+      console.error('[Scheduler] Store link lookup failed:', e);
+    }
+
     // Task 3: Tell the fan list about anything that has come out.
     //
     // Nine in the morning, not midnight: a release dated today is out from the

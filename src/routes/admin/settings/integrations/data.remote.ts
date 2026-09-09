@@ -25,6 +25,7 @@ import {
   type SpotifyConfig,
   type GoogleConfig
 } from '$lib/server/social-stats';
+import { spotifyAccessToken } from '$lib/server/store-links';
 
 // ============================================================================
 // Validation Schemas
@@ -76,39 +77,55 @@ const publishSettingsSchema = v.object({
 // Commands
 // ============================================================================
 
+/**
+ * Save Spotify's credentials, on their own merit.
+ *
+ * This used to refuse anything it couldn't immediately turn into follower and
+ * popularity numbers, which made two unrelated things one: whether the
+ * credentials work, and whether Spotify still hands out that particular data.
+ * Since the March 2026 cutover it doesn't — those fields left the artist object
+ * for Development Mode apps, and the tier that kept them wants a registered
+ * company behind it. Credentials that are perfectly good for finding a release
+ * were being rejected for failing a test about something else.
+ *
+ * So the test is now the one that matches what's being saved: ask for a token.
+ * Nothing else proves a client id and secret are a working pair, and nothing
+ * more is needed to look a record up by its ISRC.
+ */
 export const updateSpotifyConfig = command(spotifyConfigSchema, async (data) => {
   await requireAdmin();
 
-  // Auto-detect artist ID from links
-  const artistId = await detectSpotifyArtistFromLinks();
-  if (!artistId) {
+  const token = await spotifyAccessToken(data.clientId, data.clientSecret);
+  if (!token) {
     return {
       success: false,
-      message: 'No Spotify artist link found. Add a Spotify artist link first.'
+      message: 'Spotify would not issue a token for those credentials. Check the id and secret.'
     };
   }
 
+  // Optional now rather than required: an artist link is what the stats wanted,
+  // and finding a release by its codes doesn't need one.
+  const artistId = await detectSpotifyArtistFromLinks();
+
   const config: SpotifyConfig = {
-    artistId,
+    artistId: artistId ?? undefined,
     clientId: data.clientId,
     clientSecret: data.clientSecret
   };
-
-  // Test the config by fetching stats
-  const stats = await fetchSpotifyArtistStats(config);
-
-  if (!stats) {
-    return {
-      success: false,
-      message: 'Failed to fetch Spotify data. Please check your credentials.'
-    };
-  }
-
-  // Save config and cache initial stats
   await updateSpotifyConfigValues(config);
-  await updateIntegrationCache('spotify', stats);
 
-  return { success: true, message: 'Spotify connected!', stats };
+  // Still worth asking, in case the account is on a tier that answers. It
+  // hasn't been fatal since it stopped being the point.
+  const stats = artistId ? await fetchSpotifyArtistStats(config) : null;
+  if (stats) await updateIntegrationCache('spotify', stats);
+
+  return {
+    success: true,
+    message: stats
+      ? 'Spotify connected.'
+      : 'Spotify connected. Release lookups will use it; follower stats are not available on this tier.',
+    stats
+  };
 });
 
 export const saveGoogleConfig = command(googleConfigSchema, async (data) => {

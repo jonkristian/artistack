@@ -2,6 +2,7 @@ import { db } from './db';
 import { releases, pages, links, subscribers } from './schema';
 import { eq, and, isNull, asc, lte } from 'drizzle-orm';
 import { sendReleaseEmail } from './emails';
+import { isPlaceholderUrl } from '$lib/utils/platforms';
 
 /**
  * Telling the fan list a record is out.
@@ -40,10 +41,18 @@ export async function announceRelease(releaseId: number, origin: string): Promis
     return { held: 'The release page is a draft, so there is nothing to link to.' };
 
   const releaseLinks = await db
-    .select({ id: links.id, platform: links.platform, label: links.label })
+    .select({ id: links.id, platform: links.platform, label: links.label, url: links.url })
     .from(links)
     .where(and(eq(links.releaseId, releaseId), eq(links.visible, true)))
     .orderBy(asc(links.position));
+
+  /*
+   * A placeholder is not a service. Counting rows rather than usable addresses
+   * was the way this went wrong: a release seeded with four example.com links
+   * satisfied every check, and the hold below — the one thing standing between
+   * an early send and a mailing nobody can take back — never fired.
+   */
+  const usableLinks = releaseLinks.filter((link) => !isPlaceholderUrl(link.url));
 
   /*
    * An announcement with nowhere to listen is worse than a late one: it spends
@@ -51,7 +60,7 @@ export async function announceRelease(releaseId: number, origin: string): Promis
    * missing because the stores haven't published them yet — which is to say,
    * because it's too early to send.
    */
-  if (releaseLinks.length === 0) {
+  if (usableLinks.length === 0) {
     return { held: 'The release has no services on it yet, so there would be nothing to press.' };
   }
 
@@ -73,7 +82,7 @@ export async function announceRelease(releaseId: number, origin: string): Promis
 
   for (const person of list) {
     try {
-      await sendReleaseEmail(row, releaseLinks, { to: person.email, token: person.token }, origin);
+      await sendReleaseEmail(row, usableLinks, { to: person.email, token: person.token }, origin);
       sent += 1;
     } catch (err) {
       failed += 1;

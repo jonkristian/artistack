@@ -22,7 +22,7 @@
     fromDateInput,
     type UnifiedDraftData
   } from '../../publishDraft';
-  import { deleteRelease, announceReleaseNow } from '../data.remote';
+  import { deleteRelease, announceReleaseNow, findStoreLinksNow } from '../data.remote';
   import type { Link } from '$lib/server/schema';
   import type { PageData } from './$types';
 
@@ -148,6 +148,38 @@
   function removeLink(id: number) {
     const index = draftData.links.findIndex((l: Link) => l.id === id);
     if (index !== -1) draftData.links.splice(index, 1);
+  }
+
+  let finding = $state(false);
+
+  /*
+   * Writes rows on the server, so the draft has to be rebuilt from what came
+   * back — the same dance as deleting. Anything typed and not yet saved would
+   * be overwritten by that, so it asks first rather than quietly discarding it.
+   */
+  async function findLinks() {
+    if (finding) return;
+    if (
+      draft.isDirty() &&
+      !confirm('This reloads the release, which will discard your unsaved changes. Continue?')
+    )
+      return;
+
+    finding = true;
+    try {
+      const { filled } = await findStoreLinksNow({ id: data.release.id });
+      if (filled > 0) {
+        await invalidateAll();
+        await tick();
+        draft.initialize(buildDraftFromServerData(data));
+        toast.info(filled === 1 ? 'Found one service' : `Found ${filled} services`);
+      } else {
+        toast.info('Nothing found yet — the stores publish on release day.');
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not reach the stores');
+    }
+    finding = false;
   }
 </script>
 
@@ -298,11 +330,28 @@
         </div>
       </SectionCard>
 
-      <div class="mt-6">
+      <!-- Gap on the stack rather than a margin on each card: the fan list is
+           conditional, and a margin on it leaves nothing behind when it's off. -->
+      <div class="mt-6 flex flex-col gap-6">
         <SectionCard title="Streaming links">
+          {#snippet actions()}
+            <button
+              type="button"
+              class="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-200 transition hover:border-gray-600 hover:text-white disabled:opacity-50"
+              onclick={findLinks}
+              disabled={finding || (!release?.isrc && !release?.upc)}
+              title={!release?.isrc && !release?.upc
+                ? 'Needs an ISRC or a UPC to look up'
+                : 'Ask the stores where this record is'}
+            >
+              {finding ? 'Looking…' : 'Find links'}
+            </button>
+          {/snippet}
           <p class="-mt-2 mb-3 text-xs text-gray-500">
-            Each one is served through <span class="font-mono">/go</span>, so clicks are counted per
-            platform and campaign tags carry through to the destination.
+            These fill themselves in from the ISRC once the record is out — the site checks hourly
+            on release day, and the fan list email waits for them. Add one by hand any time; nothing
+            here is overwritten. Each is served through <span class="font-mono">/go</span>, so
+            clicks are counted per platform and campaign tags carry through to the destination.
           </p>
 
           {#if releaseLinks.length > 0}
