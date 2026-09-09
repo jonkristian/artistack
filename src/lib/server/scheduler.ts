@@ -163,7 +163,7 @@ async function runScheduledTasks(): Promise<void> {
       if (origin) {
         for (const id of await releasesAwaitingAnnouncement()) {
           try {
-            const result = await announceRelease(id, origin);
+            const result = await announceRelease(id, origin, { automatic: true });
             if (result.held) console.log(`[Scheduler] Release ${id} not announced: ${result.held}`);
           } catch (e) {
             console.error('[Scheduler] Failed to announce release', id, e);

@@ -27,6 +27,7 @@
 - Sideways footage can be turned, written into the file without re-encoding, so it's upright everywhere it appears
 - The clip list shows which platforms each clip reached
 - The services on a release fill themselves in. Once a record is out, the site finds it from the codes printed on it — the ISRC and UPC — and adds the Spotify, Apple Music, Deezer and TIDAL links as each shop publishes. It looks every hour on release day, so the fan-list email that goes at nine has working buttons on it
+- The release-day email waits for three services before it goes out, for one morning only. The shops rarely publish together, and a mailing that can only be sent once shouldn't be spent on a single button — but a record that reached two shops has reached two shops, so from the second morning it sends whatever there is. Pressing the button yourself sends immediately either way
 - A Find links button on the release, for when you'd rather not wait for the hour. Before release day it says so plainly: delivered to a distributor is not the same as being in the shops, and nothing can be found until the day
 - Spotify connects with an id and secret alone. It used to insist on first finding an artist link and pulling follower numbers — numbers Spotify stopped handing out in March — so credentials that worked perfectly well were turned away for failing a test about something else
 - The release-day email lists ten services at most and says the rest are on the page. A record delivered widely can reach thirty shops, and thirty buttons buries it
