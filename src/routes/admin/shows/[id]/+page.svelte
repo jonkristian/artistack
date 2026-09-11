@@ -248,7 +248,7 @@
                 type="text"
                 value={show.title ?? ''}
                 oninput={(e) => (show.title = e.currentTarget.value || null)}
-                placeholder="e.g. Kortreist Musikkfestival"
+                placeholder="e.g. Summer Sessions"
                 class="{fieldClass} {showPage ? 'pr-10' : ''}"
               />
               <!-- Only once the show has a page: without one there's no address

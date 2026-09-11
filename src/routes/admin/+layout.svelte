@@ -165,7 +165,7 @@
    */
   const navItems = $derived(
     [
-      { href: '/admin', label: 'Dashboard', icon: 'grid', group: 'overview' },
+      { href: '/admin', label: 'Dashboard', icon: 'schedule', group: 'overview' },
       { href: '/admin/home', label: 'Home', icon: 'home', group: 'make' },
       { href: '/admin/media', label: 'Media', icon: 'image', group: 'make' },
       ...(data.settings?.releasesEnabled
@@ -362,6 +362,27 @@
         {/each}
       </div>
     {/if}
+
+    <!-- The way out to the site, which on a wide screen sits in the drawer
+         beside the name. On a phone the drawer is shut most of the time, so it
+         lives here instead — the same link, where the name already is. -->
+    <a
+      href="/"
+      target="_blank"
+      rel="noreferrer"
+      title="View site"
+      aria-label="View site"
+      class="shrink-0 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-800 hover:text-white"
+    >
+      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="1.5"
+          d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+        />
+      </svg>
+    </a>
   </header>
 
   <!-- Publishing lives in the drawer on a wide screen, where the drawer is
@@ -437,8 +458,11 @@
       : '-translate-x-full'}"
   >
     <!-- Artist Name. The link out sits with the name because that's what it
-         opens — the site this admin belongs to. -->
-    <div class="flex h-14 items-center gap-2 border-b border-gray-800 px-4">
+         opens — the site this admin belongs to.
+
+         Hidden below lg: the narrow-screen bar above the drawer already carries
+         both, and a drawer that opens over it would say them twice. -->
+    <div class="hidden h-14 items-center gap-2 border-b border-gray-800 px-4 lg:flex">
       <span class="min-w-0 flex-1 truncate font-semibold text-white">{artistName}</span>
       <a
         href="/"
@@ -459,8 +483,11 @@
       </a>
     </div>
 
-    <!-- Navigation -->
-    <nav class="flex-1 p-3">
+    <!-- Navigation.
+         Extra room at the top below lg, where the header above it is hidden and
+         the drawer opens over the bar: without it the first item sits against
+         the very edge of the screen. -->
+    <nav class="flex-1 p-3 pt-5 lg:pt-3">
       <ul class="space-y-1">
         {#each navItems as item, i (item.href)}
           {#if i > 0 && navItems[i - 1].group !== item.group}
@@ -555,6 +582,18 @@
                     stroke-width="1.5"
                     d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
                   />
+                </svg>
+              {:else if item.icon === 'schedule'}
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.5"
+                    d="M8 7V3m8 4V3M3 11h18M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                  />
+                  <circle cx="8.5" cy="15" r="1" fill="currentColor" stroke="none" />
+                  <circle cx="12" cy="15" r="1" fill="currentColor" stroke="none" />
+                  <circle cx="15.5" cy="15" r="1" fill="currentColor" stroke="none" />
                 </svg>
               {:else if item.icon === 'calendar'}
                 <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

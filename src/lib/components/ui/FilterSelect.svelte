@@ -21,6 +21,8 @@
     selected = $bindable([]),
     allLabel = 'All',
     total,
+    compact = false,
+    align = 'left',
     onchange
   }: {
     options: FilterOption[];
@@ -28,6 +30,21 @@
     selected?: string[];
     allLabel?: string;
     total: number;
+    /**
+     * Just the funnel, for a row with no width to spare.
+     *
+     * The summary and the count go, and a dot takes their place when something
+     * is filtered — otherwise an icon-only button gives no sign that what you
+     * are looking at is a subset, which is the one thing it must never hide.
+     */
+    compact?: boolean;
+    /**
+     * Which edge the panel hangs from.
+     *
+     * A trigger near the right of the screen opens a left-aligned panel off the
+     * side of it, where the last two thirds can't be read or reached.
+     */
+    align?: 'left' | 'right';
     onchange?: (selected: string[]) => void;
   } = $props();
 
@@ -81,7 +98,11 @@
     onclick={() => (open = !open)}
     aria-expanded={open}
     aria-haspopup="true"
-    class="flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm whitespace-nowrap text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
+    title={compact ? summary : undefined}
+    aria-label={compact ? `Filter — ${summary}` : undefined}
+    class="relative flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 py-1.5 text-sm whitespace-nowrap text-gray-300 transition-colors hover:bg-gray-700 hover:text-white {compact
+      ? 'px-2'
+      : 'px-3'}"
   >
     <svg
       class="h-3.5 w-3.5 shrink-0 text-gray-500"
@@ -96,21 +117,32 @@
         d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L15 12.414V19a1 1 0 01-.553.894l-4 2A1 1 0 019 21v-8.586L3.293 6.707A1 1 0 013 6V4z"
       />
     </svg>
-    {summary}
-    <span class="text-gray-500 tabular-nums">{shownCount}</span>
-    <svg
-      class="h-3.5 w-3.5 shrink-0 text-gray-500 transition-transform {open ? 'rotate-180' : ''}"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-    </svg>
+    {#if compact}
+      {#if chosen.length > 0}
+        <span
+          class="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-violet-500 ring-2 ring-gray-900"
+        ></span>
+      {/if}
+    {:else}
+      {summary}
+      <span class="text-gray-500 tabular-nums">{shownCount}</span>
+      <svg
+        class="h-3.5 w-3.5 shrink-0 text-gray-500 transition-transform {open ? 'rotate-180' : ''}"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+      </svg>
+    {/if}
   </button>
 
   {#if open}
     <div
-      class="absolute left-0 z-30 mt-1 w-56 rounded-xl border border-gray-700 bg-gray-900 p-1 shadow-2xl"
+      class="absolute z-30 mt-1 w-56 rounded-xl border border-gray-700 bg-gray-900 p-1 shadow-2xl {align ===
+      'right'
+        ? 'right-0'
+        : 'left-0'}"
     >
       <button
         onclick={clear}

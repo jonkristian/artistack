@@ -39,8 +39,20 @@
   const isGrid = $derived(displayAs === 'grid');
   const stackOnMobile = $derived(config.stackOnMobile !== false);
 
-  // Only show links that belong to this block
-  const blockLinks = $derived(links.filter((l) => l.blockId === block.id));
+  /*
+   * This block's links, in the order they were put in.
+   *
+   * Sorted here rather than trusted to arrive sorted. The page load does order
+   * by position, so this looked right on every fresh render — but reordering in
+   * the editor moves a link by rewriting `position`, not by moving it in the
+   * array, and a preview reading array order simply never moved. The list on
+   * the left rearranged itself and the page beside it didn't.
+   */
+  const blockLinks = $derived(
+    links
+      .filter((l) => l.blockId === block.id)
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+  );
 </script>
 
 {#if blockLinks.length > 0}

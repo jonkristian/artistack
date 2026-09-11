@@ -88,12 +88,15 @@ export async function sendInviteEmail(
   const site = artist?.name || 'Artistack';
   const firstName = name.split(' ')[0] || name;
 
-  const heading = reminder
-    ? `Still there? Your ${site} account is waiting`
-    : `You've been invited to ${site}`;
+  /*
+   * The act's name is not in these. It reads badly in front of a possessive —
+   * "Your The Beatles account" — and the subject carries it in brackets now
+   * anyway, so saying it here was saying it twice.
+   */
+  const heading = reminder ? 'Still there? Your account is waiting' : "You've been invited";
 
   const opening = reminder
-    ? `Hi ${escapeHtml(firstName)} — you were added to ${escapeHtml(site)} a week ago and haven't picked a password yet. Here's a fresh link.`
+    ? `Hi ${escapeHtml(firstName)}, you were added to ${escapeHtml(site)} a week ago and haven't picked a password yet. Here's a fresh link.`
     : `Hi ${escapeHtml(firstName)}, you've been added to ${escapeHtml(site)}. Pick a password to finish setting up your account.`;
 
   const html = await renderEmail({

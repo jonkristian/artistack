@@ -4,10 +4,7 @@
   import { toast } from '$lib/stores/toast.svelte';
   import { detectPlatformFromUrl } from '$lib/utils/platforms';
   import { getTempId } from '$lib/stores/pageDraft.svelte';
-  import {
-    createLink as serverCreateLink,
-    deleteLink as serverDeleteLink
-  } from '../../../routes/admin/data.remote';
+  import { createLink as serverCreateLink } from '../../../routes/admin/data.remote';
 
   let {
     block,
@@ -88,20 +85,21 @@
     }
   }
 
-  async function handleDeleteLink(id: number) {
-    // Remove from local array immediately
+  /*
+   * Out of the draft only. Publishing is what deletes the row.
+   *
+   * This used to delete on the server the moment you pressed Remove, which
+   * broke twice over: Update then found the diff still asking for a deletion
+   * that had already happened and failed the whole save with "Link not found",
+   * and Undo put the link back on screen while the row stayed gone — so the
+   * next reload lost it with no warning.
+   *
+   * Nothing else on this page saves on its own, and this shouldn't either.
+   */
+  function handleDeleteLink(id: number) {
     const index = links.findIndex((l) => l.id === id);
     if (index !== -1) {
       links.splice(index, 1);
-    }
-
-    // Delete from server (skip for temp/draft links)
-    if (id > 0) {
-      try {
-        await serverDeleteLink(id);
-      } catch {
-        // Silently fail - link is already removed from UI
-      }
     }
   }
 

@@ -66,7 +66,6 @@
     getRenderStatus,
     getPostSheet,
     sendForReview,
-    reviewDecision,
     createPreviewLink,
     resetPreviewLink,
     addToQueue,
@@ -280,13 +279,20 @@
     );
   });
 
-  /**
-   * One forward action per stage. Review is only meaningful before a clip is
-   * approved — offering it on something already queued or published invited
-   * sending a released clip back for approval, which means nothing.
+  /*
+   * One forward action per stage, and both need a render behind them.
+   *
+   * Neither waits for an approval any more. Approving your own clip recorded no
+   * decision anybody could act on: if it isn't right you change it, and if it is
+   * you send it out. Review stays, because showing someone is a real act — it
+   * just isn't a gate.
    */
-  const canSendForReview = $derived(!['approved', 'queued', 'published'].includes(selected.status));
-  const canSchedule = $derived(selected.status === 'approved');
+  const canSendForReview = $derived(
+    !!selected.outputMediaId && !['queued', 'published'].includes(selected.status)
+  );
+  const canSchedule = $derived(
+    !!selected.outputMediaId && !['queued', 'published'].includes(selected.status)
+  );
   const outputMedia = $derived(
     selected.outputMediaId ? mediaById.get(selected.outputMediaId) : undefined
   );
@@ -967,19 +973,6 @@
       reviewOpen = false;
       toast.success('Sent for review');
     }
-  }
-
-  async function handleDecision(approved: boolean) {
-    const note = approved ? null : prompt('Why is it rejected? (optional)');
-    const decided = await attempt('Could not record the decision', () =>
-      reviewDecision({ projectId: selected.id, approved, note })
-    );
-    if (decided === undefined) return;
-    // The decision was the reason the dialog was open, and the chip behind it
-    // will already be saying the new state.
-    reviewOpen = false;
-    await invalidateAll();
-    toast.success(approved ? 'Approved' : 'Rejected');
   }
 
   async function handlePreviewLink(rotate = false) {
@@ -2647,20 +2640,15 @@
           </ul>
         {/if}
 
-        <!-- The ways a finished clip moves on, in colours from the status
-             ladder: teal for the approval review leads to, violet for the queue
-             release puts it in. Only what's possible at this stage is shown. -->
+        <!-- Violet, from the status ladder: the colour of the queue this puts
+             the clip into. Only shown once there's something to release. -->
         {#if canSchedule}
-          <div class="flex gap-2">
-            {#if canSchedule}
-              <button
-                onclick={() => (queueDialogOpen = true)}
-                class="flex-1 rounded-lg bg-violet-600 px-3 py-2.5 text-sm font-medium whitespace-nowrap text-white transition-colors hover:bg-violet-500"
-              >
-                Schedule release
-              </button>
-            {/if}
-          </div>
+          <button
+            onclick={() => (queueDialogOpen = true)}
+            class="w-full rounded-lg bg-violet-600 px-3 py-2.5 text-sm font-medium whitespace-nowrap text-white transition-colors hover:bg-violet-500"
+          >
+            Schedule release
+          </button>
         {/if}
 
         {#if selected.reviewNote}
@@ -2712,26 +2700,6 @@
                 </svg>
               </a>
             {/if}
-          </div>
-        {/if}
-
-        <!-- Its own strip rather than more buttons in the action row: this is a
-             decision about the clip, not another thing you can do to it. -->
-        {#if selected.status === 'review'}
-          <div class="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-800 pt-4">
-            <span class="mr-1 text-sm text-gray-400">Approve or reject:</span>
-            <button
-              onclick={() => handleDecision(true)}
-              class="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-600"
-            >
-              Approve
-            </button>
-            <button
-              onclick={() => handleDecision(false)}
-              class="rounded-lg bg-red-800 px-3 py-2 text-sm font-medium text-white hover:bg-red-700"
-            >
-              Reject
-            </button>
           </div>
         {/if}
 

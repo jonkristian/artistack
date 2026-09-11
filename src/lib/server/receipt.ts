@@ -44,7 +44,7 @@ export async function sendReceipt(
 
     const lines = items.map(
       (item) =>
-        `${item.quantity} × ${withVariant(item.name, item.variant)} — ${money(item.unitPrice * item.quantity)}`
+        `${item.quantity} × ${withVariant(item.name, item.variant)}: ${money(item.unitPrice * item.quantity)}`
     );
 
     const downloads = items
@@ -71,14 +71,14 @@ export async function sendReceipt(
 
     const html = await renderEmail({
       heading: 'Thank you',
-      preview: `${order.reference} — ${money(order.amount)}`,
+      preview: `${order.reference}, ${money(order.amount)}`,
       origin,
       body: [
         `<p style="margin:0 0 16px;">Order <strong>${escapeHtml(order.reference)}</strong></p>`,
         '<ul style="margin:0 0 16px;padding-left:20px;">',
         ...items.map(
           (item) =>
-            `<li>${item.quantity} × ${escapeHtml(withVariant(item.name, item.variant))} — ${money(
+            `<li>${item.quantity} × ${escapeHtml(withVariant(item.name, item.variant))}: ${money(
               item.unitPrice * item.quantity
             )}</li>`
         ),
@@ -108,7 +108,7 @@ export async function sendReceipt(
 
     await sendEmail({
       to: order.buyerEmail,
-      subject: `Order ${order.reference} — ${from}`,
+      subject: `Order ${order.reference}`,
       text,
       html
     });

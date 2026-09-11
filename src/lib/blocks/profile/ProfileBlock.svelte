@@ -22,8 +22,14 @@
   const showName = $derived(config.showName !== false);
   const showBio = $derived(config.showBio !== false);
 
-  // Social links for the profile header
-  const socialLinks = $derived(links.filter((l) => l.category === 'social'));
+  // Social links for the profile header, in the order they were put in — the
+  // editor moves one by rewriting `position` rather than by moving it in the
+  // array, so reading array order here would ignore every reorder.
+  const socialLinks = $derived(
+    links
+      .filter((l) => l.category === 'social')
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+  );
 
   // Email obfuscation - encode email to prevent bot scraping
   const obfuscatedEmail = $derived(profile.email ? btoa(profile.email) : null);

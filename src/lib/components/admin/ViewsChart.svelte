@@ -15,7 +15,8 @@
     previousViewsByDay,
     days = 30,
     height = 200,
-    locale = 'nb-NO'
+    locale = 'nb-NO',
+    legendTarget = null
   }: {
     viewsByDay: { date: string; count: number }[];
     previousViewsByDay: { date: string; count: number }[];
@@ -23,6 +24,15 @@
     height?: number;
     /** The site's language, so dates read the way the rest of the admin does. */
     locale?: string;
+    /**
+     * Somewhere else to put the legend — the card's header, usually.
+     *
+     * uPlot's `legend.mount` exists for this, so the element is placed where it
+     * is built rather than moved afterwards. It's also the cursor readout, the
+     * figures changing as you move across the chart, which is why it's this
+     * element that travels rather than a copy of it.
+     */
+    legendTarget?: HTMLElement | null;
   } = $props();
 
   let chartContainer: HTMLDivElement;
@@ -115,6 +125,28 @@
           size: 40
         }
       ],
+      /*
+       * Marked with a class of its own as it's built, and styled through that
+       * rather than through the chart it came from.
+       *
+       * The styles below used to hang off `.uplot-chart .u-legend`, which reads
+       * fine until the legend is mounted somewhere else — a descendant selector
+       * stops matching the moment its ancestor isn't above it any more, and the
+       * legend came out in uPlot's own black-on-white. A class on the element
+       * travels with it.
+       */
+      legend: {
+        mount: (self: uPlot, el: HTMLElement) => {
+          el.classList.add('chart-legend');
+          if (legendTarget) {
+            el.classList.add('chart-legend-inline');
+            legendTarget.replaceChildren(el);
+          } else {
+            // What uPlot would have done if we hadn't taken the job.
+            self.root.appendChild(el);
+          }
+        }
+      },
       series: [
         {
           /*
@@ -229,13 +261,13 @@
     background: transparent;
   }
 
-  :global(.uplot-chart .u-legend) {
+  :global(.chart-legend) {
     color: var(--color-gray-400, #9ca3af);
     font-size: 0.75rem;
   }
 
   /* The series rows sit in a table; its borders are drawn for a light page. */
-  :global(.uplot-chart .u-legend .u-marker) {
+  :global(.chart-legend .u-marker) {
     border-width: 2px;
   }
 
@@ -243,14 +275,70 @@
    * It doubles as the readout under the cursor, so the value has to be legible
    * rather than merely present — it's the only way to read a given day.
    */
-  :global(.uplot-chart .u-legend .u-value) {
+  :global(.chart-legend .u-value) {
     color: var(--color-gray-100, #f3f4f6);
     font-variant-numeric: tabular-nums;
   }
 
+  /*
+   * In a header it has to read as one line of keys rather than a stacked table,
+   * so the rows become inline cells. Only when it's been mounted out of the
+   * chart — under the plot the table layout is the right one.
+   */
+  :global(.chart-legend-inline) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.9rem;
+    margin: 0;
+  }
+
+  /*
+   * The rows are a table, and a table's baseline isn't the text baseline of
+   * whatever sits beside it — which is why this didn't line up with the link
+   * next to it. `display: contents` takes the table box out of the way so the
+   * series become flex children of the legend itself.
+   */
+  :global(.chart-legend-inline tbody) {
+    display: contents;
+  }
+
+  :global(.chart-legend-inline .u-series) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin: 0;
+  }
+
+  /* The marker is an empty bordered box with no baseline of its own. */
+  :global(.chart-legend-inline .u-series th) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0;
+  }
+
+  :global(.chart-legend-inline .u-series td) {
+    display: inline;
+    padding: 0;
+  }
+
+  /*
+   * Not on a phone, wherever it's mounted.
+   *
+   * It's a key and a hover readout, and a touch screen has no hover — so on a
+   * narrow screen it's three labels reading "--" taking a line from the chart
+   * they describe. 640px is Tailwind's `sm`, which is where the rest of the
+   * admin changes shape too.
+   */
+  @media (max-width: 639px) {
+    :global(.chart-legend) {
+      display: none;
+    }
+  }
+
   /* Dimmed rather than hidden when a series is switched off, so it's clear the
      row is still there to switch back on. */
-  :global(.uplot-chart .u-legend .u-off > *) {
+  :global(.chart-legend .u-off > *) {
     opacity: 0.4;
   }
 </style>

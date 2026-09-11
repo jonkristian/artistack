@@ -10,14 +10,15 @@ import {
 import { clipProjects, clipPosts, media, type ClipProject, type Media } from './schema';
 import { buildPostSheet, campaignUrlFor } from './post-sheet';
 import { ensurePreviewToken, previewUrl } from './clip-review';
+import { quietLinks } from './discord';
 import { tagsFor } from './tags';
 import { PLATFORM_NAMES } from '../clips/types';
 
 /**
- * Drip-release queue for approved clips.
+ * Drip-release queue for finished clips.
  *
  * Ordering lives in the database rather than in a manifest file, which is the
- * one structural change from The How's `.order` approach — it makes reordering
+ * one structural change from the `.order` file it replaced — it makes reordering
  * atomic and lets the ETA be computed instead of parsed.
  *
  * When a clip comes due, an outbound webhook fires carrying the clip URL and
@@ -55,7 +56,7 @@ export interface QueueEntry {
   eta: Date | null;
 }
 
-/** Approved and queued clips, in release order. */
+/** Queued clips, in release order. */
 export async function getQueue(): Promise<QueueEntry[]> {
   const queued = await db
     .select()
@@ -77,16 +78,32 @@ export async function getQueue(): Promise<QueueEntry[]> {
   let cursor = nextSlot(lastSent, intervalDays, hour);
 
   const entries = queued.map((project) => {
-    // A pinned clip keeps its own date and doesn't advance the cursor — it isn't
-    // taking a drip slot, so the clips around it shouldn't shuffle because of it.
+    /*
+     * A clip with a date of its own keeps it. What it doesn't get to do is
+     * pretend it never went out: this used to leave the cursor alone, on the
+     * grounds that a dated clip isn't taking a drip slot — but it plainly is.
+     * Publishing anything sets `publishLastSent`, so when the day comes the
+     * scheduler restarts the cadence from that release like any other, and the
+     * drip clips behind it all move back.
+     *
+     * The projection said otherwise, which made every ETA after a dated clip a
+     * date that was never going to happen.
+     */
     const eta = !config?.publishEnabled
       ? null
       : project.scheduledFor
         ? new Date(project.scheduledFor)
         : new Date(cursor);
 
-    if (!project.scheduledFor) {
-      cursor = addDays(cursor, project.queueGapDays ?? intervalDays);
+    const gap = project.queueGapDays ?? intervalDays;
+
+    if (project.scheduledFor) {
+      // Never backwards: a date already past shouldn't drag the queue with it.
+      const after = addDays(new Date(project.scheduledFor), gap);
+      after.setHours(hour, 0, 0, 0);
+      if (after > cursor) cursor = after;
+    } else {
+      cursor = addDays(cursor, gap);
     }
 
     return {
@@ -149,7 +166,7 @@ function nextSlot(lastSent: Date | null, intervalDays: number, hour: number): Da
   return slot;
 }
 
-/** Adds an approved clip to the back of the queue. */
+/** Adds a rendered clip to the back of the queue. */
 export async function enqueueForRelease(
   projectId: number
 ): Promise<{ success: boolean; message?: string }> {
@@ -160,8 +177,18 @@ export async function enqueueForRelease(
     .limit(1);
 
   if (!project) return { success: false, message: 'Clip not found' };
-  if (project.status !== 'approved') {
-    return { success: false, message: 'Only approved clips can be queued' };
+  /*
+   * A render, and somewhere still to go. There used to be an approval to pass
+   * first, which asked you to agree with a decision only you had made — and it
+   * never held anyway, because publishing now was never gated on it. Adding a
+   * clip to the queue is the decision.
+   */
+  if (!project.outputMediaId) {
+    return { success: false, message: 'Render the clip before queueing it' };
+  }
+  if (project.status === 'queued') return { success: false, message: 'Already queued' };
+  if (project.status === 'published') {
+    return { success: false, message: 'That clip has already gone out' };
   }
 
   const existing = await db
@@ -179,11 +206,11 @@ export async function enqueueForRelease(
   return { success: true };
 }
 
-/** Pulls a clip out of the queue, back to approved. */
+/** Pulls a clip out of the queue, back to just rendered. */
 export async function dequeue(projectId: number): Promise<void> {
   await db
     .update(clipProjects)
-    .set({ status: 'approved', queuePosition: null, updatedAt: new Date() })
+    .set({ status: 'rendered', queuePosition: null, updatedAt: new Date() })
     .where(eq(clipProjects.id, projectId));
 }
 
@@ -436,42 +463,50 @@ export async function announceRelease(projectId: number, baseUrl: string): Promi
     .where(eq(clipProjects.id, projectId));
 
   const origin = baseUrl.replace(/\/$/, '');
-  const [output] = project.outputMediaId
-    ? await db.select().from(media).where(eq(media.id, project.outputMediaId)).limit(1)
-    : [];
 
+  // Bracketed, like every other link here: the point of the post is the clip,
+  // and each platform URL left bare would unfurl into a card of its own.
   const lines = landed.map((p) => {
     const name = PLATFORM_NAMES[p.platform] ?? p.platform;
     if (p.status === 'draft') return `**${name}** — uploaded, post it by hand`;
-    return p.url ? `**${name}** — ${p.url}` : `**${name}** — live`;
+    return p.url ? `**${name}** — <${p.url}>` : `**${name}** — live`;
   });
 
   // Anything left to post by hand needs the caption and hashtags to hand, not
   // just the news that it's out. The preview page carries the video and the
   // post sheet with copy buttons, so it's the one link worth adding — and only
   // when there's actually manual work waiting.
+  const token = await ensurePreviewToken(projectId);
   if (landed.some((p) => p.status === 'draft')) {
-    const token = await ensurePreviewToken(projectId);
-    lines.push('', `Caption and hashtags to copy: ${previewUrl(origin, token)}`);
+    lines.push('', `Caption and hashtags to copy: <${previewUrl(origin, token)}>`);
   }
+
+  /*
+   * The clip itself rather than a still of it, which means no embed — see the
+   * long note in `submitForReview`. This post used to carry the thumbnail as
+   * `embeds[].image`, which is the most a webhook embed can do: `video` is a
+   * field it isn't allowed to set, and a message holding any embed at all gets
+   * no player built for the URL in its content.
+   */
+  const video = `${origin.replace(/\/$/, '')}/preview/${token}/video.mp4`;
+
+  const content = [
+    `## ${project.name} is out`,
+    project.description?.trim() ? quietLinks(project.description.trim()) : null,
+    '',
+    lines.join('\n'),
+    '',
+    `[The clip's page](<${campaignUrlFor(project, origin)}>)`,
+    '-# Released from Artistack',
+    video
+  ]
+    .filter((line) => line !== null)
+    .join('\n');
 
   await fetch(config.publishedWebhookUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      username: 'Artistack Clips',
-      content: `**${project.name}** is out — ${campaignUrlFor(project, origin)}`,
-      embeds: [
-        {
-          title: project.name,
-          description: [project.description?.trim(), lines.join('\n')].filter(Boolean).join('\n\n'),
-          color: 0x22c55e,
-          image: output?.thumbnailUrl ? { url: `${origin}${output.thumbnailUrl}` } : undefined,
-          footer: { text: 'Released from Artistack' },
-          timestamp: new Date().toISOString()
-        }
-      ]
-    })
+    body: JSON.stringify({ username: 'Artistack Clips', content })
   }).catch((e) => console.error('[ClipQueue] Release announcement failed:', e));
 }
 

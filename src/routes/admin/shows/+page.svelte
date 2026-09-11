@@ -1,6 +1,7 @@
 <script lang="ts">
   import { fieldClass, labelClass, tileGridClass } from '$lib/utils/classes';
   import { goto, invalidateAll } from '$app/navigation';
+  import { page } from '$app/state';
   import { toast } from '$lib/stores/toast.svelte';
   import { SectionCard } from '$lib/components/cards';
   import { LibraryToolbar, SelectCheckbox, DateTimePicker } from '$lib/components/ui';
@@ -37,7 +38,9 @@
    * and the row can't be written without them. Everything else lives on the
    * show's own page, so this asks the least it can and gets out of the way.
    */
-  let creating = $state(false);
+  // Opened by ?new=1, the same way Releases is, so a New show pressed on the
+  // dashboard lands on the form rather than on a list with a button to find.
+  let creating = $state(page.url.searchParams.get('new') === '1');
   let saving = $state(false);
   let venueName = $state('');
   let venueCity = $state('');

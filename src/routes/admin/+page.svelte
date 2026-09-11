@@ -4,11 +4,15 @@
   import { toast } from '$lib/stores/toast.svelte';
   import SetupCard from '$lib/components/admin/SetupCard.svelte';
   import ViewsChart from '$lib/components/admin/ViewsChart.svelte';
+  import AdminCalendar from '$lib/components/admin/AdminCalendar.svelte';
+  import WaitingMenu, { type WaitingItem } from '$lib/components/admin/WaitingMenu.svelte';
+  import NewMenu, { type NewAction } from '$lib/components/admin/NewMenu.svelte';
   import * as draft from '$lib/stores/pageDraft.svelte';
   import { buildDraftFromServerData } from './publishDraft';
   import { CLIP_STATUS_LABELS, CLIP_STATUS_DOTS, type ClipStatus } from '$lib/clips/types';
   import { createProject } from './clips/data.remote';
   import { goto } from '$app/navigation';
+  import { Icon, MusicalNote, Film, ArrowUpTray, CalendarDays } from 'svelte-hero-icons';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -29,88 +33,68 @@
     toast.info('Setup complete! Start customizing your page.');
   }
 
-  const formatDate = $derived(
-    new Intl.DateTimeFormat(data.settings?.locale || 'nb-NO', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric'
-    })
-  );
+  const locale = $derived(data.settings?.locale || 'nb-NO');
 
   /*
-   * The next release, or the last one if nothing is scheduled. Both are worth
-   * saying — one is a deadline, the other is what people are currently landing
-   * on — so which it is gets labelled rather than left to be inferred.
+   * Where the chart builds its legend. The element has to exist before the plot
+   * does, which it does: this renders above the chart.
    */
-  const nextRelease = $derived.by(() => {
-    if (!data.settings?.releasesEnabled) return null;
-
-    const all = [...(data.releases ?? [])].sort(
-      (a, b) => new Date(a.releaseDate).getTime() - new Date(b.releaseDate).getTime()
-    );
-    const now = Date.now();
-    const upcoming = all.find((r) => new Date(r.releaseDate).getTime() > now);
-    if (upcoming) return { release: upcoming, upcoming: true };
-
-    const last = all[all.length - 1];
-    return last ? { release: last, upcoming: false } : null;
-  });
-
-  const daysUntil = $derived.by(() => {
-    if (!nextRelease?.upcoming) return null;
-    const ms = new Date(nextRelease.release.releaseDate).getTime() - Date.now();
-    return Math.max(0, Math.ceil(ms / (24 * 60 * 60 * 1000)));
-  });
-
-  // Everything still ahead, so a run of singles reads as a schedule rather
-  // than one date with the rest hidden behind it.
-  const upcomingReleases = $derived.by(() => {
-    if (!data.settings?.releasesEnabled) return [];
-    const now = Date.now();
-    return [...(data.releases ?? [])]
-      .filter((r) => new Date(r.releaseDate).getTime() > now)
-      .sort((a, b) => new Date(a.releaseDate).getTime() - new Date(b.releaseDate).getTime())
-      .slice(0, 4);
-  });
+  let legendHost = $state<HTMLElement | null>(null);
 
   /*
-   * The next show. Free — the layout already loads tour dates for the draft —
-   * and on an act's site it's the other date that matters besides a release.
+   * What's waiting on you, with no date to be drawn on.
+   *
+   * The calendar covers everything that has one. This is the other half — clips
+   * still being made, pages never published, parcels not sent — and it's one
+   * list because they're one kind of thing: unfinished. It replaced a card
+   * each, which said so four times and filled the screen doing it.
    */
-  const nextShow = $derived.by(() => {
-    const now = Date.now();
-    return [...(data.shows ?? [])]
-      .filter((t) => new Date(t.date).getTime() > now)
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
+  const waiting = $derived.by(() => {
+    const items: WaitingItem[] = [];
+
+    for (const clip of data.waitingClips ?? []) {
+      items.push({
+        key: `clip-${clip.id}`,
+        kind: 'Clips',
+        label: clip.name,
+        detail: CLIP_STATUS_LABELS[clip.status as ClipStatus],
+        href: `/admin/clips/${clip.id}`,
+        thumbnailUrl: clip.thumbnailUrl,
+        dot: CLIP_STATUS_DOTS[clip.status as ClipStatus]
+      });
+    }
+
+    for (const order of (data.orders ?? []).filter((o) => !o.sent)) {
+      items.push({
+        key: `order-${order.id}`,
+        kind: 'Orders',
+        label: order.buyerName || order.reference,
+        detail: `${Math.round(order.amount / 100)} ${order.currency} · not sent`,
+        href: '/admin/shop/orders',
+        thumbnailUrl: null,
+        dot: 'bg-emerald-400'
+      });
+    }
+
+    if (data.settings?.pagesEnabled) {
+      for (const page of data.pages ?? []) {
+        if (page.type !== 'custom' || page.published) continue;
+        items.push({
+          key: `page-${page.id}`,
+          kind: 'Unpublished',
+          label: page.title,
+          detail: `/${page.slug}`,
+          href: `/admin/pages/${page.id}`,
+          thumbnailUrl: null,
+          dot: 'bg-gray-500'
+        });
+      }
+    }
+
+    return items;
   });
 
-  /*
-   * How many are waiting in total, so the list can say what it isn't showing.
-   * The same statuses the query filtered on — counted here rather than passed
-   * down, since the grouped counts are already loaded.
-   */
-  const waitingTotal = $derived(
-    (data.clipCounts ?? [])
-      .filter((c) =>
-        (['draft', 'rendered', 'review', 'rejected'] as ClipStatus[]).includes(
-          c.status as ClipStatus
-        )
-      )
-      .reduce((sum, c) => sum + c.total, 0)
-  );
-
-  /*
-   * Custom pages can outlive the switch that made them — turning Extra pages
-   * off doesn't delete them — so this checks the flag as well as the count,
-   * rather than offering a tile that leads to a section you can't open.
-   */
-  const draftPages = $derived(
-    data.settings?.pagesEnabled
-      ? (data.pages ?? []).filter((p) => p.type === 'custom' && !p.published).length
-      : 0
-  );
-
-  const mediaById = $derived(new Map((data.media ?? []).map((m) => [m.id, m])));
+  const productCount = $derived((data.products ?? []).length);
 
   /*
    * Creating a clip is one call — the name is a placeholder either way, so
@@ -132,10 +116,52 @@
     }
   }
 
+  const newActions: NewAction[] = $derived(
+    [
+      data.settings?.releasesEnabled && {
+        key: 'release',
+        label: 'New release',
+        href: '/admin/releases?new=1',
+        icon: releaseIcon
+      },
+      data.settings?.clipsEnabled && {
+        key: 'clip',
+        label: 'New clip',
+        run: newClip,
+        busy: creatingClip,
+        icon: clipIcon
+      },
+      data.settings?.showsEnabled && {
+        key: 'show',
+        label: 'New show',
+        href: '/admin/shows?new=1',
+        icon: showIcon
+      },
+      { key: 'media', label: 'Upload media', href: '/admin/media?upload=1', icon: mediaIcon }
+    ].filter(Boolean) as NewAction[]
+  );
+
   const tile = 'rounded-xl border border-gray-800 bg-gray-900 p-5';
+  // inline-flex so the icon and the label sit on one baseline; the anchors and
+  // the button share the class and would otherwise align differently.
+  const stat =
+    'flex items-baseline justify-between gap-3 py-2.5 transition-colors hover:text-white';
   const action =
-    'rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-700 hover:text-white disabled:opacity-50';
+    'inline-flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-700 hover:text-white disabled:opacity-50';
 </script>
+
+{#snippet releaseIcon()}
+  <Icon src={MusicalNote} size="16" />
+{/snippet}
+{#snippet clipIcon()}
+  <Icon src={Film} size="16" />
+{/snippet}
+{#snippet showIcon()}
+  <Icon src={CalendarDays} size="16" />
+{/snippet}
+{#snippet mediaIcon()}
+  <Icon src={ArrowUpTray} size="16" />
+{/snippet}
 
 <div class="min-h-screen bg-gray-950 p-[clamp(1rem,4vw,1.5rem)]">
   {#if needsSetup}
@@ -147,229 +173,110 @@
         and repeating it here just puts the same link on screen twice. Each is
         offered only where the section it lands in exists.
       -->
-      <div class="flex flex-wrap gap-2">
-        {#if data.settings?.releasesEnabled}
-          <a href="/admin/releases?new=1" class={action}>New release</a>
-        {/if}
-        {#if data.settings?.clipsEnabled}
-          <button onclick={newClip} disabled={creatingClip} class={action}>
-            {creatingClip ? 'Creating…' : 'New clip'}
-          </button>
-        {/if}
-        <a href="/admin/media?upload=1" class={action}>Upload media</a>
-      </div>
+      <!--
+        One menu for making things and one for what's unfinished. Three buttons
+        side by side wrapped onto two rows on a phone, and a fourth would have
+        made three; a menu is one row at any width.
+      -->
+      <div class="flex flex-wrap items-center gap-2">
+        <NewMenu actions={newActions} />
 
-      <!-- What the site is doing. The detail is a click away in Stats. -->
-      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <a href="/admin/stats" class="{tile} transition-colors hover:border-gray-700">
-          <div class="text-sm text-gray-400">Views today</div>
-          <div class="mt-2 text-2xl font-bold text-white">{data.overview.todayViews}</div>
-          <div class="mt-1 text-sm text-gray-500">{data.overview.weekViews} this week</div>
-        </a>
-
-        <a href="/admin/stats" class="{tile} transition-colors hover:border-gray-700">
-          <div class="text-sm text-gray-400">Clicks this week</div>
-          <div class="mt-2 text-2xl font-bold text-white">{data.overview.weekClicks}</div>
-          <div class="mt-1 text-sm text-gray-500">{data.overview.monthClicks} this month</div>
-        </a>
-
-        {#if data.audience}
-          <a href="/admin/subscribers" class="{tile} transition-colors hover:border-gray-700">
-            <div class="text-sm text-gray-400">Fan list</div>
-            <div class="mt-2 text-2xl font-bold text-white">{data.audience.active}</div>
-            <div class="mt-1 text-sm text-gray-500">
-              {data.audience.recent} in the last 30 days
-            </div>
-          </a>
-        {/if}
-
-        <a href="/admin/stats" class="{tile} transition-colors hover:border-gray-700">
-          <div class="text-sm text-gray-400">Most clicked</div>
-          <div class="mt-2 truncate text-xl font-bold text-white">
-            {data.overview.topLink?.label ?? data.overview.topLink?.platform ?? 'No clicks yet'}
-          </div>
-          <div class="mt-1 text-sm text-gray-500">
-            {data.overview.topLink ? `${data.overview.topLink.clicks} clicks` : 'Last 30 days'}
-          </div>
-        </a>
-      </div>
-
-      <div class={tile}>
-        <div class="flex items-baseline justify-between gap-3">
-          <span class="text-sm text-gray-400">Views, last 30 days</span>
-          <a href="/admin/stats" class="text-xs text-gray-500 hover:text-gray-300">All stats</a>
+        <div class="ml-auto">
+          <WaitingMenu items={waiting} />
         </div>
-        <div class="mt-3">
+      </div>
+
+      <AdminCalendar
+        {locale}
+        settings={data.settings}
+        shows={data.shows ?? []}
+        releases={data.releases ?? []}
+        queue={data.queue ?? []}
+        publishedClips={data.publishedClips ?? []}
+        orders={data.orders ?? []}
+      />
+
+      <!--
+        The numbers under the plan rather than over it. The chart carries the
+        shape and the four figures stack beside it, so one row says what a row
+        of tiles and a chart below it used to take two for.
+      -->
+      <div class={tile}>
+        <!--
+          The legend sits up here rather than on a line of its own under the
+          plot. uPlot builds it straight into this element, and it stays the
+          cursor readout — the figures change as you move across the chart.
+        -->
+        <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          <span class="text-sm text-gray-400">Views, last 30 days</span>
+          <div class="ml-auto flex items-center gap-4">
+            <div bind:this={legendHost}></div>
+            <!--
+              A button rather than the small grey link this was. It used to be
+              one of five "All …" links, each under a card that has since become
+              the calendar or the waiting menu — and the last one of a pattern
+              isn't a pattern, it's a loose thread. Borrowed from the actions at
+              the top of the page, a size down.
+            -->
+            <a
+              href="/admin/stats"
+              class="rounded-lg border border-gray-800 px-2.5 py-1 text-xs whitespace-nowrap text-gray-400 transition-colors hover:border-gray-700 hover:text-white"
+            >
+              All stats
+            </a>
+          </div>
+        </div>
+
+        <div class="mt-3 grid gap-4 lg:grid-cols-[1fr_14rem]">
           <ViewsChart
-            locale={data.settings?.locale || 'nb-NO'}
+            {locale}
+            legendTarget={legendHost}
             viewsByDay={data.pageViews.viewsByDay}
             previousViewsByDay={data.previousPeriodViews}
           />
-        </div>
-      </div>
 
-      <div class="grid gap-4 lg:grid-cols-2">
-        {#if nextRelease}
-          <div class={tile}>
-            <div class="flex items-baseline justify-between gap-3">
-              <span class="text-sm text-gray-400">
-                {nextRelease.upcoming ? 'Coming up' : 'Latest release'}
-              </span>
-              <a href="/admin/releases" class="text-xs text-gray-500 hover:text-gray-300">
-                All releases
-              </a>
-            </div>
-
-            {#if upcomingReleases.length > 0}
-              <ul class="mt-3 space-y-2">
-                {#each upcomingReleases as release (release.id)}
-                  <li>
-                    <a href="/admin/releases/{release.id}" class="flex items-center gap-3">
-                      <span
-                        class="h-10 w-10 shrink-0 overflow-hidden rounded-md border border-gray-800 bg-gray-950"
-                      >
-                        {#if release.coverUrl}
-                          <img
-                            src={release.coverUrl}
-                            alt=""
-                            class="h-full w-full object-cover"
-                            loading="lazy"
-                          />
-                        {/if}
-                      </span>
-                      <span class="min-w-0 flex-1">
-                        <span class="block truncate text-sm text-white">{release.title}</span>
-                        <span class="block truncate text-xs text-gray-500">
-                          {formatDate.format(new Date(release.releaseDate))}
-                          {#if !release.published}· draft{/if}
-                        </span>
-                      </span>
-                    </a>
-                  </li>
-                {/each}
-              </ul>
-            {:else}
-              <a
-                href="/admin/releases/{nextRelease.release.id}"
-                class="mt-3 flex items-center gap-3"
-              >
-                <span
-                  class="h-14 w-14 shrink-0 overflow-hidden rounded-md border border-gray-800 bg-gray-950"
+          <!--
+            Rows, not cards. Four boxed tiles beside a chart made a column
+            taller than the thing it was annotating; a label, a figure and the
+            comparison on one line each say the same in a third of the height.
+          -->
+          <div class="divide-y divide-gray-800 border-t border-gray-800 lg:border-0">
+            <a href="/admin/stats" class={stat}>
+              <span class="text-xs text-gray-500">Views today</span>
+              <span class="flex items-baseline gap-2">
+                <span class="font-semibold text-white tabular-nums">{data.overview.todayViews}</span
                 >
-                  {#if nextRelease.release.coverUrl}
-                    <img
-                      src={nextRelease.release.coverUrl}
-                      alt=""
-                      class="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  {/if}
-                </span>
-                <span class="min-w-0">
-                  <span class="block truncate text-xl font-bold text-white">
-                    {nextRelease.release.title}
-                  </span>
-                  <span class="mt-1 block text-sm text-gray-500">
-                    {formatDate.format(new Date(nextRelease.release.releaseDate))}
-                    {#if !nextRelease.release.published}· draft{/if}
-                  </span>
+                <span class="text-xs text-gray-600">{data.overview.weekViews} this week</span>
+              </span>
+            </a>
+
+            <a href="/admin/stats" class={stat}>
+              <span class="text-xs text-gray-500">Clicks this week</span>
+              <span class="flex items-baseline gap-2">
+                <span class="font-semibold text-white tabular-nums">{data.overview.weekClicks}</span
+                >
+                <span class="text-xs text-gray-600">{data.overview.monthClicks} this month</span>
+              </span>
+            </a>
+
+            {#if data.audience}
+              <a href="/admin/subscribers" class={stat}>
+                <span class="text-xs text-gray-500">Fan list</span>
+                <span class="flex items-baseline gap-2">
+                  <span class="font-semibold text-white tabular-nums">{data.audience.active}</span>
+                  <span class="text-xs text-gray-600">+{data.audience.recent} in 30 days</span>
                 </span>
               </a>
             {/if}
 
-            {#if daysUntil !== null}
-              <div class="mt-3 border-t border-gray-800 pt-3 text-sm text-gray-500">
-                {daysUntil === 0 ? 'Out today' : `Out in ${daysUntil} days`}
-              </div>
-            {/if}
+            <a href="/admin/stats" class={stat}>
+              <span class="shrink-0 text-xs text-gray-500">Most clicked</span>
+              <span class="ml-3 min-w-0 truncate text-sm font-semibold text-white">
+                {data.overview.topLink?.label ?? data.overview.topLink?.platform ?? '—'}
+              </span>
+            </a>
           </div>
-        {/if}
-
-        {#if data.clipCounts.length > 0}
-          <div class={tile}>
-            <div class="flex items-baseline justify-between gap-3">
-              <span class="text-sm text-gray-400">Clips waiting</span>
-              <a href="/admin/clips" class="text-xs text-gray-500 hover:text-gray-300">All clips</a>
-            </div>
-
-            {#if data.waitingClips.length > 0}
-              <ul class="mt-3 space-y-2">
-                {#each data.waitingClips as clip (clip.id)}
-                  {@const output = clip.outputMediaId
-                    ? mediaById.get(clip.outputMediaId)
-                    : undefined}
-                  <li>
-                    <a href="/admin/clips/{clip.id}" class="flex items-center gap-3">
-                      <!--
-                        Portrait, because that's the shape a clip is. A draft
-                        has no render yet, so the frame stays empty rather than
-                        collapsing and shuffling the rows that do have one.
-                      -->
-                      <span
-                        class="h-14 w-8 shrink-0 overflow-hidden rounded-md border border-gray-800 bg-gray-950"
-                      >
-                        {#if output?.thumbnailUrl}
-                          <img
-                            src={output.thumbnailUrl}
-                            alt=""
-                            class="h-full w-full object-cover"
-                            loading="lazy"
-                          />
-                        {/if}
-                      </span>
-                      <span class="min-w-0 flex-1">
-                        <span class="block truncate text-sm text-white">{clip.name}</span>
-                        <span class="mt-0.5 flex items-center gap-2">
-                          <span
-                            class="h-2 w-2 shrink-0 rounded-full {CLIP_STATUS_DOTS[
-                              clip.status as ClipStatus
-                            ]}"
-                          ></span>
-                          <span class="truncate text-xs text-gray-500">
-                            {CLIP_STATUS_LABELS[clip.status as ClipStatus]}
-                          </span>
-                        </span>
-                      </span>
-                    </a>
-                  </li>
-                {/each}
-              </ul>
-
-              {#if waitingTotal > data.waitingClips.length}
-                <div class="mt-3 border-t border-gray-800 pt-3 text-sm text-gray-500">
-                  and {waitingTotal - data.waitingClips.length} more
-                </div>
-              {/if}
-            {:else}
-              <div class="mt-2 text-xl font-bold text-white">Nothing waiting</div>
-              <div class="mt-1 text-sm text-gray-500">Every clip is published or queued</div>
-            {/if}
-          </div>
-        {/if}
-
-        {#if nextShow && data.settings?.showsEnabled}
-          <a href="/admin/shows" class="{tile} block transition-colors hover:border-gray-700">
-            <div class="text-sm text-gray-400">Next show</div>
-            <div class="mt-2 truncate text-xl font-bold text-white">
-              {nextShow.venue.name || nextShow.title || 'Show'}
-            </div>
-            <div class="mt-1 truncate text-sm text-gray-500">
-              {formatDate.format(new Date(nextShow.date))}
-              {#if nextShow.venue.city}· {nextShow.venue.city}{/if}
-            </div>
-          </a>
-        {/if}
-
-        {#if draftPages > 0}
-          <a href="/admin/pages" class="{tile} block transition-colors hover:border-gray-700">
-            <div class="text-sm text-gray-400">Pages</div>
-            <div class="mt-2 text-xl font-bold text-white">
-              {draftPages}
-              {draftPages === 1 ? 'page' : 'pages'} unpublished
-            </div>
-            <div class="mt-1 text-sm text-gray-500">Reachable by you, not by anyone else</div>
-          </a>
-        {/if}
+        </div>
       </div>
     </div>
   {/if}

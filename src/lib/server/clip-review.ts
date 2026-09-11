@@ -4,7 +4,7 @@ import { db } from './db';
 import { getClipSettings, getDiscordSettings } from './settings';
 import { clipProjects, media, settings, type ClipProject } from './schema';
 import { buildPostSheet } from './post-sheet';
-import type { DiscordWebhookPayload } from './discord';
+import { quietLinks, type DiscordWebhookPayload } from './discord';
 
 /**
  * Review flow for generated clips.
@@ -14,9 +14,6 @@ import type { DiscordWebhookPayload } from './discord';
  * a link means the reviewer always sees the current render rather than a copy
  * that goes stale the moment anything is changed.
  */
-
-/** Accent colour for review embeds (violet, matching the admin UI). */
-const EMBED_COLOR = 0x8b5cf6;
 
 /**
  * Returns the project's preview token, creating one on first use.
@@ -126,94 +123,73 @@ export async function submitForReview(
 
   const sheet = await buildPostSheet(projectId, baseUrl);
 
-  // Discord renders a player from a bare video URL in `content`, but shows an
-  // embed and a link as two separate blocks — so the clip goes in the message
-  // itself and the detail stays in the embed. This is what the old n8n post did
-  // with Seafile's `?raw=1`, minus the permanent share link.
   const videoUrl = `${baseUrl.replace(/\/$/, '')}/preview/${token}/video.mp4`;
 
-  const payload: DiscordWebhookPayload = {
-    username: 'Artistack Clips',
-    content: videoUrl,
-    embeds: [
-      {
-        title: `Review: ${project.name}`,
-        description: [
-          project.description?.trim(),
-          '',
-          `**[Watch the preview](${url})**`,
-          `[Open in admin](${baseUrl.replace(/\/$/, '')}/admin/clips)`
-        ]
-          .filter((line) => line !== undefined)
-          .join('\n'),
-        color: EMBED_COLOR,
-        fields: [
-          ...(output?.durationMs
-            ? [
-                {
-                  name: 'Length',
-                  value: `${Math.round(output.durationMs / 1000)}s`,
-                  inline: true
-                }
-              ]
-            : []),
-          ...(output?.width && output.height
-            ? [{ name: 'Format', value: `${output.width}×${output.height}`, inline: true }]
-            : []),
-          { name: 'Link in post', value: sheet.ctaUrl, inline: false }
-        ],
-        footer: { text: 'Approve or reject in Artistack → Clips' },
-        timestamp: new Date().toISOString()
-      }
-    ]
-  };
+  /*
+   * Everything in the message itself, with no embed of its own.
+   *
+   * The clip is the point of the post, and Discord will only build a player out
+   * of a bare video URL when the message carries no embeds — supply one and the
+   * URL degrades to a blue line of text above it. Nor can the embed hold the
+   * clip instead: `video` is among the fields a webhook is explicitly not
+   * allowed to set, alongside `type`, `provider` and image dimensions.
+   *
+   * So the detail is written as markdown rather than built as an embed. What's
+   * lost is the coloured bar and the field grid, which only exist inside one.
+   * What's gained is the clip playing where it's being talked about, in one
+   * message rather than two.
+   *
+   * Every link except the video is bracketed, or Discord unfurls those too and
+   * the player ends up beneath a stack of link cards.
+   */
+  const admin = `${baseUrl.replace(/\/$/, '')}/admin/clips`;
+  const facts = [
+    output?.durationMs ? `**${Math.round(output.durationMs / 1000)}s**` : null,
+    output?.width && output.height ? `**${output.width}×${output.height}**` : null,
+    `[Link in post](<${sheet.ctaUrl}>)`
+  ].filter(Boolean);
 
-  try {
-    const response = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+  const content = [
+    `## Review: ${project.name}`,
+    project.description?.trim() ? quietLinks(project.description.trim()) : null,
+    '',
+    facts.join(' · '),
+    `[Watch the preview](<${url}>) · [Open in admin](<${admin}>)`,
+    '-# Approve or reject in Artistack → Clips',
+    // Last and unbracketed: this is the one meant to become a player.
+    videoUrl
+  ]
+    .filter((line) => line !== null)
+    .join('\n');
 
-    if (!response.ok) {
+  const payload: DiscordWebhookPayload = { username: 'Artistack Clips', content };
+
+  /**
+   * One webhook post. Returns what went wrong rather than throwing, because
+   * the clip is in review either way — Discord is how people hear about it,
+   * not what makes it true.
+   */
+  const post = async (body: DiscordWebhookPayload): Promise<string | null> => {
+    try {
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (response.ok) return null;
+
       const text = await response.text();
       console.error('[ClipReview] Discord webhook error:', response.status, text);
-      // The clip is still in review and the link still works, so this is a
-      // partial success, not a failure to report as one.
-      return {
-        success: true,
-        previewUrl: url,
-        error: `Sent to review, but Discord returned ${response.status}`
-      };
+      return `Sent to review, but Discord returned ${response.status}`;
+    } catch (e) {
+      console.error('[ClipReview] Discord webhook failed:', e);
+      return 'Sent to review, but the Discord notification failed';
     }
-  } catch (e) {
-    console.error('[ClipReview] Discord webhook failed:', e);
-    return {
-      success: true,
-      previewUrl: url,
-      error: 'Sent to review, but the Discord notification failed'
-    };
-  }
+  };
 
-  return { success: true, previewUrl: url };
-}
+  // The clip is still in review and the link still works, so a webhook that
+  // failed is a partial success, not a failure to report as one.
+  const error = (await post(payload)) ?? undefined;
 
-/** Records an approve/reject decision. */
-export async function setReviewOutcome(
-  projectId: number,
-  approved: boolean,
-  note?: string | null
-): Promise<ClipProject | undefined> {
-  const [updated] = await db
-    .update(clipProjects)
-    .set({
-      status: approved ? 'approved' : 'rejected',
-      reviewNote: note?.trim() || null,
-      reviewedAt: new Date(),
-      updatedAt: new Date()
-    })
-    .where(eq(clipProjects.id, projectId))
-    .returning();
-
-  return updated;
+  return { success: true, previewUrl: url, ...(error ? { error } : {}) };
 }

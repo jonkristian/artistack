@@ -37,6 +37,21 @@ export interface DiscordWebhookPayload {
   avatar_url?: string;
 }
 
+/**
+ * Stop Discord making a preview out of every link in a piece of text.
+ *
+ * It unfurls each one it finds, and a clip's description routinely carries a
+ * ticket link or two — which would arrive as a stack of link cards under the
+ * post, pushing the clip itself out of sight. Angle brackets are how Discord is
+ * told not to, and they don't show.
+ *
+ * Only bare links. One already inside brackets, or written as the target of a
+ * markdown link, is left as it is.
+ */
+export function quietLinks(text: string): string {
+  return text.replace(/(?<![<(])\bhttps?:\/\/[^\s<>()]+/g, (url) => `<${url}>`);
+}
+
 // Format number with K/M suffixes
 function formatNumber(n: number): string {
   if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';

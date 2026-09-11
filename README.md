@@ -1,9 +1,19 @@
 # Artistack
 
-A self-hosted site for musicians and bands — your links, your releases, your
-shows, and the clips you post about them.
+A self-hosted solution for artists and bands ... your links, your releases, your shows, and the clips you post about them.
 
 ![Artistack Admin Dashboard](screenshots/hero.png)
+
+<details>
+<summary>More screenshots</summary>
+<br>
+
+| Stats                           | Integrations                                  |
+| ------------------------------- | --------------------------------------------- |
+| ![Stats](screenshots/stats.png) | ![Integrations](screenshots/integrations.png) |
+| ![Media](screenshots/media.png) | ![Appearance](screenshots/appearance.png)     |
+
+</details>
 
 ## Features
 
@@ -23,17 +33,6 @@ shows, and the clips you post about them.
 - **Press Kit** - DnD your media and create your own press kit
 - **Clip Studio** - Turn raw footage into branded vertical video, ready to post
 - **Tags** - One shared vocabulary across clips and media
-
-<details>
-<summary>More screenshots</summary>
-<br>
-
-| Stats                           | Integrations                                  |
-| ------------------------------- | --------------------------------------------- |
-| ![Stats](screenshots/stats.png) | ![Integrations](screenshots/integrations.png) |
-| ![Media](screenshots/media.png) | ![Appearance](screenshots/appearance.png)     |
-
-</details>
 
 ## Tech Stack
 
@@ -72,13 +71,6 @@ shows, and the clips you post about them.
    bun run dev
    ```
 
-5. Optionally fill the shop with things to look at:
-
-   ```bash
-   node scripts/seed-shop.mjs          # add a test catalogue
-   node scripts/seed-shop.mjs --clear  # remove it again
-   ```
-
    It only ever writes and deletes its own fixed list of names, so it's safe to
    run against a database with real products in it.
 
@@ -90,9 +82,19 @@ See `.env.example` for all available options:
 - `BETTER_AUTH_BASE_URL` - Same URL; used for auth and for absolute links in published clips
 - `BETTER_AUTH_SECRET` - Secret key for authentication
 
-Rendering clips needs `ffmpeg` and `fontconfig` with at least one font
-installed. `nixpacks.toml` covers this for container deploys; locally, install
-them through your package manager.
+Rendering clips needs `ffmpeg` and `fontconfig` with at least one font installed. `nixpacks.toml` covers this for container deploys; locally, install them through your package manager.
+
+---
+
+⭐️ this repository if you found it useful ❤️
+
+[![BuyMeCoffee][buymecoffebadge2]][buymecoffee]
+
+<!-- Badges -->
+
+[buymecoffee]: https://www.buymeacoffee.com/jonkristian
+[buymecoffeebadge]: https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg?style=for-the-badge
+[buymecoffebadge2]: https://bmc-cdn.nyc3.digitaloceanspaces.com/BMC-button-images/custom_images/white_img.png
 
 ## License
 

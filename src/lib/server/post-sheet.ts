@@ -9,7 +9,8 @@ import { getSettings } from './settings';
  * The post sheet: a small markdown file generated alongside every rendered clip,
  * carrying the title, tags, hashtags and caption for posting.
  *
- * Ported from The How's sidecar, with one change that only makes sense here —
+ * Ported from the standalone sidecar this replaced, with one change that only
+ * makes sense here —
  * the call-to-action is a campaign link (/c/<slug>) rather than the bare site
  * URL, so the stats page can attribute inbound traffic to the clip that drove
  * it. Generate, post, measure.

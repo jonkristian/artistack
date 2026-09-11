@@ -40,3 +40,4 @@ package-lock.json
 
 # Working notes — plans, investigations, scratch. Not part of the project.
 notes/
+scripts/seed-*.mjs

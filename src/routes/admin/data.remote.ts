@@ -452,14 +452,19 @@ export const addLink = form(linkSchema, async ({ url, blockId, category, label }
   return { success: true, link: created };
 });
 
+/**
+ * Removes a link, and doesn't mind if it has already gone.
+ *
+ * Asking for a link to be deleted twice is not a failure — the second caller
+ * wants exactly what the first one achieved. It used to throw, which meant one
+ * stale id could fail an entire publish and leave every other change in it
+ * unsaved. A link can be deleted from more than one direction: by its block
+ * going, by a draft being published, by another tab.
+ */
 export const deleteLink = command(idSchema, async (id) => {
   await requireUser();
 
-  const [deleted] = await db.delete(links).where(eq(links.id, id)).returning();
-
-  if (!deleted) {
-    throw new Error('Link not found');
-  }
+  await db.delete(links).where(eq(links.id, id));
 
   return { success: true };
 });

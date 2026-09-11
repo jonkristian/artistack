@@ -81,6 +81,24 @@ function createTransporter(config: SmtpConfig): Transporter {
   });
 }
 
+/**
+ * The act's name in front of every subject, in brackets.
+ *
+ * Here rather than in each sender, so a new email can't be written without it
+ * and the format only exists in one place. The From name says who it's from
+ * too, but that is the first thing a client drops when it's short of room —
+ * and in a thread or a search result the subject is often all there is.
+ *
+ * Skipped when the subject already opens with it, so a sender that says the
+ * name for its own reasons doesn't say it twice.
+ */
+async function withSitePrefix(subject: string): Promise<string> {
+  const { siteName } = await import('./email-template');
+  const site = await siteName();
+  if (!site || subject.startsWith(`[${site}]`)) return subject;
+  return `[${site}] ${subject}`;
+}
+
 export async function sendEmail(options: {
   to: string;
   subject: string;
@@ -102,7 +120,7 @@ export async function sendEmail(options: {
     await transporter.sendMail({
       from: `"${config.fromName}" <${config.fromAddress}>`,
       to: options.to,
-      subject: options.subject,
+      subject: await withSitePrefix(options.subject),
       text: options.text,
       html: options.html
     });

@@ -207,37 +207,26 @@ export interface TimedCaption {
  * as the branch off review. Re-rendering an approved clip drops it back to
  * `rendered`, so a change can never sneak past review on an old approval.
  */
-export type ClipStatus =
-  | 'draft'
-  | 'rendered'
-  | 'review'
-  | 'approved'
-  | 'rejected'
-  | 'queued'
-  | 'published';
+export type ClipStatus = 'draft' | 'rendered' | 'review' | 'queued' | 'published';
 
 export const CLIP_STATUS_LABELS: Record<ClipStatus, string> = {
   draft: 'Draft',
   rendered: 'Rendered',
   review: 'In review',
-  approved: 'Approved',
-  rejected: 'Rejected',
   queued: 'Queued',
   published: 'Published'
 };
 
 /**
  * Status colours, defined once because the overview and the editor both show
- * them and had drifted into two maps. Approved and published are both good
- * outcomes, so they share the green family but stay distinguishable — published
- * is the end of the road, not a synonym for approved.
+ * them and had drifted into two maps. They read as a ladder: grey while it's
+ * being made, blue once there's a render, amber while someone's looking, violet
+ * waiting its turn, green out in the world.
  */
 export const CLIP_STATUS_STYLES: Record<ClipStatus, string> = {
   draft: 'bg-gray-700 text-gray-300',
   rendered: 'bg-sky-900 text-sky-300',
   review: 'bg-amber-900 text-amber-300',
-  approved: 'bg-teal-900 text-teal-300',
-  rejected: 'bg-red-900 text-red-300',
   queued: 'bg-violet-900 text-violet-300',
   published: 'bg-emerald-900 text-emerald-300'
 };
@@ -247,8 +236,6 @@ export const CLIP_STATUS_DOTS: Record<ClipStatus, string> = {
   draft: 'bg-gray-500',
   rendered: 'bg-sky-400',
   review: 'bg-amber-400',
-  approved: 'bg-teal-400',
-  rejected: 'bg-red-400',
   queued: 'bg-violet-400',
   published: 'bg-emerald-400'
 };

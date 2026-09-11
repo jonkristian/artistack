@@ -20,15 +20,7 @@
   let creating = $state(false);
 
   /** The order a clip moves through the pipeline, which is also tab order. */
-  const STATUS_ORDER: ClipStatus[] = [
-    'draft',
-    'rendered',
-    'review',
-    'approved',
-    'rejected',
-    'queued',
-    'published'
-  ];
+  const STATUS_ORDER: ClipStatus[] = ['draft', 'rendered', 'review', 'queued', 'published'];
 
   /** Empty means every status; there's no separate "all" value to keep in sync. */
   let statusFilter = $state<string[]>([]);

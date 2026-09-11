@@ -27,7 +27,6 @@ import { enqueueRender, cancelRender } from '$lib/server/render-queue';
 import { buildPostSheet } from '$lib/server/post-sheet';
 import {
   submitForReview,
-  setReviewOutcome,
   ensurePreviewToken,
   rotatePreviewToken,
   previewUrl
@@ -727,20 +726,6 @@ export const sendForReview = command(
     await requireUser();
 
     return submitForReview(projectId, origin);
-  }
-);
-
-export const reviewDecision = command(
-  v.object({
-    projectId: v.number(),
-    approved: v.boolean(),
-    note: v.optional(v.nullable(v.string()))
-  }),
-  async ({ projectId, approved, note }) => {
-    await requireUser();
-
-    const project = await setReviewOutcome(projectId, approved, note);
-    return { success: true, project };
   }
 );
 

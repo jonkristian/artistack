@@ -24,8 +24,8 @@ const execFileAsync = promisify(execFile);
 /**
  * Branded social-clip renderer.
  *
- * A port of The How's `thehow-clip` ffmpeg engine, generalised to take its
- * branding from the site's own settings instead of one act's hardcoded logo
+ * A port of the standalone ffmpeg engine this grew out of, generalised to take
+ * its branding from the site's own settings instead of one act's hardcoded logo
  * set and palette. The pipeline and its filter graphs follow the original
  * closely — the ordering, timings and workarounds here were tuned against real
  * phone footage, and the comments record why each one exists. The pipeline runs
@@ -280,7 +280,8 @@ function assColor(hex: string): string {
 
 /**
  * Inside [ ... ] spans, turns spaces into libass hard-spaces so a phrase like
- * [THE HOW] never wraps mid-way. Brackets are stripped; text outside them wraps
+ * [LIVE SESSION] never wraps mid-way. Brackets are stripped; text outside them
+ * wraps
  * normally.
  */
 function hardSpaces(text: string): string {

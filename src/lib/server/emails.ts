@@ -50,7 +50,7 @@ export async function sendWelcomeEmail(to: string, token: string, origin: string
     heading: 'You’re on the list',
     preview: `You’ll hear from ${site} when there’s something new.`,
     body: `
-      <p style="margin:0 0 12px;">Thanks — you’ll get an email when there’s a new release, and when there's something worth telling you about. Nothing else, and never your address to anyone else.</p>
+      <p style="margin:0 0 12px;">Thanks. You’ll get an email when there’s a new release, and when there's something worth telling you about. Nothing else, and never your address to anyone else.</p>
       <p style="margin:0;">If this wasn’t you, the link at the bottom takes you straight off the list. No account, no questions.</p>`,
     action: origin ? { label: `Visit ${site}`, url: origin } : undefined,
     footer: `You’re on the list because you asked on ${site}. <a href="${origin}/unsubscribe/${token}" style="color:inherit;">Unsubscribe</a> whenever you like.`,
@@ -59,8 +59,8 @@ export async function sendWelcomeEmail(to: string, token: string, origin: string
 
   return sendEmail({
     to,
-    subject: `You’re on the list — ${site}`,
-    text: `Thanks — you're on the list for ${site}.\n\nYou'll get an email when there's a new release, and nothing else.\n\nIf this wasn't you, unsubscribe here: ${origin}/unsubscribe/${token}`,
+    subject: 'You’re on the list',
+    text: `Thanks. You're on the list for ${site}.\n\nYou'll get an email when there's a new release, and nothing else.\n\nIf this wasn't you, unsubscribe here: ${origin}/unsubscribe/${token}`,
     html
   });
 }
@@ -200,7 +200,7 @@ export async function sendSampleEmails(
   const now = new Date();
 
   /* A parcel: an option, a posting line, and the fan-list footer. */
-  await attempt('Receipt — something to post', () =>
+  await attempt('Receipt for something to post', () =>
     sendReceipt(
       {
         id: 0,
@@ -208,9 +208,11 @@ export async function sendSampleEmails(
         buyerName: 'Sample Buyer',
         buyerEmail: to,
         buyerPhone: null,
-        addressLine: 'Nedre Sjetnhaugan 12b',
-        postcode: '7081',
-        city: 'Sjetnmarka',
+        // Invented. A sample that ships with the app shouldn't carry anybody's
+        // real address, least of all the person who wrote it.
+        addressLine: '1 Example Road',
+        postcode: '0000',
+        city: 'Sampleton',
         country: 'Norway',
         provider: 'sample',
         providerReference: null,
@@ -240,7 +242,7 @@ export async function sendSampleEmails(
           id: 1,
           orderId: 0,
           productId: null,
-          name: 'Debut Single — 7" Vinyl',
+          name: 'Debut Single (7" Vinyl)',
           unitPrice: 24900,
           quantity: 1,
           variant: null,
@@ -256,7 +258,7 @@ export async function sendSampleEmails(
   );
 
   /* A download: charged at once, delivered by link, nothing to post. */
-  await attempt('Receipt — a download', () =>
+  await attempt('Receipt for a download', () =>
     sendReceipt(
       {
         id: 0,
@@ -284,7 +286,7 @@ export async function sendSampleEmails(
           id: 0,
           orderId: 0,
           productId: null,
-          name: 'Debut Single — WAV',
+          name: 'Debut Single (WAV)',
           unitPrice: 5000,
           quantity: 1,
           variant: null,
@@ -327,7 +329,7 @@ export async function sendSampleEmails(
    * sample run never has a hole in it.
    */
   const real = await newestReleaseForPreview();
-  await attempt(real ? `A release is out — ${real.title}` : 'A release is out', () =>
+  await attempt(real ? `A release is out: ${real.title}` : 'A release is out', () =>
     sendReleaseEmail(
       real?.release ?? {
         title: 'Sample Single',

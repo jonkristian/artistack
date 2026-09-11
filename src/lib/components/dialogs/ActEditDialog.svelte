@@ -150,7 +150,7 @@
           id="act-name"
           type="text"
           bind:value={name}
-          placeholder="Arania"
+          placeholder="Support act"
           class={fieldClass}
         />
       </div>
