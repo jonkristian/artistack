@@ -18,8 +18,9 @@
    */
   import { ColorWheel } from '$lib/components/ui';
   import BlockDialog from './BlockDialog.svelte';
+  import EffectPicker from './EffectPicker.svelte';
   import { NO_BACKDROP } from '$lib/clips/types';
-  import type { CaptionAnchorId, TimedCaption } from '$lib/clips/types';
+  import type { AppliedEffect, CaptionAnchorId, TimedCaption } from '$lib/clips/types';
 
   interface Props {
     caption: TimedCaption;
@@ -32,6 +33,8 @@
     /** What it's drawn in, and sits on, when it hasn't said. */
     inheritedColor: string;
     inheritedBackdrop: string | null;
+    /** How the clip says captions arrive, for the Auto button to name. */
+    inheritedEffect?: AppliedEffect | null;
     onkeepcolor?: (color: string) => void;
     onchange: (patch: Partial<TimedCaption>) => void;
     onremove: () => void;
@@ -46,6 +49,7 @@
     swatches,
     inheritedColor,
     inheritedBackdrop,
+    inheritedEffect = null,
     onkeepcolor,
     onchange,
     onremove,
@@ -106,6 +110,21 @@
       >
         Big
       </button>
+    </div>
+  </div>
+
+  <div>
+    <span class={label}>Effect</span>
+    <!-- Below Size and above Colour because it is the same kind of decision as
+         both: how this caption differs from the rest, if it does. -->
+    <div class="mt-1">
+      <EffectPicker
+        value={caption.effect}
+        inherited={inheritedEffect}
+        canInherit
+        {swatches}
+        onchange={(effect) => onchange({ effect })}
+      />
     </div>
   </div>
 

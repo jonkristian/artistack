@@ -21,6 +21,7 @@
    * 340-wide element; pixels would not.
    */
   import { captionBackdrop, captionColor, captionY } from '$lib/clips/types';
+  import { captionEffectOf, captionSeed } from '$lib/clips/effects';
   import type { ClipRenderConfig, ClipAdvancedConfig, TimedCaption } from '$lib/clips/types';
 
   let {
@@ -83,6 +84,45 @@
   const placeCaption = (caption: TimedCaption) => `bottom: ${captionY(caption, adv) * 100}%`;
 
   /**
+   * What the caption's effect wants done to it at this instant.
+   *
+   * The render asks the same effect the same question once and gets an answer
+   * covering the caption's whole life, because libass animates itself. This is
+   * scrubbed rather than played — the overlay is handed a time and draws it —
+   * so it asks per frame and gets one moment back. Same effect, same dials, the
+   * two halves of one object, which is what stops the preview and the file
+   * drifting apart the way two sets of rules always do.
+   *
+   * Copies come back split by whether they belong over the caption or under it.
+   * Under is the ordinary case: a colour split is fringes either side of the
+   * words. Over is what a panel forces, since a copy behind an opaque box is a
+   * copy nobody sees — the same reasoning, and the same answer, as the render.
+   */
+  function dressing(caption: TimedCaption) {
+    const { effect, params } = captionEffectOf(caption, config);
+    const drawn = effect.css({
+      params,
+      elapsed: at - caption.start,
+      duration: Math.max(0, caption.end - caption.start),
+      // The nominal frame, so a dial in render pixels means the same share of
+      // the picture here as it does in the file.
+      width: frame.w,
+      height: frame.h,
+      color: captionColor(caption, config, accent),
+      backdrop: captionBackdrop(caption, config),
+      seed: captionSeed(caption),
+      // Only `\move` on the render side reads this; nothing here does.
+      y: frame.h - captionY(caption, adv) * frame.h
+    });
+    const copies = drawn.copies ?? [];
+    return {
+      style: drawn.style ?? '',
+      under: copies.filter((copy) => !copy.over),
+      over: copies.filter((copy) => copy.over)
+    };
+  }
+
+  /**
    * The panel behind a caption, at the solidity the clip asks for.
    *
    * Written as `rgb(... / ...)` rather than a Tailwind class because the colour
@@ -109,7 +149,12 @@
   style="container-type: size"
   aria-hidden="true"
 >
-  {#each showing as caption, index (index)}
+  <!-- One caption, drawn once — and the copies an effect asks for are the same
+       words in the same place, so they are this snippet too rather than a
+       second piece of markup that has to be kept in step with it. A copy never
+       draws the panel or the outline: those belong to the caption, and a stack
+       of them is how a split turns into a smudge. -->
+  {#snippet line(caption: TimedCaption, extra: string, copy: boolean)}
     <!-- `pre-line` so a caption written across two lines is drawn across two,
          the way `assText` turns the same newline into libass's `\N`. -->
     <div
@@ -119,19 +164,26 @@
         caption,
         config,
         accent
-      )}; {captionBackdrop(caption, config)
+      )}; {captionBackdrop(caption, config) || copy
         ? ''
-        : 'text-shadow: 0 0 0.18em #000, 0 0 0.06em #000, 0.02em 0.03em 0.05em #000;'}"
+        : 'text-shadow: 0 0 0.18em #000, 0 0 0.06em #000, 0.02em 0.03em 0.05em #000;'} {extra}"
     >
       <span
-        class={captionBackdrop(caption, config)
+        class={captionBackdrop(caption, config) && !copy
           ? 'box-decoration-clone px-[0.35em] py-[0.12em]'
           : ''}
-        style={panel(captionBackdrop(caption, config))}
+        style={copy ? '' : panel(captionBackdrop(caption, config))}
       >
         {caption.text}
       </span>
     </div>
+  {/snippet}
+
+  {#each showing as caption, index (index)}
+    {@const fx = dressing(caption)}
+    {#each fx.under as copy, i (i)}{@render line(caption, copy.style, true)}{/each}
+    {@render line(caption, fx.style, false)}
+    {#each fx.over as copy, i (i)}{@render line(caption, copy.style, true)}{/each}
   {/each}
 
   <!-- The opening logo, at full opacity on the first frame and fading out — the

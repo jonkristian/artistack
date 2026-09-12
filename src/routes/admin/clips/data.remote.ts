@@ -41,6 +41,19 @@ import { enqueueForRelease, dequeue, publishClip } from '$lib/server/clip-queue'
  * success, and is gone on the next load. Both `y` and `lane` were added and
  * forgotten exactly that way.
  */
+/**
+ * An effect by name, with whatever dials were moved off its defaults.
+ *
+ * The id is left as a plain string rather than checked against the registry on
+ * purpose: an unknown one falls back to a plain fade when it is drawn, which
+ * means a pack can be pulled out without every clip that used it failing to
+ * save. Validating here would turn a missing effect into a lost caption.
+ */
+const appliedEffectSchema = v.object({
+  id: v.string(),
+  params: v.optional(v.record(v.string(), v.union([v.number(), v.string(), v.boolean()])))
+});
+
 const timedCaptionSchema = v.object({
   start: v.number(),
   end: v.number(),
@@ -57,7 +70,9 @@ const timedCaptionSchema = v.object({
   /** The height itself — the older form of `anchor`, still read, never written. */
   y: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
   /** Which timeline row it's drawn in. Nothing to do with the render. */
-  lane: v.optional(v.pipe(v.number(), v.minValue(0)))
+  lane: v.optional(v.pipe(v.number(), v.minValue(0))),
+  /** How it arrives; absent leaves it to the clip, null insists on the fade. */
+  effect: v.optional(v.nullable(appliedEffectSchema))
 });
 
 // Renderer internals. Bounds here only reject values that would break a render;
@@ -108,6 +123,7 @@ const advancedSchema = v.partial(
     xfadeSeconds: v.pipe(v.number(), v.minValue(0)),
     edgeFillPixels: v.pipe(v.number(), v.minValue(0)),
 
+    videoFadeInSeconds: v.pipe(v.number(), v.minValue(0)),
     videoFadeOutSeconds: v.pipe(v.number(), v.minValue(0)),
     audioFadeInSeconds: v.pipe(v.number(), v.minValue(0)),
     audioFadeOutSeconds: v.pipe(v.number(), v.minValue(0)),
@@ -123,6 +139,18 @@ const configSchema = v.partial(
     aspect: v.picklist(['9:16', '1:1', '16:9']),
     colorizeCaption: v.boolean(),
     captionBackground: v.boolean(),
+    captionEffect: v.nullable(appliedEffectSchema),
+    /** Footage effects, each optionally placed on the timeline. */
+    effects: v.array(
+      v.object({
+        ...appliedEffectSchema.entries,
+        start: v.optional(v.pipe(v.number(), v.minValue(0))),
+        end: v.optional(v.pipe(v.number(), v.minValue(0))),
+        lane: v.optional(v.pipe(v.number(), v.minValue(0)))
+      })
+    ),
+    /** The single look `effects` replaced. Still read, never written. */
+    pictureEffect: v.nullable(appliedEffectSchema),
     fill: v.picklist(['blur', 'black', 'crop']),
     tone: v.picklist(['none', 'bw', 'warm', 'cool', 'vintage']),
     grain: v.boolean(),
@@ -130,6 +158,7 @@ const configSchema = v.partial(
     zoom: v.boolean(),
     xfade: v.boolean(),
     speed: v.pipe(v.number(), v.minValue(0.5), v.maxValue(2)),
+    videoFadeIn: v.boolean(),
     videoFadeOut: v.boolean(),
     audioFadeIn: v.boolean(),
     audioFadeOut: v.boolean(),
@@ -558,6 +587,8 @@ export const updateSource = command(
     trimStart: v.optional(v.nullable(v.number())),
     trimEnd: v.optional(v.nullable(v.number())),
     muted: v.optional(v.boolean()),
+    fadeIn: v.optional(v.boolean()),
+    fadeOut: v.optional(v.boolean()),
     watermark: v.optional(v.nullable(v.boolean())),
     start: v.optional(v.pipe(v.number(), v.minValue(0))),
     lane: v.optional(v.pipe(v.number(), v.minValue(0))),

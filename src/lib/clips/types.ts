@@ -142,6 +142,49 @@ export function captionY(
   return captionAnchors(adv).find((a) => a.id === id)?.y ?? 0.18;
 }
 
+/**
+ * An effect as a clip or a caption stores it.
+ *
+ * A name and its dials, not the effect itself — what is stored has to survive
+ * the effect being improved, renamed in the list or given another parameter,
+ * and a copy of its behaviour would not. An id nobody recognises any more falls
+ * back to plain `fade`, so a clip made against a pack that has since gone still
+ * renders rather than failing.
+ *
+ * Lives here rather than with the effects because this is the stored shape, and
+ * the stored shapes are all in this file. It also keeps the dependency running
+ * one way: the effects know about the document, the document knows nothing
+ * about them.
+ */
+export interface AppliedEffect {
+  id: string;
+  /** Only what was changed from the effect's own defaults. */
+  params?: Record<string, number | string | boolean>;
+}
+
+/**
+ * An effect on the footage, with an optional place on the timeline.
+ *
+ * No window means the whole clip, which is what a look usually is — a tape is
+ * something the footage went through, not something that happens at 4.2
+ * seconds. A window is for the ones that are events: a tear as the beat drops,
+ * a glitch over one shot and not the next.
+ *
+ * `lane` is where it sits in the editor and nothing else, exactly as on a
+ * caption. Two effects in one lane still both apply; the lane is about reading
+ * the timeline, not about what the render does.
+ */
+export interface PlacedEffect extends AppliedEffect {
+  /** Seconds into the clip. Absent means from the start. */
+  start?: number;
+  /** Absent means until the end. */
+  end?: number;
+  lane?: number;
+}
+
+/** What a caption does when nothing has asked for anything else. */
+export const DEFAULT_CAPTION_EFFECT = 'fade';
+
 /** A caption shown over the footage between two timestamps (seconds). */
 export interface TimedCaption {
   start: number;
@@ -198,6 +241,20 @@ export interface TimedCaption {
    * editor's business, so where things sit is theirs too.
    */
   lane?: number;
+  /**
+   * How it arrives, when it wants its own.
+   *
+   * Unset means the clip decides, exactly as with `color` — a clip states the
+   * look its captions share and any one caption can differ, which is the
+   * arrangement everything else about a caption already uses.
+   *
+   * There is no third state here, unlike `background`, and there doesn't need
+   * to be one: `'none'` exists over there because "no panel, whatever the clip
+   * says" is not a colour and so cannot be expressed as one. A caption wanting
+   * the plain fade against a clip that asked for something louder just names
+   * the fade, because the fade is an effect like any other.
+   */
+  effect?: AppliedEffect | null;
 }
 
 /**
@@ -379,6 +436,9 @@ export interface ClipAdvancedConfig {
    * make frame 1 pure black, and every platform grabs frame 1 as the in-feed
    * preview, so the post would show a black card.
    */
+  /** How long a fade on a single shot runs, either end. */
+  clipFadeSeconds: number;
+  videoFadeInSeconds: number;
   videoFadeOutSeconds: number;
   audioFadeInSeconds: number;
   audioFadeOutSeconds: number;
@@ -436,6 +496,8 @@ export const DEFAULT_ADVANCED_CONFIG: ClipAdvancedConfig = {
   xfadeSeconds: 0.4,
   edgeFillPixels: 10,
 
+  clipFadeSeconds: 0.5,
+  videoFadeInSeconds: 0.4,
   videoFadeOutSeconds: 0.4,
   audioFadeInSeconds: 0.4,
   audioFadeOutSeconds: 0.4,
@@ -516,6 +578,18 @@ export const ADVANCED_GROUPS: {
         hint: 'How long the last shot takes to become the card'
       },
       {
+        key: 'clipFadeSeconds',
+        label: 'Shot fade (s)',
+        step: 0.1,
+        hint: 'Either end of a shot that has one'
+      },
+      {
+        key: 'videoFadeInSeconds',
+        label: 'Picture fade in (s)',
+        step: 0.1,
+        hint: 'Only used when the toggle is on'
+      },
+      {
         key: 'videoFadeOutSeconds',
         label: 'Picture fade out (s)',
         step: 0.1,
@@ -588,8 +662,37 @@ export interface ClipRenderConfig {
   // Caption look
   colorizeCaption: boolean; // caption in the brand accent colour
   captionBackground: boolean; // dark box behind the caption
+  /**
+   * How captions arrive, unless one of them says otherwise.
+   *
+   * The clip's choice, in the same sense as the two above: it sets the house
+   * style and a single caption can still differ. Unset is the plain fade.
+   */
+  captionEffect?: AppliedEffect | null;
 
   // Footage look
+  /**
+   * Processed looks over the footage — tape, film, camcorder, signal loss.
+   *
+   * Deliberately separate from `tone` rather than more entries in it. A tone is
+   * a grade, one filter deciding what colour things are; these are several
+   * filters imitating something the picture has been through, they carry dials
+   * of their own, and they can be placed at a moment rather than over the whole
+   * clip. Empty leaves the footage alone.
+   *
+   * A list because the timeline can hold more than one: a tape look across the
+   * whole clip and a tear on the chorus are two different statements, and
+   * making them one field would mean choosing.
+   */
+  effects?: PlacedEffect[];
+  /**
+   * The single look this used to be, still read.
+   *
+   * Only ever written by a version of the editor that could not place effects.
+   * Nothing writes it now; it is folded in as an unplaced entry when a clip is
+   * rendered, so a project saved before the lane existed looks the same today.
+   */
+  pictureEffect?: AppliedEffect | null;
   fill: ClipFill; // how non-matching footage fills the frame
   tone: ClipTone;
   grain: boolean;
@@ -598,9 +701,18 @@ export interface ClipRenderConfig {
   xfade: boolean; // crossfade between sources
   speed: number; // 0.5–2
 
-  // Fades. Picture and sound are separate switches: a hard visual cut into an
-  // audio fade is a normal choice, and there is deliberately no video fade-in
-  // (it would black out frame 1, which every platform uses as the preview).
+  /*
+   * Fades. Picture and sound are separate switches, because a hard visual cut
+   * into an audio fade is a normal choice.
+   *
+   * There used to be no video fade-in at all, on the grounds that it blacks out
+   * frame 1 and every platform grabs that for the cover. That was the right
+   * call for a renderer that took a folder of clips and made one decision about
+   * them; it is the wrong shape for an editor, where the consequence is
+   * something to be told about once and then trusted with. The field says so in
+   * its hint rather than by not existing.
+   */
+  videoFadeIn: boolean;
   videoFadeOut: boolean;
   audioFadeIn: boolean;
   audioFadeOut: boolean;
@@ -658,6 +770,7 @@ export const DEFAULT_CLIP_CONFIG: ClipRenderConfig = {
   zoom: false,
   xfade: false,
   speed: 1,
+  videoFadeIn: false,
   videoFadeOut: false,
   audioFadeIn: false,
   // On, because every preset used to turn it on and none of them should have to:
@@ -676,13 +789,29 @@ export const DEFAULT_CLIP_CONFIG: ClipRenderConfig = {
  *
  * Applying a preset overwrites only the creative options it names — sources,
  * text, music and anything in Advanced are left alone, so switching presets to
- * compare them doesn't cost you the rest of your setup.
+ * compare them doesn't cost you the rest of your setup. Pressing the one that
+ * is already on turns it off again, putting those same options back to their
+ * defaults.
  *
- * A preset is about the picture: the grade, the grain, the motion, how one shot
- * meets the next. It deliberately says nothing about the sound or about whether
- * there is an outro card, because neither is a look — a fade on the music and a
- * card on the end are decisions about the clip, and pressing Cinematic to see a
- * grade shouldn't quietly make either for you.
+ * There used to be a `clean` preset that set everything to nothing, and it was
+ * a tile spent saying what a new project already says: every field it named was
+ * the default. Being able to switch one off says it better and leaves the slot
+ * for a look.
+ *
+ * A preset is about the picture: the grade, the motion, how one shot meets the
+ * next. It deliberately says nothing about the sound or about whether there is
+ * an outro card, because neither is a look — a fade on the music and a card on
+ * the end are decisions about the clip, and pressing Cinematic to see a grade
+ * shouldn't quietly make either for you.
+ *
+ * The look itself is named rather than rebuilt. These used to mix their own out
+ * of `tone`, `grain` and `vignette` — the same ingredients the footage effects
+ * are made of — so a preset and an effect together gave you two vignettes and
+ * two lots of grain, which is muddier than either alone and reads as a fault.
+ * Naming one keeps the picture in one place, and means improving a look
+ * improves every preset that uses it. Those three fields are still set, to
+ * `none` and `false`, because a preset has to be able to turn off what the one
+ * before it turned on.
  */
 export interface ClipPreset {
   id: string;
@@ -693,18 +822,22 @@ export interface ClipPreset {
 
 export const CLIP_PRESETS: ClipPreset[] = [
   {
-    id: 'clean',
-    label: 'Clean',
-    description: 'Straight footage, no grade or grain. Lets the picture speak.',
+    id: 'camcorder',
+    label: 'Camcorder',
+    description: 'Scan lines, a bulging lens and a hand that never quite holds still.',
     config: {
+      effects: [{ id: 'camcorder' }],
       tone: 'none',
       grain: false,
       vignette: false,
+      // Hard cuts and a fixed frame: a tape is what somebody filmed, not what
+      // somebody edited, and a slow push in reads as the opposite of that.
       zoom: false,
+      videoFadeIn: false,
       videoFadeOut: false,
       xfade: false,
       captionBackground: false,
-      colorizeCaption: true
+      colorizeCaption: false
     }
   },
   {
@@ -712,9 +845,10 @@ export const CLIP_PRESETS: ClipPreset[] = [
     label: 'Punchy',
     description: 'Warm and contrasty, built to stop a scroll.',
     config: {
-      tone: 'warm',
+      effects: [{ id: 'punch' }],
+      tone: 'none',
       grain: false,
-      vignette: true,
+      vignette: false,
       zoom: true,
       videoFadeOut: false,
       xfade: true,
@@ -725,11 +859,12 @@ export const CLIP_PRESETS: ClipPreset[] = [
   {
     id: 'cinematic',
     label: 'Cinematic',
-    description: 'Graded, grainy and vignetted, with dissolves and a fade out.',
+    description: 'The Super 8 look — graded, grainy, vignetted — with dissolves and a fade out.',
     config: {
-      tone: 'vintage',
-      grain: true,
-      vignette: true,
+      effects: [{ id: 'super8' }],
+      tone: 'none',
+      grain: false,
+      vignette: false,
       zoom: true,
       videoFadeOut: true,
       xfade: true,
@@ -742,8 +877,9 @@ export const CLIP_PRESETS: ClipPreset[] = [
     label: 'Documentary',
     description: 'Black and white, lower-third captions on a dark box, no motion tricks.',
     config: {
-      tone: 'bw',
-      grain: true,
+      effects: [{ id: 'mono', params: { grain: 16 } }],
+      tone: 'none',
+      grain: false,
       vignette: false,
       zoom: false,
       videoFadeOut: true,

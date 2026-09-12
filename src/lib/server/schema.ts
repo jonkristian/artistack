@@ -587,6 +587,16 @@ export const clipSources = sqliteTable(
     // Trim window in seconds; null means use the whole clip.
     trimStart: integer('trim_start'),
     trimEnd: integer('trim_end'),
+    /**
+     * Fades on the shot itself, as the beds have had all along.
+     *
+     * Opacity rather than brightness, which is what makes one control do two
+     * jobs: over the black canvas it reads as a fade from black, and over
+     * another shot it dissolves into it. A crossfade is then two blocks
+     * overlapping on the strip, which is where anyone would look for it.
+     */
+    fadeIn: integer('fade_in', { mode: 'boolean' }).default(false),
+    fadeOut: integer('fade_out', { mode: 'boolean' }).default(false),
     // Silence this clip's own audio — lets a music bed play full over b-roll
     // instead of being ducked by room noise.
     muted: integer('muted', { mode: 'boolean' }).default(false),

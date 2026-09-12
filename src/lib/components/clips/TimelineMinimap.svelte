@@ -28,6 +28,8 @@
     clips,
     captions,
     tracks,
+    /** Placed footage effects, so the overview shows the lane that exists. */
+    effects = [],
     playhead,
     /** What the strip is showing, in seconds, drawn as a pane of glass. */
     viewFrom,
@@ -38,6 +40,7 @@
     canvas: number;
     clips: Bar[];
     captions: Bar[];
+    effects?: Bar[];
     tracks: Bar[];
     playhead: number;
     viewFrom: number;
@@ -88,6 +91,14 @@
   }
 </script>
 
+<!-- Sideways arrows, not the pointing hand.
+
+     A hand says "this is a thing you click", and clicking is the least of what
+     this does: you press it and drag, and the whole bar is the control rather
+     than a row of targets on it. Deliberately not the grab hand the strip above
+     uses either — that one pans the view, and this moves the playhead. Two
+     gestures that look alike and do different things should not also feel
+     alike under the cursor. -->
 <div
   role="slider"
   tabindex="-1"
@@ -96,25 +107,39 @@
   aria-valuemax={canvas}
   aria-valuenow={playhead}
   onpointerdown={start}
-  class="relative h-8 cursor-pointer overflow-hidden border-t border-gray-800 bg-gray-950 select-none"
+  class="relative h-10 cursor-ew-resize overflow-hidden border-t border-gray-800 bg-gray-950 select-none"
 >
-  <!-- Three bands in the same order and colours as the lanes above, so the eye
-       carries the meaning down without a legend. -->
+  <!-- Four bands in the same order and colours as the lanes above, so the eye
+       carries the meaning down without a legend. Effects went missing when the
+       lane was added: an overview that leaves a lane out is one you learn not
+       to trust, because the thing you are looking for might simply not be
+       drawn. The extra height came from the ruler that used to run through the
+       padding above the first lane, which was never a lane at all.
+
+       Positioned in pixels rather than on the spacing scale: four rows in forty
+       pixels lands on halves the scale doesn't have, and rounding them apart
+       one at a time is how bands stop being evenly spaced. -->
+  {#each effects as fx, index (index)}
+    <div
+      class="pointer-events-none absolute top-[4px] h-1.5 rounded-[1px] bg-white/45"
+      style={place(fx.start, fx.end)}
+    ></div>
+  {/each}
   {#each clips as clip, index (index)}
     <div
-      class="pointer-events-none absolute top-1.5 h-2 rounded-[1px] bg-gray-400/80"
+      class="pointer-events-none absolute top-[13px] h-2 rounded-[1px] bg-gray-400/80"
       style={place(clip.start, clip.end)}
     ></div>
   {/each}
   {#each captions as caption, index (index)}
     <div
-      class="pointer-events-none absolute top-4 h-1.5 rounded-[1px] bg-violet-400/80"
+      class="pointer-events-none absolute top-[24px] h-1.5 rounded-[1px] bg-violet-400/80"
       style={place(caption.start, caption.end)}
     ></div>
   {/each}
   {#each tracks as track, index (index)}
     <div
-      class="pointer-events-none absolute top-6 h-1.5 rounded-[1px] bg-emerald-400/80"
+      class="pointer-events-none absolute top-[32px] h-1.5 rounded-[1px] bg-emerald-400/80"
       style={place(track.start, track.end)}
     ></div>
   {/each}

@@ -326,6 +326,8 @@ async function buildRenderInput(projectId: number, proof = false) {
       muted: row.muted,
       watermark: row.watermark,
       rotation: row.rotation,
+      fadeIn: row.fadeIn,
+      fadeOut: row.fadeOut,
       start: row.start ?? 0,
       lane: row.lane ?? 0
     };

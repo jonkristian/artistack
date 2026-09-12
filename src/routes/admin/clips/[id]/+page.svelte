@@ -15,9 +15,12 @@
   import { renderFingerprint } from '$lib/clips/fingerprint';
   import { clipLayout } from '$lib/clips/layout';
   import { secs, tidy } from '$lib/clips/time';
+  import { clipWideEffect, pictureCss } from '$lib/clips/effects';
   import {
     ClipOverlay,
     ClipTimeline,
+    EffectPicker,
+    FootageLook,
     type TimelineClip,
     type TimelineTrack
   } from '$lib/components/clips';
@@ -40,6 +43,7 @@
     PLATFORM_NAMES,
     type ClipRotation,
     type ClipRenderConfig,
+    type PlacedEffect,
     type ClipAdvancedConfig,
     type TimedCaption
   } from '$lib/clips/types';
@@ -436,6 +440,61 @@
   let previewAt = $state(0);
 
   /**
+   * The preview's clock, followed frame by frame while it plays.
+   *
+   * `timeupdate` fires about four times a second, which is fine for a caption
+   * that stays up for three and useless for anything shorter than the gap
+   * between two of them: a dropout tears for a tenth of a second, so the odds
+   * of a tick landing inside one are slim and it would show for a single frame
+   * if it did. The effect was there and simply never drawn.
+   *
+   * Only while playing. Paused or scrubbing, `timeupdate` and `seeked` say
+   * everything there is to say, and a loop running against a still picture is
+   * sixty wake-ups a second to assign the same number.
+   */
+  let previewPlaying = $state(false);
+
+  $effect(() => {
+    if (!previewPlaying || !previewVideo) return;
+    const video = previewVideo;
+    let frame = requestAnimationFrame(function tick() {
+      previewAt = video.currentTime;
+      frame = requestAnimationFrame(tick);
+    });
+    return () => cancelAnimationFrame(frame);
+  });
+
+  /**
+   * The clip's look at wherever the preview is, as CSS.
+   *
+   * Asked per frame rather than once, because a look can have a rhythm — a
+   * dropout tears for a tenth of a second and is gone — and the preview is
+   * scrubbed rather than played, so it has to answer for the moment on screen.
+   *
+   * The SVG halves are referenced after the plain filter functions, which puts
+   * them in the order the render runs them: the grade, then the curves, the
+   * channel split and the softness.
+   *
+   * Dimensions are the nominal frame, so an offset stated in render pixels
+   * comes out as the same share of the picture here as it does in the file.
+   */
+  const look = $derived.by(() => {
+    const frame =
+      config.aspect === '1:1'
+        ? { width: 1080, height: 1080 }
+        : config.aspect === '16:9'
+          ? { width: 1920, height: 1080 }
+          : { width: 1080, height: 1920 };
+    const drawn = pictureCss(config, { ...frame, fps: advanced.fps }, previewAt);
+    const refs = drawn.svg.map((_, index) => `url(#footage-look-${index})`).join(' ');
+    return {
+      filter: [drawn.filter, refs].filter(Boolean).join(' '),
+      svg: drawn.svg,
+      overlay: drawn.overlay
+    };
+  });
+
+  /**
    * How long the opening logo stays up, worked out the way the renderer does.
    *
    * Its own read of the same dials rather than a number passed back from a
@@ -571,7 +630,9 @@
         to: source?.trimEnd ?? length,
         length,
         speed,
-        muted: source?.muted ?? false
+        muted: source?.muted ?? false,
+        fadeIn: source?.fadeIn ?? false,
+        fadeOut: source?.fadeOut ?? false
       };
     })
   );
@@ -744,38 +805,98 @@
    * The two caption entries answer for the captions that haven't answered for
    * themselves — each block can overrule them — so their hints say so. A toggle
    * that looks like it governs every caption and governs only some of them is
-   * worse than one that admits it.
+   * worse than one that admits it. They stay because a caption effect is an
+   * entrance or a fault; neither has anything to say about colour or a panel.
+   *
+   * Film grain and Vignette have gone, along with Tone above. Every footage
+   * effect brings its own grade, its own noise and in some cases its own
+   * vignette, so these were a second way to decide the picture and the two
+   * stacked into something muddier than either — two vignettes and two lots of
+   * grain if you used a preset and a look together. What they could do that no
+   * effect could is now the Texture effect, which is grain and a vignette with
+   * the colour left alone.
+   *
+   * The fields are still read by the renderer, so a clip that already has them
+   * on looks exactly as it did. Nothing switches them back on, and any preset
+   * turns them off.
    */
-  const LOOK_OPTIONS: { key: keyof ClipRenderConfig; label: string; hint: string }[] = [
+  /**
+   * The clip-wide switches, in four groups that each name a subject.
+   *
+   * They were one flat grid of nine, which read left to right as captions,
+   * then motion, then picture, then sound, with nothing saying where one ended
+   * and the next began — "Caption backdrop" sat next to "Slow zoom" and the
+   * only way to tell them apart was to already know. The groups are what makes
+   * it scannable; the order within each is unchanged.
+   *
+   * Labels say what you'd see rather than what the field is called: "Caption
+   * box" described the ASS border style, not the effect.
+   */
+  type LookGroup = {
+    label: string;
+    hint?: string;
+    options: { key: keyof ClipRenderConfig; label: string; hint: string }[];
+  };
+
+  const LOOK_GROUPS: LookGroup[] = [
+    {
+      label: 'Motion',
+      options: [
+        { key: 'zoom', label: 'Slow zoom', hint: 'A slow push in across each clip.' },
+        {
+          key: 'xfade',
+          label: 'Crossfade clips',
+          hint: 'Dissolve between sources instead of cutting.'
+        }
+      ]
+    },
+    {
+      label: 'Picture',
+      options: [
+        {
+          key: 'videoFadeIn',
+          label: 'Fade in',
+          hint: 'Fade the picture up from black. Note the opening frame goes black, and that is the frame every platform grabs for the cover.'
+        },
+        { key: 'videoFadeOut', label: 'Fade out', hint: 'Fade the picture out at the end.' }
+      ]
+    },
+    {
+      label: 'Sound',
+      options: [
+        { key: 'audioFadeIn', label: 'Fade in', hint: 'Fade the audio up at the start.' },
+        { key: 'audioFadeOut', label: 'Fade out', hint: 'Fade the audio down at the end.' },
+        {
+          key: 'loudnorm',
+          label: 'Normalise loudness',
+          hint: 'Match the -14 LUFS level every platform normalises to anyway.'
+        }
+      ]
+    }
+  ];
+
+  /**
+   * The caption half, kept apart from the rest.
+   *
+   * These were two tick boxes up among the footage switches and a picker a
+   * screen further down — three places for one subject. What they have in
+   * common is worth saying out loud, and a heading can say it where a tick box
+   * in a grid of nine cannot: none of them decides how a caption looks, they
+   * decide what a caption means by `Auto`.
+   */
+  const CAPTION_OPTIONS: { key: keyof ClipRenderConfig; label: string; hint: string }[] = [
     {
       key: 'colorizeCaption',
-      label: 'Caption in brand colour',
+      label: 'Brand colour',
       hint: 'Captions take the brand colour instead of white, unless one picks its own.'
     },
     {
       key: 'captionBackground',
-      label: 'Caption backdrop',
+      label: 'Backdrop',
       hint: 'Sit captions on a dark panel instead of outlining them, unless one says otherwise.'
-    },
-    { key: 'grain', label: 'Film grain', hint: 'Adds texture over the footage.' },
-    { key: 'vignette', label: 'Vignette', hint: 'Darkens the corners.' },
-    { key: 'zoom', label: 'Slow zoom', hint: 'A slow push in across each clip.' },
-    {
-      key: 'xfade',
-      label: 'Crossfade clips',
-      hint: 'Dissolve between sources instead of cutting.'
-    },
-    { key: 'videoFadeOut', label: 'Video fade out', hint: 'Fade the picture out at the end.' },
-    { key: 'audioFadeIn', label: 'Sound fade in', hint: 'Fade the audio up at the start.' },
-    { key: 'audioFadeOut', label: 'Sound fade out', hint: 'Fade the audio down at the end.' },
-    {
-      key: 'loudnorm',
-      label: 'Normalise loudness',
-      hint: 'Match the -14 LUFS level every platform normalises to anyway.'
     }
   ];
 
-  /** Branding elements, shown under Look — they're part of the clip's look. */
   const BRANDING_OPTIONS: { key: keyof ClipRenderConfig; label: string; hint: string }[] = [
     { key: 'intro', label: 'Intro', hint: 'The graphic animates in over the opening.' },
     { key: 'watermark', label: 'Watermark', hint: 'A small corner mark for the whole clip.' },
@@ -795,19 +916,80 @@
    * checking the whole config would never match once you'd touched anything
    * a preset leaves alone, like aspect or music.
    */
+  /**
+   * The look a clip and a preset are each asking for, as one comparable thing.
+   *
+   * Everything a preset names is a boolean or a word except the effects, which
+   * are a list of objects — and `===` on two arrays is a question about
+   * identity, not about contents, so it is false however alike they are. A
+   * preset naming a look would have applied perfectly and then never shown as
+   * the active one.
+   *
+   * Only the clip-wide entry counts. A preset speaks for what the whole clip
+   * looks like; a tear dragged onto the chorus is not part of that and should
+   * not stop Cinematic saying it is Cinematic.
+   */
+  const lookOf = (effects?: PlacedEffect[]) => {
+    const wide = (effects ?? []).find((e) => e.start == null && e.end == null);
+    return wide ? JSON.stringify({ id: wide.id, params: wide.params ?? {} }) : '';
+  };
+
   const activePreset = $derived(
     CLIP_PRESETS.find((preset) =>
-      (Object.keys(preset.config) as (keyof ClipRenderConfig)[]).every(
-        (key) => config[key] === preset.config[key]
+      (Object.keys(preset.config) as (keyof ClipRenderConfig)[]).every((key) =>
+        key === 'effects'
+          ? lookOf(config.effects) === lookOf(preset.config.effects)
+          : config[key] === preset.config[key]
       )
     )?.id ?? null
   );
 
+  /**
+   * Applies a preset, or takes it off again if it is the one already on.
+   *
+   * Turning one off means putting back the defaults for exactly the keys it
+   * names, which is what the old `clean` preset did by hand — and since a new
+   * project already carries those defaults, having both a way to switch a
+   * preset off and a preset that switches everything off was saying the same
+   * thing twice, in a tile that could hold a look instead.
+   */
   async function applyPreset(presetId: string) {
     const preset = CLIP_PRESETS.find((p) => p.id === presetId);
     if (!preset) return;
-    await patchConfig('the preset', preset.config);
-    toast.success(`${preset.label} applied`);
+
+    const off = activePreset === presetId;
+    const wanted = off
+      ? (Object.fromEntries(
+          Object.keys(preset.config).map((key) => [
+            key,
+            DEFAULT_CLIP_CONFIG[key as keyof ClipRenderConfig]
+          ])
+        ) as Partial<ClipRenderConfig>)
+      : preset.config;
+
+    const patch: Partial<ClipRenderConfig> = { ...wanted };
+    if (patch.effects) {
+      /*
+       * A preset replaces the clip's look and keeps everything placed.
+       *
+       * Taking the list wholesale would mean pressing Clean deleted a tear you
+       * had dragged onto a beat — which is not a change of look, it is losing
+       * work. The same division the Look panel and the effects lane already
+       * observe: one owns the clip-wide entry, the other owns the placed ones.
+       */
+      patch.effects = [
+        ...(config.effects ?? []).filter((e) => e.start != null || e.end != null),
+        ...patch.effects
+      ];
+      patch.pictureEffect = null;
+    } else if (off) {
+      // The default for `effects` is nothing at all, and "nothing at all" still
+      // has to leave the placed ones where they are.
+      patch.effects = (config.effects ?? []).filter((e) => e.start != null || e.end != null);
+      patch.pictureEffect = null;
+    }
+    await patchConfig('the preset', patch);
+    toast.success(off ? `${preset.label} turned off` : `${preset.label} applied`);
   }
 
   async function resetAdvanced() {
@@ -1455,10 +1637,17 @@
           class="grid [grid-template-columns:repeat(auto-fill,minmax(min(100%,7.5rem),1fr))] gap-3"
         >
           {#each CLIP_PRESETS as preset (preset.id)}
+            <!-- A pressed button rather than a chosen one: the tile you are on
+                 is the one you press to come off it, which is why there is no
+                 Clean tile any more — a project with nothing applied is what
+                 Clean used to set. -->
             <button
               type="button"
               onclick={() => applyPreset(preset.id)}
-              title={preset.description}
+              aria-pressed={activePreset === preset.id}
+              title={activePreset === preset.id
+                ? `${preset.description}\n\nPress again to turn it off.`
+                : preset.description}
               class="group overflow-hidden rounded-lg border text-left transition-colors {activePreset ===
               preset.id
                 ? 'border-violet-500'
@@ -1550,6 +1739,19 @@
 
         {#if showCustomise}
           <div class="mt-4 space-y-4">
+            <!-- Said once, at the top, because it is the thing the panel stopped
+                 being able to say for itself.
+
+                 Everything in here is one decision about the whole clip. That
+                 was obvious when it was the only place effects existed; it is
+                 not obvious now that the strip has a lane for the ones that
+                 happen partway through, and a panel full of switches looks much
+                 the same either way. One sentence is cheaper than working it
+                 out from which controls are where. -->
+            <p class="text-xs text-gray-500">
+              Everything here applies to the whole clip. Effects that happen partway through go on
+              the timeline instead.
+            </p>
             <!-- Branding lives here now.
 
                  It was a card of its own, above the presets, holding a graphic
@@ -1684,22 +1886,12 @@
             <div
               class="grid [grid-template-columns:repeat(auto-fill,minmax(min(100%,14rem),1fr))] gap-4"
             >
-              <div>
-                <label class={labelClass} for="opt-tone">Tone</label>
-                <select
-                  id="opt-tone"
-                  class={fieldClass}
-                  value={config.tone}
-                  onchange={(e) =>
-                    patchConfig('the look', { tone: e.currentTarget.value as never })}
-                >
-                  <option value="none">None</option>
-                  <option value="bw">Black &amp; white</option>
-                  <option value="warm">Warm</option>
-                  <option value="cool">Cool</option>
-                  <option value="vintage">Vintage</option>
-                </select>
-              </div>
+              <!-- Tone used to sit here, and is gone: every footage effect
+                   carries its own grade, so this was a second place to decide
+                   the same thing and the two stacked. Black and white, Warm and
+                   Cool are effects now, in the Grades pack below. The field is
+                   still rendered for clips that already carry one — a preset
+                   clears it, since every preset names `tone: 'none'`. -->
               <div>
                 <label class={labelClass} for="opt-speed">Speed ({config.speed}×)</label>
                 <input
@@ -1716,21 +1908,100 @@
               </div>
             </div>
 
+            <!-- The footage effect first, because it is the loudest thing on
+                 the picture and everything under it is a detail by comparison.
+                 The switches follow, in groups that each name a subject. -->
+            <div class="mt-5 border-t border-gray-800 pt-4">
+              <span class="mb-2 block text-sm text-gray-400">Footage effect</span>
+              <EffectPicker
+                family="picture"
+                value={clipWideEffect(config)}
+                clipId={selected.id}
+                swatches={brandColors}
+                onchange={(chosen) =>
+                  patchConfig('the look', {
+                    /*
+                     * Replaces the clip-wide entry and leaves any placed ones
+                     * alone. This control speaks for the whole clip, so it has
+                     * no business clearing a tear somebody dragged onto the
+                     * chorus.
+                     */
+                    effects: [
+                      ...(config.effects ?? []).filter((e) => e.start != null || e.end != null),
+                      ...(chosen ? [chosen] : [])
+                    ],
+                    pictureEffect: null
+                  })}
+              />
+            </div>
+
             <div
-              class="mt-4 grid [grid-template-columns:repeat(auto-fill,minmax(min(100%,10rem),1fr))] gap-2"
+              class="mt-4 grid [grid-template-columns:repeat(auto-fill,minmax(min(100%,11rem),1fr))] gap-4"
             >
-              {#each LOOK_OPTIONS as option (option.key)}
-                <label class="flex items-center gap-2 text-sm text-gray-300" title={option.hint}>
-                  <input
-                    type="checkbox"
-                    checked={config[option.key] as boolean}
-                    onchange={(e) =>
-                      patchConfig('the look', { [option.key]: e.currentTarget.checked } as never)}
-                    class="rounded border-gray-600 bg-gray-700 text-violet-500"
-                  />
-                  {option.label}
-                </label>
+              {#each LOOK_GROUPS as group (group.label)}
+                <div>
+                  <span class="mb-1.5 block text-xs tracking-wide text-gray-500 uppercase"
+                    >{group.label}</span
+                  >
+                  <div class="space-y-1.5">
+                    {#each group.options as option (option.key)}
+                      <label
+                        class="flex items-center gap-2 text-sm text-gray-300"
+                        title={option.hint}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={config[option.key] as boolean}
+                          onchange={(e) =>
+                            patchConfig('the look', {
+                              [option.key]: e.currentTarget.checked
+                            } as never)}
+                          class="rounded border-gray-600 bg-gray-700 text-violet-500"
+                        />
+                        {option.label}
+                      </label>
+                    {/each}
+                  </div>
+                </div>
               {/each}
+            </div>
+
+            <!-- Captions: everything that decides what a caption means by Auto.
+
+                 These were two tick boxes among the footage switches and a
+                 picker a screen below them — three places for one subject, and
+                 none of them saying what they had in common. A heading can say
+                 it where a tick box in a grid of nine cannot: none of this
+                 decides how a caption looks, because every one of them can be
+                 overruled from the caption's own block. What it decides is what
+                 a caption falls back to when it hasn't been asked. -->
+            <div class="mt-5 border-t border-gray-800 pt-4">
+              <span class="mb-1 block text-sm text-gray-400">Captions</span>
+              <p class="mb-3 text-xs text-gray-500">
+                What a caption does when it hasn't been given its own. Any caption can overrule all
+                of this from its block.
+              </p>
+
+              <div class="mb-4 flex flex-wrap gap-x-6 gap-y-2">
+                {#each CAPTION_OPTIONS as option (option.key)}
+                  <label class="flex items-center gap-2 text-sm text-gray-300" title={option.hint}>
+                    <input
+                      type="checkbox"
+                      checked={config[option.key] as boolean}
+                      onchange={(e) =>
+                        patchConfig('the look', { [option.key]: e.currentTarget.checked } as never)}
+                      class="rounded border-gray-600 bg-gray-700 text-violet-500"
+                    />
+                    {option.label}
+                  </label>
+                {/each}
+              </div>
+
+              <EffectPicker
+                value={config.captionEffect}
+                swatches={brandColors}
+                onchange={(captionEffect) => patchConfig('the look', { captionEffect })}
+              />
             </div>
           </div>
 
@@ -1962,6 +2233,11 @@
              full render while the note under it said "quick render". Invisible
              while a proof looked like a render; obvious the moment proofs
              stopped burning the captions in. -->
+        <!-- The look goes on the video rather than into the proof, for the
+             same reason the captions do: changing it should land instantly
+             instead of costing a render. Only over a proof — a full render has
+             it burned in already, and drawing it twice would be worse than not
+             drawing it at all. -->
         <video
           bind:this={previewVideo}
           src={shownMedia.url}
@@ -1969,9 +2245,14 @@
           controls
           ontimeupdate={(e) => (previewAt = (e.currentTarget as HTMLVideoElement).currentTime)}
           onseeked={(e) => (previewAt = (e.currentTarget as HTMLVideoElement).currentTime)}
+          onplay={() => (previewPlaying = true)}
+          onpause={() => (previewPlaying = false)}
+          onended={() => (previewPlaying = false)}
           class="w-full rounded-lg bg-black"
+          style={showingProof && look.filter ? `filter: ${look.filter}` : undefined}
         ></video>
         {#if showingProof}
+          <FootageLook svg={look.svg} overlay={look.overlay} />
           <ClipOverlay
             {captions}
             {config}
@@ -2207,204 +2488,225 @@
        it measures the whole clip and wants every pixel of the page to do it.
        Here it also stops scrolling away from the fields it drives.
 
-       Shown as soon as the clip has any media at all, placed or not: the empty
-       strip is what you place onto, and it is where beds and captions live even
-       when no footage has been put down yet. Gating it on there being a clip
-       placed meant removing the last one took the beds, the captions and the
-       target for the next placement off the screen together. -->
+       Always, with nothing to gate it on. It was shown once there was media in
+       the pool, which was the same mistake one step back: removing the last
+       clip emptied the pool and took the strip with it, along with the beds,
+       the captions and the effects still on it — and the target for putting
+       anything back. The empty strip is what you place onto, so the one moment
+       it must not disappear is the moment there is nothing on it. -->
   {#snippet footer()}
-    {#if pool.length > 0}
-      <!-- Clipped, so nothing in here can widen the page.
+    <!-- Clipped, so nothing in here can widen the page.
 
-           The strip is a few thousand pixels across and scrolls inside its own
-           box, but everything else in the footer — a minimap bar, a block drawn
-           at a percentage that rounds past the edge — sits in normal flow, and
-           anything that overhangs by even a pixel gives the whole document a
-           horizontal scrollbar. Which is how clicking the far end of the
-           minimap ended up sliding the entire editor sideways. -->
-      <div class="overflow-x-hidden border-t border-gray-800 bg-gray-950">
-        <ClipTimeline
-          duration={layout.duration}
-          clips={timelineClips}
-          {captions}
-          anchors={captionAnchors(advanced)}
-          swatches={brandColors}
-          onkeepcolor={keep}
-          inheritedColor={captionColor({}, config, accent)}
-          inheritedBackdrop={captionBackdrop({}, config)}
-          oncaptions={setCaptions}
-          selection={showing}
-          {selectionPlaying}
-          onmute={async (id, muted) => {
-            await autosave.run('the mute', () => updateSource({ id, muted }));
-            await invalidateAll();
-          }}
-          onremove={(kind, id) => (kind === 'clip' ? dropSource(id) : dropTrack(id))}
-          oncaptionremove={deleteCaption}
-          onripple={async (from, shift) => {
+         The strip is a few thousand pixels across and scrolls inside its own
+         box, but everything else in the footer — a minimap bar, a block drawn
+         at a percentage that rounds past the edge — sits in normal flow, and
+         anything that overhangs by even a pixel gives the whole document a
+         horizontal scrollbar. Which is how clicking the far end of the
+         minimap ended up sliding the entire editor sideways. -->
+    <div class="overflow-x-hidden border-t border-gray-800 bg-gray-950">
+      <ClipTimeline
+        duration={layout.duration}
+        clips={timelineClips}
+        {captions}
+        anchors={captionAnchors(advanced)}
+        swatches={brandColors}
+        onkeepcolor={keep}
+        inheritedColor={captionColor({}, config, accent)}
+        inheritedBackdrop={captionBackdrop({}, config)}
+        inheritedEffect={config.captionEffect ?? null}
+        effects={(config.effects ?? []).filter((e) => e.start != null || e.end != null)}
+        wideEffect={clipWideEffect(config)}
+        clipId={selected.id}
+        oneffects={(placed) =>
+          patchConfig('the effects', {
             /*
-             * Everything from a point onwards, moved together.
-             *
-             * Written as one unit of work: a ripple that saved half of itself
-             * would leave the clip in an arrangement nobody chose, and the
-             * retry you want after a failure is the whole gesture, not the
-             * three placements that happened to get through.
-             *
-             * Captions go in a single write because they live in one column;
-             * clips and beds are rows, so they are one call each.
+             * The lane owns the placed ones and the Look panel owns the
+             * clip-wide one, so each writes back only its own half. Sending
+             * the whole list from either would mean whichever was touched
+             * last silently cleared the other.
              */
-            const movedSources = sources.filter((s) => (s.start ?? 0) >= from - 0.001);
-            const movedTracks = data.audio.filter((a) => (a.start ?? 0) >= from - 0.001);
-            const movedCaptions = captions.some((c) => c.start >= from - 0.001);
-            if (!movedSources.length && !movedTracks.length && !movedCaptions) return;
+            effects: [
+              ...(config.effects ?? []).filter((e) => e.start == null && e.end == null),
+              ...placed
+            ],
+            pictureEffect: null
+          })}
+        oncaptions={setCaptions}
+        selection={showing}
+        {selectionPlaying}
+        onmute={async (id, muted) => {
+          await autosave.run('the mute', () => updateSource({ id, muted }));
+          await invalidateAll();
+        }}
+        onfade={async (id, fades) => {
+          await autosave.run('the fade', () => updateSource({ id, ...fades }));
+          await invalidateAll();
+        }}
+        onremove={(kind, id) => (kind === 'clip' ? dropSource(id) : dropTrack(id))}
+        oncaptionremove={deleteCaption}
+        onripple={async (from, shift) => {
+          /*
+           * Everything from a point onwards, moved together.
+           *
+           * Written as one unit of work: a ripple that saved half of itself
+           * would leave the clip in an arrangement nobody chose, and the
+           * retry you want after a failure is the whole gesture, not the
+           * three placements that happened to get through.
+           *
+           * Captions go in a single write because they live in one column;
+           * clips and beds are rows, so they are one call each.
+           */
+          const movedSources = sources.filter((s) => (s.start ?? 0) >= from - 0.001);
+          const movedTracks = data.audio.filter((a) => (a.start ?? 0) >= from - 0.001);
+          const movedCaptions = captions.some((c) => c.start >= from - 0.001);
+          if (!movedSources.length && !movedTracks.length && !movedCaptions) return;
 
-            await autosave.run('the move', async () => {
-              for (const source of movedSources) {
-                await updateSource({
-                  id: source.id,
-                  start: tidy(Math.max(0, (source.start ?? 0) + shift))
-                });
-              }
-              for (const track of movedTracks) {
-                await updateAudio({
-                  id: track.id,
-                  start: tidy(Math.max(0, (track.start ?? 0) + shift)),
-                  // A bed with no end of its own keeps not having one.
-                  end: track.end == null ? null : tidy(track.end + shift)
-                });
-              }
-              if (movedCaptions) {
-                await setCaptions(
-                  captions.map((c) =>
-                    c.start >= from - 0.001
-                      ? {
-                          ...c,
-                          start: tidy(Math.max(0, c.start + shift)),
-                          end: tidy(Math.max(0, c.end + shift))
-                        }
-                      : c
-                  )
-                );
-              }
-            });
-            await invalidateAll();
-          }}
-          onpreview={(kind, id, play) => {
-            const already = showing?.kind === kind && showing.id === id;
-
-            // Pressing the same block again puts the render back. The way out
-            // is the way in, so there's no button under the picture saying so —
-            // and which block you're looking at is already said by the ring
-            // around it. Play is exempt: that asks for sound, not for a
-            // different thing on screen.
-            if (already && !play) {
-              openSourceId = null;
-              openTrackId = null;
-              return;
+          await autosave.run('the move', async () => {
+            for (const source of movedSources) {
+              await updateSource({
+                id: source.id,
+                start: tidy(Math.max(0, (source.start ?? 0) + shift))
+              });
             }
+            for (const track of movedTracks) {
+              await updateAudio({
+                id: track.id,
+                start: tidy(Math.max(0, (track.start ?? 0) + shift)),
+                // A bed with no end of its own keeps not having one.
+                end: track.end == null ? null : tidy(track.end + shift)
+              });
+            }
+            if (movedCaptions) {
+              await setCaptions(
+                captions.map((c) =>
+                  c.start >= from - 0.001
+                    ? {
+                        ...c,
+                        start: tidy(Math.max(0, c.start + shift)),
+                        end: tidy(Math.max(0, c.end + shift))
+                      }
+                    : c
+                )
+              );
+            }
+          });
+          await invalidateAll();
+        }}
+        onpreview={(kind, id, play) => {
+          const already = showing?.kind === kind && showing.id === id;
 
-            if (kind === 'clip') {
-              openTrackId = null;
-              openSourceId = id;
+          // Pressing the same block again puts the render back. The way out
+          // is the way in, so there's no button under the picture saying so —
+          // and which block you're looking at is already said by the ring
+          // around it. Play is exempt: that asks for sound, not for a
+          // different thing on screen.
+          if (already && !play) {
+            openSourceId = null;
+            openTrackId = null;
+            return;
+          }
+
+          if (kind === 'clip') {
+            openTrackId = null;
+            openSourceId = id;
+          } else {
+            openSourceId = null;
+            openTrackId = id;
+          }
+          if (play) {
+            // Already showing, so its player exists and the press is a
+            // toggle. Otherwise the selection is only now being made, and the
+            // request is what the freshly mounted player picks up.
+            if (already && activePlayer) {
+              if (activePlayer.paused) void activePlayer.play().catch(() => {});
+              else activePlayer.pause();
             } else {
-              openSourceId = null;
-              openTrackId = id;
+              playRequest += 1;
             }
-            if (play) {
-              // Already showing, so its player exists and the press is a
-              // toggle. Otherwise the selection is only now being made, and the
-              // request is what the freshly mounted player picks up.
-              if (already && activePlayer) {
-                if (activePlayer.paused) void activePlayer.play().catch(() => {});
-                else activePlayer.pause();
-              } else {
-                playRequest += 1;
-              }
-            }
-          }}
-          onclip={async (id, changes) => {
-            const source = sources.find((s) => s.id === id);
-            if (!source) return;
+          }
+        }}
+        onclip={async (id, changes) => {
+          const source = sources.find((s) => s.id === id);
+          if (!source) return;
 
-            const length = (mediaById.get(source.mediaId)?.durationMs ?? 0) / 1000;
+          const length = (mediaById.get(source.mediaId)?.durationMs ?? 0) / 1000;
 
-            /*
-             * Slipped: the window moves through the footage, the block doesn't
-             * move at all. Both trim points shift by the same amount, which is
-             * what keeps the length — and so the placement — identical.
-             */
-            if (changes.slip !== undefined) {
-              const from = (source.trimStart ?? 0) + changes.slip;
-              const to = (source.trimEnd ?? length) + changes.slip;
-              if (from < -0.01 || to > length + 0.01) return;
-              await autosave.run('the trim', () =>
-                updateSource({ id, trimStart: tidy(from), trimEnd: tidy(to) })
-              );
-              await invalidateAll();
-              return;
-            }
-
-            // Moved whole: where it starts and which row it's in. The footage
-            // is untouched, so the trim isn't part of this.
-            if (changes.start !== undefined || changes.lane !== undefined) {
-              await autosave.run('the placement', () =>
-                updateSource({ id, start: changes.start, lane: changes.lane })
-              );
-              await invalidateAll();
-              return;
-            }
-
-            const speed = config.speed || 1;
-            const head = changes.head ?? 0;
-            const tail = changes.tail ?? 0;
-
-            /*
-             * Timeline seconds back into source seconds. Cutting into the front
-             * moves the in-point later and the placement with it, so what's
-             * left stays where it was on the timeline rather than sliding back.
-             *
-             * Both trims are always written, even when only one moved: the
-             * renderer reads them as a pair, and one without the other means
-             * "use the whole file".
-             */
-            const from = Math.max(0, (source.trimStart ?? 0) + head * speed);
-            const to = Math.min(length, (source.trimEnd ?? length) + tail * speed);
-            if (to - from < 0.1) return;
-
+          /*
+           * Slipped: the window moves through the footage, the block doesn't
+           * move at all. Both trim points shift by the same amount, which is
+           * what keeps the length — and so the placement — identical.
+           */
+          if (changes.slip !== undefined) {
+            const from = (source.trimStart ?? 0) + changes.slip;
+            const to = (source.trimEnd ?? length) + changes.slip;
+            if (from < -0.01 || to > length + 0.01) return;
             await autosave.run('the trim', () =>
-              updateSource({
-                id,
-                trimStart: tidy(from),
-                trimEnd: tidy(to),
-                start: tidy(Math.max(0, (source.start ?? 0) + head))
-              })
+              updateSource({ id, trimStart: tidy(from), trimEnd: tidy(to) })
             );
             await invalidateAll();
-          }}
-          {tracks}
-          onaudio={async (id, { seekBy, ...changes }) => {
-            // A head trim arrives as a shift, because only the row knows where
-            // the song was already cued to.
-            const track = seekBy ? data.audio.find((a) => a.id === id) : undefined;
-            const cue = track ? { seek: Math.max(0, tidy((track.seek ?? 0) + seekBy!)) } : {};
-            await autosave.run('the track', () => updateAudio({ id, ...changes, ...cue }));
+            return;
+          }
+
+          // Moved whole: where it starts and which row it's in. The footage
+          // is untouched, so the trim isn't part of this.
+          if (changes.start !== undefined || changes.lane !== undefined) {
+            await autosave.run('the placement', () =>
+              updateSource({ id, start: changes.start, lane: changes.lane })
+            );
             await invalidateAll();
-          }}
-          video={borrowed ? undefined : previewVideo}
-          onscrubsource={(kind, id, seconds) => {
-            // Only the one that's actually on screen. Everything else is
-            // playing somewhere this page can't see.
-            const player =
-              kind === 'clip' && borrowed?.row.id === id
-                ? sourceVideo
-                : kind === 'audio' && selectedTrack?.id === id
-                  ? bedAudio
-                  : null;
-            if (player) player.currentTime = Math.max(0, seconds);
-          }}
-        />
-      </div>
-    {/if}
+            return;
+          }
+
+          const speed = config.speed || 1;
+          const head = changes.head ?? 0;
+          const tail = changes.tail ?? 0;
+
+          /*
+           * Timeline seconds back into source seconds. Cutting into the front
+           * moves the in-point later and the placement with it, so what's
+           * left stays where it was on the timeline rather than sliding back.
+           *
+           * Both trims are always written, even when only one moved: the
+           * renderer reads them as a pair, and one without the other means
+           * "use the whole file".
+           */
+          const from = Math.max(0, (source.trimStart ?? 0) + head * speed);
+          const to = Math.min(length, (source.trimEnd ?? length) + tail * speed);
+          if (to - from < 0.1) return;
+
+          await autosave.run('the trim', () =>
+            updateSource({
+              id,
+              trimStart: tidy(from),
+              trimEnd: tidy(to),
+              start: tidy(Math.max(0, (source.start ?? 0) + head))
+            })
+          );
+          await invalidateAll();
+        }}
+        {tracks}
+        onaudio={async (id, { seekBy, ...changes }) => {
+          // A head trim arrives as a shift, because only the row knows where
+          // the song was already cued to.
+          const track = seekBy ? data.audio.find((a) => a.id === id) : undefined;
+          const cue = track ? { seek: Math.max(0, tidy((track.seek ?? 0) + seekBy!)) } : {};
+          await autosave.run('the track', () => updateAudio({ id, ...changes, ...cue }));
+          await invalidateAll();
+        }}
+        video={borrowed ? undefined : previewVideo}
+        onscrubsource={(kind, id, seconds) => {
+          // Only the one that's actually on screen. Everything else is
+          // playing somewhere this page can't see.
+          const player =
+            kind === 'clip' && borrowed?.row.id === id
+              ? sourceVideo
+              : kind === 'audio' && selectedTrack?.id === id
+                ? bedAudio
+                : null;
+          if (player) player.currentTime = Math.max(0, seconds);
+        }}
+      />
+    </div>
   {/snippet}
 </EditorPreview>
 

@@ -20,6 +20,8 @@ export interface RenderState {
     muted: boolean | null;
     watermark: boolean | null;
     rotation: number | null;
+    fadeIn: boolean | null;
+    fadeOut: boolean | null;
   }[];
   audio: Omit<ClipAudioTrack, 'id'>[];
   /**
@@ -53,7 +55,9 @@ export function renderFingerprint(state: RenderState): string {
       s.trimEnd ?? null,
       Boolean(s.muted),
       s.watermark ?? null,
-      s.rotation ?? 0
+      s.rotation ?? 0,
+      Boolean(s.fadeIn),
+      Boolean(s.fadeOut)
     ]);
 
   const audio = [...state.audio]
@@ -68,9 +72,28 @@ export function renderFingerprint(state: RenderState): string {
       Boolean(a.duck)
     ]);
 
+  /*
+   * Everything about a caption that reaches the picture.
+   *
+   * `color`, `background` and `anchor` were missing, which meant recolouring a
+   * caption or moving it to another height left the clip looking up to date
+   * when the file no longer matched it — the quiet version of the failure this
+   * whole function exists to prevent. `anchor` in particular superseded `y`
+   * long ago, so the one that was listed is the one nothing writes any more.
+   */
   const captions = state.captions
     .filter((c) => c.text?.trim())
-    .map((c) => [c.start, c.end, c.text, Boolean(c.headline), c.y ?? null]);
+    .map((c) => [
+      c.start,
+      c.end,
+      c.text,
+      Boolean(c.headline),
+      c.color ?? null,
+      c.background ?? null,
+      c.anchor ?? null,
+      c.y ?? null,
+      c.effect ?? null
+    ]);
 
   return JSON.stringify({
     config: state.config,
