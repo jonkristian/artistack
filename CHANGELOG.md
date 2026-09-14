@@ -18,7 +18,7 @@
 - The privacy page describes the advertising pixels when they're switched on, and says there are none when they're off
 - Security headers on every response: no framing by another site, no content sniffing, less referrer leaked
 - Changing a password signs out your other devices; an admin reset signs out all of theirs
-- Runs on Node 24, having been built on 18 since before it went end of life. Dependencies are current, including fixes in the database layer and in Svelte's rendering
+- Dependencies are current, including fixes in the database layer and in Svelte's rendering
 - Fixed: deleting a clip left its quick render behind, on disk and in the library
 - Fixed: a shot whose audio ran shorter than its picture was cut to the length of the sound, and rendering appeared to hang partway
 - Fixed: a caption's backdrop was drawn solid black whatever colour was picked, and its opacity dial did nothing
