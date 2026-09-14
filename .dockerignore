@@ -1,0 +1,29 @@
+# What must not go into a build context.
+#
+# Coolify builds from a git clone, so most of this is already absent there —
+# but a build run from a working copy copies the directory as it stands, and
+# two of these are worth being explicit about.
+#
+# data/ is the live database and every uploaded file: subscriber addresses,
+# orders, the lot. It is a mounted volume in production and has no business
+# being baked into an image that might be pushed to a registry.
+#
+# node_modules/ carries compiled native binaries — better-sqlite3 and sharp —
+# built for whatever Node the developer happens to run. Copied into an image
+# running a different Node they fail to load at all, with an ABI mismatch that
+# reads as a corrupt install rather than a stale copy.
+
+node_modules
+data
+.git
+.svelte-kit
+build
+.nixpacks
+
+.env
+.env.*
+!.env.example
+
+notes
+screenshots
+*.tar.gz
