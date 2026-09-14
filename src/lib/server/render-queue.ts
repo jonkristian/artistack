@@ -2,7 +2,7 @@ import { join } from 'path';
 import { writeFile, unlink, stat } from 'fs/promises';
 import { eq, and, ne, asc, inArray } from 'drizzle-orm';
 import sharp from 'sharp';
-import { UPLOAD_DIR, THUMBNAIL_SIZE, mediaPath } from './paths';
+import { UPLOAD_DIR, THUMBNAIL_SIZE, mediaPath, removeMediaFile } from './paths';
 import { db } from './db';
 import { getSettings, getClipSettings } from './settings';
 import {
@@ -17,6 +17,7 @@ import {
   type TimedCaption
 } from './schema';
 import { renderClip, type ClipSourceInput, type ClipAudioInput } from './clip-render';
+import { stageGraphicId, type BrandStage } from '$lib/clips/types';
 import { renderFingerprint } from '$lib/clips/fingerprint';
 import { probeVideo, extractPosterFrame } from './ffmpeg';
 
@@ -250,21 +251,18 @@ async function runJob(jobId: number, projectId: number, proof = false): Promise<
 /**
  * Picks the graphic for a render.
  *
- * Order: a random pick from the designated set if the clip asked for one, then
- * the clip's own choice, then the site default. Returns null when nothing is
- * designated, which sends the caller down the favicon path rather than failing
+ * Order: the stage's own mark, then the clip's, then the site default. Returns
+ * null when nothing is designated, which sends the caller down the favicon path rather than failing
  * — a graphic isn't worth losing a render over.
  */
 function resolveGraphic(
   config: ClipRenderConfig,
   designated: number[],
-  defaultGraphicMediaId: number | null
+  defaultGraphicMediaId: number | null,
+  /** Which of the three this is for; each may carry a mark of its own. */
+  stage: BrandStage
 ): number | null {
-  if (config.randomGraphics && designated.length) {
-    return designated[Math.floor(Math.random() * designated.length)];
-  }
-
-  const picked = config.graphicMediaId ?? defaultGraphicMediaId;
+  const picked = stageGraphicId(config, stage) ?? defaultGraphicMediaId;
   // Only honour a pick that's still designated: un-designating a graphic
   // shouldn't leave clips quietly rendering with it.
   if (picked && designated.includes(picked)) return picked;
@@ -336,18 +334,43 @@ async function buildRenderInput(projectId: number, proof = false) {
   const [site, clips] = await Promise.all([getSettings(), getClipSettings()]);
 
   const designated = (clips?.graphicsMediaIds ?? []) as number[];
-  const graphicId = resolveGraphic(config, designated, clips?.defaultGraphicMediaId ?? null);
 
-  // One graphic serves all three placements, rasterised at each size. No
-  // designated graphic means no intro, watermark or outro — the renderer skips
-  // each placement whose path is null. There is deliberately no fallback: a
-  // favicon is sized to read at 16px, and silently blowing it up to 650px
-  // produced branding nobody asked for and couldn't turn off.
-  let graphicPath: string | null = null;
-  if (graphicId) {
-    const [item] = await db.select().from(media).where(eq(media.id, graphicId)).limit(1);
-    if (item) graphicPath = mediaPath(item.url);
+  /*
+   * One graphic per placement, rasterised at that placement's size.
+   *
+   * They used to share one, which is still what happens unless a stage has been
+   * given its own — an outro card is a place to put something other than the
+   * mark you have been watermarking the corner with, and the three are no
+   * longer obliged to agree.
+   *
+   * No designated graphic means no intro, watermark or outro: the renderer
+   * skips each placement whose path is null. There is deliberately no fallback,
+   * because a favicon is sized to read at 16px and silently blowing it up to
+   * 650px produced branding nobody asked for and couldn't turn off.
+   */
+  const fallbackId = clips?.defaultGraphicMediaId ?? null;
+  const stagePaths: Record<BrandStage, string | null> = {
+    intro: null,
+    watermark: null,
+    outro: null
+  };
+
+  const pathCache = new Map<number, string | null>();
+  for (const stage of ['intro', 'watermark', 'outro'] as BrandStage[]) {
+    const id = resolveGraphic(config, designated, fallbackId, stage);
+    if (!id) continue;
+    if (!pathCache.has(id)) {
+      const [item] = await db.select().from(media).where(eq(media.id, id)).limit(1);
+      pathCache.set(id, item ? mediaPath(item.url) : null);
+    }
+    stagePaths[stage] = pathCache.get(id) ?? null;
   }
+
+  // What the clip is recorded as having rendered with. The intro's, to agree
+  // with `graphicPath` below — the three can differ now, and one row can only
+  // hold one of them.
+  const graphicId = resolveGraphic(config, designated, fallbackId, 'intro');
+  const graphicPath = stagePaths.intro ?? stagePaths.watermark ?? stagePaths.outro;
 
   /*
    * Beds whose file has gone from the library are dropped here rather than
@@ -430,9 +453,9 @@ async function buildRenderInput(projectId: number, proof = false) {
         musicOnly: sources.length > 0 && sources.every((source) => source.muted)
       },
       captions: (project.captions ?? []) as TimedCaption[],
-      introPath: graphicPath,
-      watermarkPath: graphicPath,
-      outroPath: graphicPath,
+      introPath: stagePaths.intro,
+      watermarkPath: stagePaths.watermark,
+      outroPath: stagePaths.outro,
       audio,
       proof,
       outputPath
@@ -536,7 +559,7 @@ async function discardSupersededRender(
     await db.delete(media).where(eq(media.id, previousMediaId));
 
     for (const url of [prev.url, prev.thumbnailUrl]) {
-      if (url) await unlink(mediaPath(url)).catch(() => {});
+      await removeMediaFile(url);
     }
   } catch (e) {
     console.error('[RenderQueue] Could not discard superseded render:', e);

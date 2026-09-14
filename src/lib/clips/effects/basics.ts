@@ -80,7 +80,7 @@ const pop: CaptionEffect = {
       min: 10,
       max: 99,
       step: 5,
-      hint: '% of size'
+      hint: '%'
     },
     {
       key: 'ms',

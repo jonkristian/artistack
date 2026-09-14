@@ -21,7 +21,7 @@ import type { GalleryBlockConfig } from '$lib/server/schema';
 import { eq } from 'drizzle-orm';
 import { readdir, unlink } from 'fs/promises';
 import { join } from 'path';
-import { mediaPath } from '$lib/server/paths';
+import { isMediaUrl, removeMediaFile } from '$lib/server/paths';
 import { queuePreviewRendition, removePreview } from '$lib/server/media-preview';
 import { queueWaveform, removeWaveform } from '$lib/server/media-waveform';
 import { setTags, clearTags, pruneOrphanTags } from '$lib/server/tags';
@@ -51,11 +51,21 @@ async function removePresetPreviews(mediaId: number): Promise<void> {
 // Validation Schemas
 // ============================================================================
 
+/**
+ * A URL the app is allowed to store, and therefore later to delete.
+ *
+ * These arrive from the browser — the admin uploads a file, then registers the
+ * result — so the shape has to be checked here rather than assumed from the
+ * upload route that produced it. Without this, a crafted `addMedia` followed by
+ * `deleteMedia` unlinked whatever path the row named.
+ */
+const mediaUrl = v.pipe(v.string(), v.check(isMediaUrl, 'That is not a file this site uploaded.'));
+
 const addMediaSchema = v.object({
   filename: v.string(),
-  url: v.string(),
-  originalUrl: v.optional(v.string()),
-  thumbnailUrl: v.optional(v.string()),
+  url: mediaUrl,
+  originalUrl: v.optional(mediaUrl),
+  thumbnailUrl: v.optional(mediaUrl),
   mimeType: v.string(),
   width: v.optional(v.number()),
   height: v.optional(v.number()),
@@ -74,7 +84,7 @@ const addMediaSchema = v.object({
 const updateMediaSchema = v.object({
   id: v.number(),
   alt: v.optional(v.string()),
-  url: v.optional(v.string()) // For re-cropped images
+  url: v.optional(mediaUrl) // For re-cropped images
 });
 
 const deleteMediaSchema = v.number();
@@ -129,12 +139,7 @@ export const updateMedia = command(updateMediaSchema, async ({ id, alt, url }) =
 /** Removes a row's files from disk. Missing files are not an error. */
 async function unlinkMediaFiles(item: typeof media.$inferSelect) {
   for (const url of [item.url, item.originalUrl, item.thumbnailUrl]) {
-    if (!url) continue;
-    try {
-      await unlink(mediaPath(url));
-    } catch {
-      // Already gone, which is the state we wanted anyway.
-    }
+    await removeMediaFile(url);
   }
 }
 

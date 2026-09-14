@@ -368,8 +368,7 @@
                 bind:value={repoDescription}
                 rows="2"
                 placeholder="Uses fetched description if empty"
-                class={fieldClass}
-              ></textarea>
+                class={fieldClass}></textarea>
             </div>
           {/if}
         </div>

@@ -104,108 +104,136 @@
     }
     onchange({ id: chosen.id, ...(Object.keys(kept).length ? { params: kept } : {}) });
   }
-
-  const choice =
-    'rounded-lg border px-3 py-1.5 text-sm transition-colors border-gray-700 text-gray-300 hover:bg-gray-800';
-  const picked = 'rounded-lg border px-3 py-1.5 text-sm border-violet-500 bg-violet-600 text-white';
 </script>
 
-<div class="space-y-3">
-  <!-- Present when there is something for "nothing" to mean: a caption handing
-       the choice back to the clip, or footage left alone. A clip's own caption
-       effect has neither — an unset one is the plain fade, which is in the list
-       already, so a second way to say the same thing would only confuse. -->
-  {#if canInherit || family === 'picture'}
-    <button type="button" onclick={() => onchange(null)} class={value ? choice : picked}>
-      {canInherit ? `Auto (${inheritedLabel})` : 'None'}
-    </button>
-  {/if}
+<!-- One choice, so one list — and one shape, so the two pickers read as the
+     same control.
 
-  {#each groups as group (group.id)}
-    <div>
-      <!-- The pack name only earns its space once there is more than one; with
-           a single pack it is a heading over the entire list. -->
-      {#if groups.length > 1}
-        <span class="text-xs font-medium tracking-wide text-gray-500 uppercase">{group.label}</span>
-      {/if}
-      <div class="mt-1 flex flex-wrap gap-2">
-        {#each group.effects as effect (effect.id)}
-          <button
-            type="button"
-            title={effect.description}
-            onclick={() => onchange({ id: effect.id })}
-            class={showSwatches
-              ? `overflow-hidden rounded-lg border text-left transition-colors ${
-                  chosen?.id === effect.id
-                    ? 'border-violet-500'
-                    : 'border-gray-700 hover:border-gray-500'
-                }`
-              : chosen?.id === effect.id
-                ? picked
-                : choice}
-          >
-            {#if showSwatches}
-              <!-- A frame of this clip's own footage with the look on it.
+     The packs used to be headings over their own rows, which drew three lists
+     and implied you could take something from each; you cannot, an effect
+     replaces whatever was there. The grouping is how the effects are written
+     and filed, not a question anyone is being asked here.
 
-                   `previewFilters` drops anything that needs motion, so an
-                   effect with nothing to show in a still — Signal loss — has no
-                   swatch and the route says so; the image simply fails to load
-                   and the name underneath still names it. -->
+     Captions are tiles now as well. They were pill buttons beside the footage
+     tiles and the two panels looked like different kinds of thing when they
+     are the same kind of choice. The one deliberate difference is the height of
+     the picture area: a footage look can be shown on a frame, and an entrance
+     cannot — a still of a movement is a still of nothing — so a caption tile
+     keeps the shape and gives that space back rather than holding six empty
+     four-by-three rectangles that read as images which failed to load. -->
+<div class="grid gap-4 sm:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+  <!-- A grid of four rather than a wrapping row, so the tiles are four to a
+       line at any width instead of however many happen to fit — and they fill
+       the column rather than leaving a ragged margin down the right of it.
+       `items-start`, or each one stretches to its row's height. -->
+  <div class="grid grid-cols-2 items-start gap-2 sm:grid-cols-4">
+    {#if canInherit || family === 'picture'}
+      <button
+        type="button"
+        onclick={() => onchange(null)}
+        class="self-start overflow-hidden rounded-lg border text-left transition-colors {value
+          ? 'border-gray-700 hover:border-gray-500'
+          : 'border-violet-500'}"
+      >
+        <span class="block w-full bg-gray-950 {showSwatches ? 'aspect-[4/3]' : 'h-9'}"></span>
+        <span class="block w-full truncate px-2 py-1.5 text-xs text-gray-300">
+          {canInherit ? `Auto (${inheritedLabel})` : 'None'}
+        </span>
+      </button>
+    {/if}
+
+    {#each groups as group (group.id)}
+      {#each group.effects as effect (effect.id)}
+        <button
+          type="button"
+          title={effect.description}
+          onclick={() => onchange({ id: effect.id })}
+          class="self-start overflow-hidden rounded-lg border text-left transition-colors {chosen?.id ===
+          effect.id
+            ? 'border-violet-500'
+            : 'border-gray-700 hover:border-gray-500'}"
+        >
+          {#if showSwatches}
+            <!-- A frame of this clip's own footage with the look on it — but
+                 only where a still can carry one. `stillSafe` is off for
+                 anything needing motion, and the route returns nothing for it,
+                 so the tile would be a black rectangle pretending to be a
+                 preview. The word is honest. -->
+            {#if 'stillSafe' in effect && effect.stillSafe}
               <img
                 src="/admin/clips/{clipId}/effect/{effect.id}"
                 alt=""
                 loading="lazy"
-                class="aspect-[4/3] w-24 bg-gray-950 object-cover"
+                class="aspect-[4/3] w-full bg-gray-950 object-cover"
               />
-              <span class="block px-2 py-1.5 text-xs text-gray-300">{effect.label}</span>
             {:else}
-              {effect.label}
+              <span
+                class="flex aspect-[4/3] w-full items-center justify-center bg-gray-950 text-[10px] text-gray-600"
+              >
+                moves
+              </span>
             {/if}
-          </button>
-        {/each}
-      </div>
-    </div>
-  {/each}
-
-  {#if chosen}
-    <p class="text-xs text-gray-500">{chosen.description}</p>
-  {/if}
-
-  <!-- The dials, drawn from what the effect says it has. -->
-  {#if chosen?.params?.length}
-    <div class="flex flex-wrap items-end gap-x-6 gap-y-3 border-t border-gray-800 pt-3">
-      {#each chosen.params as param (param.key)}
-        <div>
-          <span class="mb-1 block text-xs text-gray-400">{param.label}</span>
-          {#if param.type === 'toggle'}
-            <ToggleSwitch
-              checked={Boolean(params[param.key])}
-              label={param.label}
-              hideLabel
-              onchange={(on) => setParam(param.key, on)}
-            />
-          {:else if param.type === 'color'}
-            <ColorWheel
-              value={String(params[param.key])}
-              {swatches}
-              onchange={(color) => setParam(param.key, color)}
-            />
           {:else}
-            <span class="flex items-baseline gap-1.5">
-              <input
-                type="number"
-                class="{numberClass} w-20"
-                value={Number(params[param.key])}
-                min={param.min}
-                max={param.max}
-                step={param.step}
-                onchange={(e) => setParam(param.key, Number(e.currentTarget.value))}
-              />
-              {#if param.hint}<span class="text-xs text-gray-500">{param.hint}</span>{/if}
-            </span>
+            <span class="block h-9 w-full bg-gray-950"></span>
           {/if}
-        </div>
+          <span class="block w-full truncate px-2 py-1.5 text-xs text-gray-300">{effect.label}</span
+          >
+        </button>
       {/each}
+    {/each}
+  </div>
+
+  <!-- What the chosen one is, and its dials, in two columns of its own. -->
+  {#if chosen}
+    <div
+      class="grid grid-cols-2 gap-x-3 gap-y-1.5 self-start sm:border-l sm:border-gray-800 sm:pl-4"
+    >
+      <p class="col-span-2 mb-1 text-xs text-gray-500">{chosen.description}</p>
+
+      {#if chosen.params?.length}
+        {#each chosen.params as param (param.key)}
+          <!-- A fixed label width rather than `justify-between`: spreading the
+               two ends of a half-width cell apart put a label on the left and
+               its number somewhere off to the right with nothing between them.
+               Fixed, the pairs stay together and still line up across both
+               columns. -->
+          <div class="flex items-center gap-2">
+            <span class="w-[4.5rem] shrink-0 truncate text-xs text-gray-400" title={param.label}>
+              {param.label}
+            </span>
+            {#if param.type === 'toggle'}
+              <ToggleSwitch
+                checked={Boolean(params[param.key])}
+                label={param.label}
+                hideLabel
+                onchange={(on) => setParam(param.key, on)}
+              />
+            {:else if param.type === 'color'}
+              <ColorWheel
+                value={String(params[param.key])}
+                {swatches}
+                onchange={(color) => setParam(param.key, color)}
+              />
+            {:else}
+              <span class="flex shrink-0 items-baseline gap-1">
+                <input
+                  type="number"
+                  class="{numberClass} w-14 px-2 py-1 text-xs"
+                  value={Number(params[param.key])}
+                  min={param.min}
+                  max={param.max}
+                  step={param.step}
+                  onchange={(e) => setParam(param.key, Number(e.currentTarget.value))}
+                />
+                <!-- Never wrapped. Every unit is one or two characters, and a
+                     fixed slot narrow enough to keep them tidy was narrow
+                     enough to break one across three lines. -->
+                <span class="text-[10px] whitespace-nowrap text-gray-500">{param.hint ?? ''}</span>
+              </span>
+            {/if}
+          </div>
+        {/each}
+      {/if}
     </div>
   {/if}
 </div>

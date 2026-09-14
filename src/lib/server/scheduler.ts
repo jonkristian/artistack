@@ -1,4 +1,4 @@
-import cron from 'node-cron';
+import cron, { type ScheduledTask } from 'node-cron';
 import { db } from './db';
 import { getSettings, getDiscordSettings } from './settings';
 import type { DiscordSettings } from './schema';
@@ -9,20 +9,49 @@ import { announceRelease, releasesAwaitingAnnouncement } from './announce';
 import { fillStoreLinks, releasesNeedingStoreLinks, storefrontFromLocale } from './store-links';
 import { recoverStaleJobs, processQueue } from './render-queue';
 import { clearAbandonedStaging } from './clip-render';
+import { sweepClipLeftovers, sweptAnything } from './clip-sweep';
 import { runReleaseTick, checkPublishCoverage } from './clip-queue';
 import { remindStaleInvites } from './invites';
 import { env } from '$env/dynamic/private';
 import { desc } from 'drizzle-orm';
 
-let isInitialized = false;
+/**
+ * The running schedule, parked where a module reload can still find it.
+ *
+ * A module-scoped flag was enough to stop `initScheduler` running twice and no
+ * use at all against the thing that actually happens: in dev, Vite re-evaluates
+ * a server module when anything it imports changes, and `hooks.server.ts` calls
+ * this at the top level. The new copy of the module gets a fresh flag saying
+ * nothing has started, while the crons the old copy registered are still live
+ * timers in the same process — nothing stops them. Every edit to a file in this
+ * import chain left another whole scheduler running, and they are not harmless
+ * duplicates: four of them mean four render queues, four sweeps and four sends.
+ *
+ * `globalThis` outlives the module, so a reload finds the previous tasks and
+ * stops them before taking over. It costs nothing in production, where this
+ * runs once.
+ */
+const RUNNING = Symbol.for('artistack.scheduler');
+type SchedulerState = { tasks: ScheduledTask[] };
+const store = globalThis as typeof globalThis & { [RUNNING]?: SchedulerState };
 
 /**
  * Initialize scheduled tasks
  * Runs every hour to check if any tasks are due
  */
 export function initScheduler(): void {
-  if (isInitialized) return;
-  isInitialized = true;
+  const previous = store[RUNNING];
+  if (previous) {
+    // Only ever true after a dev reload: production imports this once.
+    for (const task of previous.tasks) {
+      // `destroy`, not `stop`: stop only pauses it, leaving it in node-cron's
+      // registry able to be started again. This one is never wanted again.
+      void Promise.resolve(task.destroy()).catch(() => {});
+    }
+    console.log(`[Scheduler] Replacing ${previous.tasks.length} task(s) from a previous reload`);
+  }
+  const state: SchedulerState = { tasks: [] };
+  store[RUNNING] = state;
 
   console.log('[Scheduler] Initializing...');
 
@@ -33,27 +62,65 @@ export function initScheduler(): void {
     .then(async () => {
       const cleared = await clearAbandonedStaging();
       if (cleared) console.log(`[RenderQueue] Cleared ${cleared} abandoned working folder(s)`);
+
+      /*
+       * And the finished files nothing points at any more.
+       *
+       * Staging is what a crash leaves behind mid-render; this is what a delete
+       * leaves behind afterwards, which for a long time was every quick render
+       * of every clip anyone removed. Once at startup and once a day after
+       * that — it is housekeeping, not a service, and it reads the whole media
+       * table to do its job.
+       */
+      const swept = await sweepClipLeftovers();
+      if (sweptAnything(swept)) {
+        console.log(
+          `[Clips] Swept ${swept.mediaRows} render(s), ${swept.files} stray file(s), ` +
+            `${swept.poolRows} pool row(s), ${swept.swatches} swatch(es)`
+        );
+      }
     })
     .then(() => processQueue())
     .catch((e) => console.error('[Scheduler] Render queue startup failed:', e));
 
   // Run every hour at minute 0
-  cron.schedule('0 * * * *', async () => {
-    console.log('[Scheduler] Running hourly check...');
-    await runScheduledTasks();
-  });
+  state.tasks.push(
+    cron.schedule('0 * * * *', async () => {
+      console.log('[Scheduler] Running hourly check...');
+      await runScheduledTasks();
+    })
+  );
 
   // Its own tick: an alarm on an hourly schedule can sit unraised for 59
   // minutes, and the whole point is noticing a release went nowhere.
-  cron.schedule('*/15 * * * *', async () => {
-    const origin = env.BETTER_AUTH_BASE_URL || env.ORIGIN;
-    if (!origin) return;
-    await checkPublishCoverage(origin).catch((e) =>
-      console.error('[Scheduler] Coverage check failed:', e)
-    );
-  });
+  state.tasks.push(
+    cron.schedule('*/15 * * * *', async () => {
+      const origin = env.BETTER_AUTH_BASE_URL || env.ORIGIN;
+      if (!origin) return;
+      await checkPublishCoverage(origin).catch((e) =>
+        console.error('[Scheduler] Coverage check failed:', e)
+      );
+    })
+  );
 
-  console.log('[Scheduler] Started - hourly tasks, coverage check every 15m');
+  // Small hours, when nobody is rendering and a few seconds of disk churn
+  // costs nothing.
+  state.tasks.push(
+    cron.schedule('30 4 * * *', async () => {
+      const swept = await sweepClipLeftovers().catch((e) => {
+        console.error('[Clips] Sweep failed:', e);
+        return null;
+      });
+      if (swept && sweptAnything(swept)) {
+        console.log(
+          `[Clips] Swept ${swept.mediaRows} render(s), ${swept.files} stray file(s), ` +
+            `${swept.poolRows} pool row(s), ${swept.swatches} swatch(es)`
+        );
+      }
+    })
+  );
+
+  console.log('[Scheduler] Started - hourly tasks, coverage check every 15m, nightly clip sweep');
 }
 
 async function runScheduledTasks(): Promise<void> {

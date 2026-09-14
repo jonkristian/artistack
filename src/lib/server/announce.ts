@@ -15,8 +15,7 @@ import { isPlaceholderUrl } from '$lib/utils/platforms';
  * mailing you can't take back.
  */
 export type AnnounceResult =
-  | { sent: number; failed: number; held?: never }
-  | { held: string; sent?: never; failed?: never };
+  { sent: number; failed: number; held?: never } | { held: string; sent?: never; failed?: never };
 
 /**
  * How many services make an announcement worth sending on the morning itself.

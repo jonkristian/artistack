@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
-import { linkClicks } from '$lib/server/schema';
+import { links, linkClicks } from '$lib/server/schema';
+import { eq } from 'drizzle-orm';
 import {
   isBot,
   parseReferrer,
@@ -8,6 +9,8 @@ import {
   lookupCountry,
   deviceFromUserAgent
 } from '$lib/server/tracking';
+import { rateLimit } from '$lib/server/rate-limit';
+import type { RequestEvent } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
 /**
@@ -20,11 +23,29 @@ import type { RequestHandler } from './$types';
  * on whether a click arrived through /go or through this beacon.
  */
 
-export const POST: RequestHandler = async ({ request }) => {
+/**
+ * Generous, because this fires on real clicks and a page of links can produce a
+ * handful in a few seconds. It is here to bound what an unauthenticated caller
+ * can write to the table, not to police anyone's browsing.
+ */
+const CLICKS_PER_HOUR = 300;
+
+export const POST: RequestHandler = async (event) => {
+  const { request } = event;
   const userAgent = request.headers.get('user-agent') || '';
 
   // Skip bots
   if (isBot(userAgent)) {
+    return json({ success: true });
+  }
+
+  /*
+   * Answered as though it worked. This endpoint tells the caller nothing and
+   * the browser does nothing with the reply, so a throttled script gets no
+   * signal — unlike the sign-up form, where a person needs to be told.
+   */
+  const ip = getClientIP(event);
+  if (!rateLimit(`track:${ip ?? 'unknown'}`, CLICKS_PER_HOUR, 60 * 60 * 1000).allowed) {
     return json({ success: true });
   }
 
@@ -37,7 +58,7 @@ export const POST: RequestHandler = async ({ request }) => {
     }
 
     // Track asynchronously - don't wait
-    trackClick(linkId, request).catch(() => {
+    trackClick(linkId, event).catch(() => {
       // Silently ignore
     });
 
@@ -47,11 +68,20 @@ export const POST: RequestHandler = async ({ request }) => {
   }
 };
 
-async function trackClick(linkId: number, request: Request): Promise<void> {
-  const referrer = parseReferrer(request.headers.get('referer'));
-  const ip = getClientIP(request);
+async function trackClick(linkId: number, event: RequestEvent): Promise<void> {
+  /*
+   * The link has to exist. SQLite is not enforcing foreign keys here, so
+   * without this an open endpoint could fill the table with clicks on links
+   * that never existed — rows nothing can ever join back to, in the middle of
+   * the stats the artist reads.
+   */
+  const [link] = await db.select({ id: links.id }).from(links).where(eq(links.id, linkId)).limit(1);
+  if (!link) return;
+
+  const referrer = parseReferrer(event.request.headers.get('referer'));
+  const ip = getClientIP(event);
   const country = ip ? await lookupCountry(ip) : null;
-  const device = deviceFromUserAgent(request.headers.get('user-agent') || '');
+  const device = deviceFromUserAgent(event.request.headers.get('user-agent') || '');
 
   await db.insert(linkClicks).values({
     linkId,

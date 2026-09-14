@@ -21,7 +21,7 @@ import { mkdir, readFile } from 'fs/promises';
 import { join } from 'path';
 import { eq, asc } from 'drizzle-orm';
 import { db } from '$lib/server/db';
-import { clipProjects, clipSources, media } from '$lib/server/schema';
+import { clipMedia, clipProjects, clipSources, media } from '$lib/server/schema';
 import { mediaPath } from '$lib/server/paths';
 import { runFfmpeg, probeDuration } from '$lib/server/ffmpeg';
 import { pickBrightTime } from '$lib/server/clip-render';
@@ -45,17 +45,38 @@ export async function clipSwatch(
     .limit(1);
   if (!project) throw error(404, 'Clip not found');
 
-  // The first source is what the intro lands on, so it's the frame most worth
-  // grading. Nothing to preview before any footage is added.
-  const [first] = await db
-    .select()
+  /*
+   * The first shot on the timeline, or failing that the first file in the pool.
+   *
+   * Only placements used to count, which meant adding footage to a clip and not
+   * yet placing it left every swatch saying "add footage to preview" — with the
+   * footage sitting right above them. Choosing a look is something you do
+   * *before* arranging, so the moment there is a file to take a frame from is
+   * the moment the pickers should work.
+   *
+   * Placement still wins where there is one: the first shot is what the clip
+   * opens on, so it is the frame most worth grading.
+   */
+  const [placed] = await db
+    .select({ mediaId: clipSources.mediaId })
     .from(clipSources)
     .where(eq(clipSources.projectId, projectId))
     .orderBy(asc(clipSources.position))
     .limit(1);
-  if (!first) throw error(404, 'No sources yet');
 
-  const [item] = await db.select().from(media).where(eq(media.id, first.mediaId)).limit(1);
+  const [pooled] = placed
+    ? []
+    : await db
+        .select({ mediaId: clipMedia.mediaId })
+        .from(clipMedia)
+        .where(eq(clipMedia.projectId, projectId))
+        .orderBy(asc(clipMedia.position))
+        .limit(1);
+
+  const mediaId = placed?.mediaId ?? pooled?.mediaId;
+  if (!mediaId) throw error(404, 'No footage yet');
+
+  const [item] = await db.select().from(media).where(eq(media.id, mediaId)).limit(1);
   if (!item) throw error(404, 'Source file is missing');
 
   const sourcePath = mediaPath(item.url);

@@ -1,9 +1,9 @@
-import { rename, unlink } from 'fs/promises';
+import { rename } from 'fs/promises';
 import { basename, extname, join } from 'path';
 import { eq } from 'drizzle-orm';
 import { db } from './db';
 import { media } from './schema';
-import { UPLOAD_DIR, mediaPath } from './paths';
+import { UPLOAD_DIR, mediaPath, removeMediaFile } from './paths';
 import { hasBinary, runFfmpeg } from './ffmpeg';
 
 /**
@@ -205,6 +205,5 @@ async function makeWaveform(mediaId: number): Promise<void> {
 
 /** Removes a waveform, for when its source is deleted or replaced. */
 export async function removeWaveform(waveformUrl: string | null | undefined): Promise<void> {
-  if (!waveformUrl) return;
-  await unlink(mediaPath(waveformUrl)).catch(() => {});
+  await removeMediaFile(waveformUrl);
 }

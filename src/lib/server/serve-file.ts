@@ -1,4 +1,5 @@
 import { readFile, stat } from 'fs/promises';
+import { basename } from 'path';
 import { createReadStream } from 'fs';
 import { Readable } from 'stream';
 
@@ -37,6 +38,36 @@ function isRangeable(mimeType: string): boolean {
   return mimeType.startsWith('video/') || mimeType.startsWith('audio/');
 }
 
+/**
+ * Headers that make a served file behave like a file rather than like a page.
+ *
+ * `nosniff` on everything, so a browser can't decide a mislabelled upload is
+ * really HTML and run it.
+ *
+ * SVG needs more than that. It is a document format that happens to be an
+ * image: it can carry `<script>`, and served from this origin with its honest
+ * content type it runs there — same-origin, with whatever cookies the visitor
+ * has. An admin doesn't even have to be lured to the URL, since any other site
+ * can put it in an iframe.
+ *
+ * So an SVG is handed over as an attachment, which browsers refuse to render as
+ * a document at all, with a CSP that permits nothing in case one ever does.
+ * Neither affects `<img src="...">` — a subresource load ignores both — so a
+ * logo still draws everywhere it did before, and `rsvg-convert` reads the file
+ * off disk and never sees any of this.
+ */
+function hardening(mimeType: string, filePath: string): Record<string, string> {
+  const headers: Record<string, string> = { 'X-Content-Type-Options': 'nosniff' };
+
+  if (mimeType === 'image/svg+xml') {
+    headers['Content-Disposition'] = `attachment; filename="${basename(filePath)}"`;
+    headers['Content-Security-Policy'] =
+      "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; sandbox";
+  }
+
+  return headers;
+}
+
 export interface ServeOptions {
   /** Merged into every response — cache policy, robots directives, and so on. */
   headers?: Record<string, string>;
@@ -48,7 +79,7 @@ export async function serveFile(
   options: ServeOptions = {}
 ): Promise<Response> {
   const mimeType = mimeTypeFor(filePath);
-  const extra = options.headers ?? {};
+  const extra = { ...hardening(mimeType, filePath), ...(options.headers ?? {}) };
 
   // Images are small enough to read whole.
   if (!isRangeable(mimeType)) {

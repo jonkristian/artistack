@@ -19,8 +19,18 @@ export const GET: RequestHandler = async ({ request }) => {
 
   const escape = (value: string | null) => {
     if (value == null) return '';
+
+    /*
+     * A leading =, +, - or @ makes a spreadsheet read the cell as a formula
+     * rather than as text, and these values come from a form a stranger fills
+     * in. Quoting is not enough — Excel and Sheets both parse inside the
+     * quotes — so the cell is prefixed with an apostrophe, which is the
+     * conventional "this is text" marker and is not shown.
+     */
+    const safe = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+
     // Quote always: a name with a comma in it is otherwise a new column.
-    return `"${value.replace(/"/g, '""')}"`;
+    return `"${safe.replace(/"/g, '""')}"`;
   };
   const iso = (date: Date | null) => (date ? date.toISOString() : '');
 

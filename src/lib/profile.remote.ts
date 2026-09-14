@@ -3,8 +3,9 @@ import { command, getRequestEvent } from '$app/server';
 import { and, eq, ne } from 'drizzle-orm';
 import { hashPassword, verifyPassword } from 'better-auth/crypto';
 import { db } from '$lib/server/db';
-import { user, account } from '$lib/server/auth-schema';
+import { user, account, session } from '$lib/server/auth-schema';
 import { requireAuth } from '$lib/server/api';
+import { auth } from '$lib/server/auth';
 
 /**
  * Your own account, not an arbitrary one. The id comes from the session rather
@@ -12,8 +13,29 @@ import { requireAuth } from '$lib/server/api';
  * else by changing a field in a payload.
  */
 async function me() {
-  const session = await requireAuth(getRequestEvent().request);
-  return session.user.id;
+  const signedIn = await requireAuth(getRequestEvent().request);
+  return signedIn.user.id;
+}
+
+/**
+ * Signs every *other* device out.
+ *
+ * A password is changed for one of two reasons, and the second one is that
+ * somebody else has it. Leaving their session alive means the change did
+ * nothing for the case it was made for — the point of a new password is that
+ * the old one stops working, and a session is the old one still working.
+ *
+ * The caller's own session is kept, so changing your password doesn't sign you
+ * out of the screen you did it on.
+ */
+async function signOutOtherSessions(userId: string, keepToken?: string) {
+  await db
+    .delete(session)
+    .where(
+      keepToken
+        ? and(eq(session.userId, userId), ne(session.token, keepToken))
+        : eq(session.userId, userId)
+    );
 }
 
 const profileSchema = v.object({
@@ -92,6 +114,9 @@ export const changeOwnPassword = command(
       .update(account)
       .set({ password: await hashPassword(newPassword) })
       .where(eq(account.id, credentials.id));
+
+    const current = await auth.api.getSession({ headers: getRequestEvent().request.headers });
+    await signOutOtherSessions(userId, current?.session?.token);
 
     return { success: true as const };
   }

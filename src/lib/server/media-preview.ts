@@ -1,9 +1,9 @@
-import { rename, stat, unlink } from 'fs/promises';
+import { rename, stat } from 'fs/promises';
 import { basename, extname, join } from 'path';
 import { eq } from 'drizzle-orm';
 import { db } from './db';
 import { media } from './schema';
-import { UPLOAD_DIR, mediaPath } from './paths';
+import { UPLOAD_DIR, mediaPath, removeMediaFile } from './paths';
 import { hasBinary, runFfmpeg } from './ffmpeg';
 
 /**
@@ -147,6 +147,5 @@ async function makePreview(mediaId: number): Promise<void> {
 
 /** Removes a preview, for when its source is deleted or replaced. */
 export async function removePreview(previewUrl: string | null | undefined): Promise<void> {
-  if (!previewUrl) return;
-  await unlink(mediaPath(previewUrl)).catch(() => {});
+  await removeMediaFile(previewUrl);
 }

@@ -1,19 +1,32 @@
 # 1.7.0 (12-09-2026)
 
-- Captions can arrive rather than appear: fade, pop, rise or focus in, and TV damage or ghosting for the ones that shouldn't look clean. The clip sets the house style and any caption overrules it from its own block. Damage settles after a second, because a tear held for a whole line stops reading as a fault and starts reading as a typeface
-- Footage effects, in packs: VHS, Super 8 and Camcorder; a signal that drops out; and plain grades — warm, cool, black and white, and grain with a vignette that has no opinion about colour. Camcorder has the lot: scan lines, a bulging lens, the resolution it never had, the head-switching tear along the bottom edge and a band of tracking noise drifting up the frame
-- An effects lane above the footage. A look can cover the whole clip or a moment of it — drag one across the chorus, or drop a burst on a beat. What covers everything is drawn as the lane's floor, so one row says both what the picture is in and what happens during it
-- Effects are drawn over the video in the editor instead of being burned into a quick render, so switching one, or sliding it along the strip, lands at once. A quick render is about a second quicker for it, and the dials move the picture while you turn them
-- Presets name a look rather than mixing their own out of the same ingredients. Pressing the one you are on turns it off, which is what Clean used to be for — a new clip already is clean — so that tile is a Camcorder now
-- Every look shows itself: the picker draws a frame of this clip's own footage with the look on it, and picks a frame that isn't black to do it
-- A shot can fade in and out, the way a bed always could. The fade is on opacity, so over nothing it reads as a fade from black and over another shot it dissolves — a crossfade is two blocks overlapping. The picture can fade in at the start too. It blacks out the opening frame, which every platform takes for the cover, and that is worth being told once rather than refused
-- Tone, film grain and vignette have gone from Look: every footage effect brings its own, and using both gave two vignettes and twice the grain. Clips already set that way render as they did. What is left is grouped by subject, and says outright that all of it is about the whole clip
-- The strip carries a column of icons naming each lane, and stays put when the last shot is taken off it. The overview along the bottom shows effects as well, and scrubs under a sideways cursor rather than a pointing hand
-- Fixed: a shot whose audio ran shorter than its picture was cut to the length of the sound. Ten seconds of footage with eight seconds of room tone rendered as eight, with two seconds of picture simply gone — and rendering appeared to hang partway, because the bar was counting towards a length the file was never going to reach
-- Fixed: a caption's backdrop was drawn solid black whatever colour was picked, and the dial asking how solid it should be changed nothing. Subtitles paint that panel with the outline colour rather than the background colour, so both settings were being written where nothing read them
-- Fixed: recolouring a caption, or moving it to another height, left the clip looking up to date when the file no longer matched it
-- Fixed: a shot's right-hand trim handle could only be reached with its tools open, while the left one was always there
-- Fixed: dragging a block narrower while its tools were out left them hanging past the end of it, across whatever was alongside
+- Captions can arrive rather than appear: fade, pop, rise or focus in, plus TV damage and ghosting. The clip sets the default and any caption can overrule it
+- Footage effects in packs: VHS, Super 8, Camcorder, a signal that drops out, and plain grades — warm, cool, black and white, grain and vignette
+- An effects lane above the footage: a look can cover the whole clip or just a moment of it
+- Effects are drawn over the video in the editor rather than burned into a quick render, so switching one lands instantly
+- Presets name a look instead of mixing their own, and turn off when pressed again. Clean is gone, since a new clip already is, so that tile is a Camcorder
+- Every look shows itself: the picker draws a frame of your own footage with the look on it
+- A shot can fade in and out on opacity, so two overlapping shots crossfade. The picture can fade in at the start too
+- Tone, film grain and vignette have gone from Look — every footage effect brings its own. Clips already set that way render as they did
+- A caption's text and backdrop each take any colour, picked from a wheel, instead of being tick boxes
+- Intro, watermark and outro each carry their own graphic, as three buttons outside Customise
+- The strip carries a column of icons naming each lane, and the overview along the bottom shows effects too
+- Renders, stray files and cached previews that nothing points at are cleared at startup and once a night
+- Security headers on every response: no framing by another site, no content sniffing, less referrer leaked
+- Changing a password signs out your other devices; an admin reset signs out all of theirs
+- Runs on Node 24, having been built on 18 since before it went end of life. Dependencies are current, including fixes in the database layer and in Svelte's rendering
+- Fixed: deleting a clip left its quick render behind, on disk and in the library
+- Fixed: a shot whose audio ran shorter than its picture was cut to the length of the sound, and rendering appeared to hang partway
+- Fixed: a caption's backdrop was drawn solid black whatever colour was picked, and its opacity dial did nothing
+- Fixed: recolouring a caption, or moving its height, left the clip looking up to date when the render no longer matched
+- Fixed: a shot's right-hand trim handle could only be reached with its tools open
+- Fixed: dragging a block narrower while its tools were out left them hanging past its end
+- Fixed: a media file's stored address wasn't checked, so an editor could read or delete files outside the uploads folder
+- Fixed: an uploaded SVG was served as a page, so a script inside one ran as the site. They're downloads now
+- Fixed: a basket took negative quantities, so an order could be paid at less than it was worth — worth checking anything already sold
+- Fixed: the ten-an-hour sign-up limit counted a header the caller set, so it was no limit at all
+- Fixed: a name from the sign-up form could run as a formula in the exported fan list
+- Fixed: the click beacon took clicks on links that don't exist, from anyone, unlimited
 
 # 1.6.0 (11-09-2026)
 

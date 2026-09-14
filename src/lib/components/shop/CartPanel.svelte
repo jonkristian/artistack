@@ -584,8 +584,7 @@
                 rows="2"
                 class={field}
                 style={fieldStyle}
-                placeholder="Who to sign it to, anything else worth knowing…"
-              ></textarea>
+                placeholder="Who to sign it to, anything else worth knowing…"></textarea>
             </div>
           {:else}
             <button

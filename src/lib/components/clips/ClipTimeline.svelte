@@ -937,6 +937,35 @@
    * pixel wound out that far. Enough here for two edges and something to press
    * between them, so every block stays a thing you can hit.
    */
+  /**
+   * Pressing a control on a block, without the block's row losing its keys.
+   *
+   * `stopPropagation` keeps the press off the strip, which would otherwise
+   * start a pan. `preventDefault` keeps the focus off the button, and that is
+   * the part that matters: focus landing on a tool and staying there meant
+   * Space activated that tool instead of playing — press Remove and then Space
+   * and the undo in the toast fired, putting the block back — while Delete and
+   * the transport keys stepped aside because the focused element was a button.
+   *
+   * The click still fires; only the focus is suppressed. A keyboard user tabs
+   * to the button and presses it as normal, because none of this runs unless
+   * there is a pointer.
+   */
+  function pressTool(e: PointerEvent) {
+    e.stopPropagation();
+    e.preventDefault();
+  }
+
+  /*
+   * Not for anything you type in.
+   *
+   * A caption's words are edited on the block, in a real `<input>`, and
+   * `preventDefault` on the press is what stops an input taking focus — so
+   * giving the field the same handler as the buttons beside it meant you could
+   * no longer click into it to write. It wants the press kept off the strip and
+   * nothing else.
+   */
+
   const MIN_BLOCK_PX = 30;
 
   /**
@@ -1626,7 +1655,9 @@
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
         step(e.shiftKey ? 1 : 0.1);
-      } else if (e.key === 'Home') {
+      } else if (e.key === 'Home' || e.key === 'Backspace') {
+        // Backspace means back. It used to remove the selected block, which is
+        // a lot to ask of a key people hit to undo a character.
         e.preventDefault();
         player.currentTime = 0;
         followPlayhead();
@@ -1661,14 +1692,16 @@
 
     const onDelete = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      // Delete only. Backspace took a block off the strip as well, which is an
+      // irreversible-looking action on the key people press to go back — and it
+      // rewinds the playhead now, which is the thing that key should do.
+      if (e.key !== 'Delete') return;
 
-      // The same guards as the transport keys: Backspace is the field's own key
-      // while you are typing in one, and taking it would delete a block instead
-      // of a character.
+      // Only somewhere you can type: Delete is the field's own key there, and
+      // taking it would remove a block instead of a character.
       const el = e.target as HTMLElement | null;
       if (el?.isContentEditable) return;
-      if (el && /^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(el.tagName)) return;
+      if (el && /^(INPUT|TEXTAREA)$/.test(el.tagName)) return;
 
       e.preventDefault();
       if (chosen) onremove(chosen.kind, chosen.id);
@@ -1866,6 +1899,10 @@
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
+    // Whatever was focused before this press keeps nothing: a block being
+    // dragged is not a form control, and leaving focus behind is how the
+    // transport keys ended up talking to a button.
+    (document.activeElement as HTMLElement | null)?.blur();
 
     const rail = e.currentTarget as HTMLElement;
     const width = rail.getBoundingClientRect().width;
@@ -2281,7 +2318,7 @@
   {@const running = selectionPlaying && selection?.kind === kind && selection.id === id}
   <button
     type="button"
-    onpointerdown={(e) => e.stopPropagation()}
+    onpointerdown={pressTool}
     onclick={() => {
       pickedCaption = null;
       onpreview(kind, id, true);
@@ -2567,7 +2604,7 @@
               {/if}
               <button
                 type="button"
-                onpointerdown={(e) => e.stopPropagation()}
+                onpointerdown={pressTool}
                 onclick={() => onpreview('clip', clip.id, true)}
                 title={running ? `Pause ${clip.label}` : `Play ${clip.label} on its own`}
                 aria-label={running ? `Pause ${clip.label}` : `Play ${clip.label} on its own`}
@@ -2630,7 +2667,7 @@
                 {#if onfade}
                   <button
                     type="button"
-                    onpointerdown={(e) => e.stopPropagation()}
+                    onpointerdown={pressTool}
                     onclick={() => onfade(clip.id, { fadeIn: !clip.fadeIn })}
                     title={clip.fadeIn ? 'Fades up at the start' : 'Starts on a cut'}
                     aria-label="Fade {clip.label} in"
@@ -2646,7 +2683,7 @@
                   </button>
                   <button
                     type="button"
-                    onpointerdown={(e) => e.stopPropagation()}
+                    onpointerdown={pressTool}
                     onclick={() => onfade(clip.id, { fadeOut: !clip.fadeOut })}
                     title={clip.fadeOut ? 'Fades away at the end' : 'Ends on a cut'}
                     aria-label="Fade {clip.label} out"
@@ -2663,7 +2700,7 @@
                 {/if}
                 <button
                   type="button"
-                  onpointerdown={(e) => e.stopPropagation()}
+                  onpointerdown={pressTool}
                   onclick={() => onmute(clip.id, !clip.muted)}
                   title={clip.muted ? 'Its own sound is off' : 'Its own sound is on'}
                   aria-label="{clip.muted ? 'Unmute' : 'Mute'} {clip.label}"
@@ -2676,7 +2713,7 @@
                 </button>
                 <button
                   type="button"
-                  onpointerdown={(e) => e.stopPropagation()}
+                  onpointerdown={pressTool}
                   onclick={() => onremove('clip', clip.id)}
                   title="Take it off the timeline"
                   aria-label="Remove {clip.label}"
@@ -2826,7 +2863,7 @@
               <div class="flex items-center" transition:slide={SLIDE}>
                 <button
                   type="button"
-                  onpointerdown={(e) => e.stopPropagation()}
+                  onpointerdown={pressTool}
                   onclick={() => cycleAnchor(index)}
                   title="Caption sits at the {anchor.label.toLowerCase()} — click to move it"
                   aria-label="Caption {index + 1} sits at the {anchor.label.toLowerCase()}"
@@ -2883,7 +2920,7 @@
              the words. Lit when it's the big one. -->
                 <button
                   type="button"
-                  onpointerdown={(e) => e.stopPropagation()}
+                  onpointerdown={pressTool}
                   onclick={() =>
                     oncaptions(
                       captions.map((c, i) => (i === index ? { ...c, headline: !c.headline } : c))
@@ -2926,7 +2963,7 @@
                      was the one caption whose effect you could not reach. -->
                 <button
                   type="button"
-                  onpointerdown={(e) => e.stopPropagation()}
+                  onpointerdown={pressTool}
                   onclick={() => (opened = { kind: 'caption', key: index })}
                   title="Entrance and damage"
                   aria-label="Caption {index + 1} effect"
@@ -2936,7 +2973,7 @@
                 </button>
                 <button
                   type="button"
-                  onpointerdown={(e) => e.stopPropagation()}
+                  onpointerdown={pressTool}
                   onclick={() => {
                     pickedCaption = null;
                     oncaptionremove(index);
@@ -3040,7 +3077,7 @@
                 {#each [{ key: 'fadeIn' as const, on: track.fadeIn, label: 'Fade in', d: 'M4 18h16V8z' }, { key: 'fadeOut' as const, on: track.fadeOut, label: 'Fade out', d: 'M4 18h16L4 8z' }] as f, i (f.key)}
                   <button
                     type="button"
-                    onpointerdown={(e) => e.stopPropagation()}
+                    onpointerdown={pressTool}
                     onclick={() => onaudio(track.id, { [f.key]: !f.on })}
                     title="{f.label} — {f.on ? 'on' : 'off'}"
                     aria-label="{f.label} for {track.label}"
@@ -3068,7 +3105,7 @@
                 {/each}
                 <button
                   type="button"
-                  onpointerdown={(e) => e.stopPropagation()}
+                  onpointerdown={pressTool}
                   onclick={() => onaudio(track.id, { duck: !track.duck })}
                   title="Duck under speech — {track.duck ? 'on' : 'off'}"
                   aria-label="Duck {track.label} under speech"
@@ -3082,7 +3119,7 @@
                 </button>
                 <button
                   type="button"
-                  onpointerdown={(e) => e.stopPropagation()}
+                  onpointerdown={pressTool}
                   onclick={() => onremove('audio', track.id)}
                   title="Take it off the timeline"
                   aria-label="Remove {track.label}"
@@ -3237,7 +3274,7 @@
 {#snippet toolsButton(kind: 'clip' | 'caption' | 'audio', key: number, span: Span, what: string)}
   <button
     type="button"
-    onpointerdown={(e) => e.stopPropagation()}
+    onpointerdown={pressTool}
     onclick={() => toggleTools(kind, key, span)}
     title={roomForTools(kind, span) ? 'Settings' : 'Settings — opens in a window'}
     aria-label="Settings for {what}"

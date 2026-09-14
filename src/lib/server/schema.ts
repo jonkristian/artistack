@@ -847,13 +847,7 @@ export interface ImageBlockConfig extends BaseBlockConfig {
   imageUrl?: string; // Cropped image URL (from MediaPicker)
   /** Proportions and corners together, as MediaPicker emits them. */
   shape?:
-    | 'circle'
-    | 'rounded'
-    | 'square'
-    | 'portrait'
-    | 'portrait-rounded'
-    | 'wide'
-    | 'wide-rounded'; // Default: 'rounded'
+    'circle' | 'rounded' | 'square' | 'portrait' | 'portrait-rounded' | 'wide' | 'wide-rounded'; // Default: 'rounded'
   alignment?: 'left' | 'center' | 'right'; // Default: 'center'
   size?: 'mini' | 'small' | 'medium' | 'large' | 'full'; // Default: 'medium'
   showGlow?: boolean; // Accent color glow effect
@@ -1105,12 +1099,7 @@ export const cartItems = sqliteTable(
  * something is both bad practice and awkward to unwind.
  */
 export type PaymentStatus =
-  | 'pending'
-  | 'authorised'
-  | 'captured'
-  | 'failed'
-  | 'cancelled'
-  | 'refunded';
+  'pending' | 'authorised' | 'captured' | 'failed' | 'cancelled' | 'refunded';
 
 /** What you've done about it, which is a different question from the money. */
 export type Fulfilment = 'none' | 'packed' | 'shipped' | 'delivered';

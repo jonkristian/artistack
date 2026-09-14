@@ -661,7 +661,16 @@ export interface ClipRenderConfig {
 
   // Caption look
   colorizeCaption: boolean; // caption in the brand accent colour
-  captionBackground: boolean; // dark box behind the caption
+  captionBackground: boolean; // panel behind the caption
+  /**
+   * What colour that panel is, when there is one.
+   *
+   * It was always black, which is the right neutral scrim and the wrong answer
+   * for anyone who wanted a different one — a caption could pick any colour for
+   * its own panel while the clip could only say black or nothing. Absent keeps
+   * black, so nothing made before this looks different.
+   */
+  captionBackdropColor?: string | null;
   /**
    * How captions arrive, unless one of them says otherwise.
    *
@@ -722,19 +731,20 @@ export interface ClipRenderConfig {
   outro: boolean; // dissolve out to a logo card
   watermark: boolean; // persistent corner logo
   /**
-   * Which designated clip graphic to dress this clip with. Null falls back to
-   * the site default, and if there isn't one, to the favicon.
+   * A mark of its own for one of the three stages.
+   *
+   * They shared a graphic because they usually want one — but not always: an
+   * outro card is a place to put something other than the logo you have been
+   * watermarking the corner with, and an opening title is not the same thing as
+   * a standing mark. Absent means "whatever the clip uses", which is the same
+   * arrangement a caption has with its colour.
    */
-  graphicMediaId?: number | null;
-  /**
-   * Pick a random graphic at render time, ignoring graphicMediaId. The pick is
-   * recorded on the project afterwards, so which one went out is never a
-   * mystery.
-   */
-  randomGraphics: boolean;
+  introGraphicMediaId?: number | null;
+  watermarkGraphicMediaId?: number | null;
+  outroGraphicMediaId?: number | null;
   // Nullable, not just optional: the UI needs to express "cleared" distinctly
   // from "never set" so unsetting a logo or music bed actually persists.
-  logoMediaId?: number | null; // legacy per-clip logo; superseded by graphicMediaId
+  logoMediaId?: number | null; // legacy per-clip logo; superseded by the three stages
   /**
    * Caption accent colour. Named for the logo historically, but it only ever
    * tints captions — the logo bitmap is composited untouched. A brand's own
@@ -779,7 +789,6 @@ export const DEFAULT_CLIP_CONFIG: ClipRenderConfig = {
   intro: true,
   outro: false,
   watermark: true,
-  randomGraphics: false,
   loudnorm: true,
   musicOnly: false
 };
@@ -890,6 +899,38 @@ export const CLIP_PRESETS: ClipPreset[] = [
   }
 ];
 
+/** The three places a clip wears its mark. */
+export type BrandStage = 'intro' | 'watermark' | 'outro';
+
+/**
+ * The mark a stage was given, or nothing if it was never given one.
+ *
+ * Only what is set here — the fallback is the caller's, because the site
+ * default is not something this file can see. It used to fall back to a
+ * clip-wide `graphicMediaId` first, which was left over from when one picker
+ * dressed all three stages. Nothing could set that field once the three chips
+ * replaced the picker, and nothing could clear it either, so a clip carrying
+ * one silently overruled the option labelled "Site default": choosing it wrote
+ * null, this read straight past the null to the old value, and both the tick in
+ * the menu and the render came back with the mark you had just tried to drop.
+ *
+ * Undefined and null both mean unset. There is no third state, because "no mark
+ * at all" is what the switch beside it is for.
+ */
+export function stageGraphicId(
+  config: Pick<
+    ClipRenderConfig,
+    'introGraphicMediaId' | 'watermarkGraphicMediaId' | 'outroGraphicMediaId'
+  >,
+  stage: BrandStage
+): number | null | undefined {
+  return stage === 'intro'
+    ? config.introGraphicMediaId
+    : stage === 'watermark'
+      ? config.watermarkGraphicMediaId
+      : config.outroGraphicMediaId;
+}
+
 /**
  * What colour a caption is drawn in, here and in the render.
  *
@@ -918,10 +959,10 @@ export const NO_BACKDROP = 'none';
  */
 export function captionBackdrop(
   caption: { background?: string | null },
-  config: { captionBackground?: boolean }
+  config: { captionBackground?: boolean; captionBackdropColor?: string | null }
 ): string | null {
   const own = caption.background;
   if (own === NO_BACKDROP) return null;
   if (own) return own;
-  return config.captionBackground ? '#000000' : null;
+  return config.captionBackground ? (config.captionBackdropColor ?? '#000000') : null;
 }

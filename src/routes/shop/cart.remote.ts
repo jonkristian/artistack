@@ -21,12 +21,26 @@ async function cartState(cartId: number) {
   return { lines, total: cartTotal(lines) };
 }
 
+/**
+ * How many of a thing. A whole number, at least one, and not more than anyone
+ * buys at a merch table.
+ *
+ * The bound matters more than it looks. A line's contribution to the total is
+ * `price * quantity`, so a *negative* quantity was money coming off the bill —
+ * put a record in the basket, add a download at minus five, and the provider
+ * was asked to charge the difference while the order still said to post the
+ * record. Nothing downstream would have caught it: the stock check reads
+ * `stock < quantity`, which a negative passes.
+ */
+const MAX_PER_LINE = 99;
+const quantitySchema = v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(MAX_PER_LINE));
+
 export const addToCart = command(
   v.object({
     productId: v.number(),
     /** Which size. Empty, or absent, for a product that has none. */
     variant: v.optional(v.string()),
-    quantity: v.optional(v.number())
+    quantity: v.optional(quantitySchema)
   }),
   async ({ productId, variant = '', quantity = 1 }) => {
     const { cookies } = getRequestEvent();
@@ -73,7 +87,8 @@ export const addToCart = command(
         // The variant is part of the key: an M and an L are two lines, but a
         // second M raises the first rather than making a third.
         target: [cartItems.cartId, cartItems.productId, cartItems.variant],
-        set: { quantity: sql`${cartItems.quantity} + ${quantity}` }
+        // Clamped, or repeated adds would walk a line past the cap one at a time.
+        set: { quantity: sql`min(${cartItems.quantity} + ${quantity}, ${MAX_PER_LINE})` }
       });
 
     await touchCart(cart.id);
@@ -82,7 +97,12 @@ export const addToCart = command(
 );
 
 export const setCartQuantity = command(
-  v.object({ productId: v.number(), variant: v.optional(v.string()), quantity: v.number() }),
+  v.object({
+    productId: v.number(),
+    variant: v.optional(v.string()),
+    // Zero as well, which is how the UI removes a line.
+    quantity: v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(MAX_PER_LINE))
+  }),
   async ({ productId, variant = '', quantity }) => {
     const { cookies } = getRequestEvent();
     const cart = await getOrCreateCart(cookies);

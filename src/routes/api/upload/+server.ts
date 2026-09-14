@@ -122,13 +122,6 @@ export const POST: RequestHandler = async ({ request, url: requestUrl }) => {
   const file = formData.get('file') as File | null;
   const type = formData.get('type') as string | null;
 
-  console.log('[Upload] Start:', {
-    name: file?.name,
-    type: file?.type,
-    size: file?.size,
-    formType: type
-  });
-
   if (!file) {
     throw error(400, 'No file provided');
   }
@@ -136,27 +129,18 @@ export const POST: RequestHandler = async ({ request, url: requestUrl }) => {
   // Validate file size first (max 10MB for raw uploads, will be compressed)
   const maxSize = 10 * 1024 * 1024;
   if (file.size > maxSize) {
-    console.log('[Upload] Rejected: file too large', file.size);
     throw error(400, 'File too large. Maximum size is 10MB');
   }
 
   // Read file buffer for content validation
   const buffer = Buffer.from(await file.arrayBuffer());
-  console.log(
-    '[Upload] Buffer read:',
-    buffer.length,
-    'bytes, first 16 bytes:',
-    [...buffer.subarray(0, 16)].map((b) => b.toString(16).padStart(2, '0')).join(' ')
-  );
 
   // Detect actual MIME type from file content (not trusting the reported type)
   const isSvg = isSvgContent(buffer);
   const detectedMimeType =
     (isSvg ? 'image/svg+xml' : detectMimeType(buffer)) ??
     detectDocumentType(buffer, file.name ?? '');
-  console.log('[Upload] Detected MIME:', detectedMimeType, { isSvg });
   if (!detectedMimeType) {
-    console.log('[Upload] Rejected: unrecognized content type');
     throw error(
       400,
       'Invalid file content. Allowed: JPEG, PNG, WebP, GIF, SVG, PDF, Word, txt, markdown'
@@ -231,11 +215,6 @@ export const POST: RequestHandler = async ({ request, url: requestUrl }) => {
   }
   const originalWidth = metadata.width || 0;
   const originalHeight = metadata.height || 0;
-  console.log('[Upload] Metadata:', {
-    width: originalWidth,
-    height: originalHeight,
-    format: metadata.format
-  });
 
   // Process image with sharp for optimized web version
   let sharpInstance = sharp(buffer)
@@ -312,7 +291,6 @@ export const POST: RequestHandler = async ({ request, url: requestUrl }) => {
   const url = `/uploads/${filename}`;
   const originalUrl = `/uploads/${originalFilename}`;
   const thumbnailUrl = `/uploads/${thumbnailFilename}`;
-  console.log('[Upload] Success:', { url, originalUrl, thumbnailUrl });
 
   const result = {
     filename: file.name,

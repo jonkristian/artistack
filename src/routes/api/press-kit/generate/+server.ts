@@ -5,11 +5,12 @@ import { media, settings } from '$lib/server/schema';
 import { inArray } from 'drizzle-orm';
 import { auth } from '$lib/server/auth';
 import { user } from '$lib/server/auth-schema';
-import archiver from 'archiver';
+import { ZipArchive, type ArchiverError } from 'archiver';
 import { createWriteStream } from 'fs';
 import { mkdir } from 'fs/promises';
 import { join } from 'path';
 import { getSettings } from '$lib/server/settings';
+import { mediaPath } from '$lib/server/paths';
 
 export const POST: RequestHandler = async ({ request }) => {
   // Editors curate the press kit in Media, so they can build it too.
@@ -42,7 +43,7 @@ export const POST: RequestHandler = async ({ request }) => {
   // Create ZIP archive
   return new Promise((resolve) => {
     const output = createWriteStream(outputPath);
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    const archive = new ZipArchive({ zlib: { level: 9 } });
 
     output.on('close', () => {
       resolve(
@@ -54,7 +55,7 @@ export const POST: RequestHandler = async ({ request }) => {
       );
     });
 
-    archive.on('error', (err) => {
+    archive.on('error', (err: ArchiverError) => {
       console.error('Archive error:', err);
       resolve(json({ error: 'Failed to create archive' }, { status: 500 }));
     });
@@ -69,9 +70,13 @@ export const POST: RequestHandler = async ({ request }) => {
       if (!item) continue;
 
       try {
-        // Prefer original file, fall back to optimized version
-        const fileUrl = item.originalUrl || item.url;
-        const filePath = join(process.cwd(), 'data', fileUrl);
+        /*
+         * Prefer original file, fall back to optimized version. Resolved
+         * through `mediaPath`, which refuses anything outside the uploads
+         * directory — the finished zip is served from a public URL, so a row
+         * pointing at `../.env` would have been a way to read it.
+         */
+        const filePath = mediaPath(item.originalUrl || item.url);
         const paddedIndex = String(index).padStart(2, '0');
         const fileName = `${paddedIndex}-${item.filename.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
 

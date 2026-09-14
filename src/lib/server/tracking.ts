@@ -2,6 +2,7 @@
 // Used by hooks.server.ts (page views), go/[linkId] (link clicks) and
 // c/[slug] (clip campaign links)
 
+import type { RequestEvent } from '@sveltejs/kit';
 import { db } from './db';
 import { pageViews } from './schema';
 
@@ -100,13 +101,13 @@ export function parseReferrer(referrer: string | null, currentHost?: string): st
  * never appear in stats at all.
  */
 export async function recordPageView(
-  request: Request,
+  event: RequestEvent,
   path: string,
   userAgent: string,
   hostname: string
 ): Promise<void> {
-  const referrer = parseReferrer(request.headers.get('referer'), hostname);
-  const ip = getClientIP(request);
+  const referrer = parseReferrer(event.request.headers.get('referer'), hostname);
+  const ip = getClientIP(event);
   const country = ip ? await lookupCountry(ip) : null;
 
   await db.insert(pageViews).values({
@@ -138,33 +139,59 @@ export function deviceFromUserAgent(userAgent: string): 'mobile' | 'tablet' | 'd
   return 'desktop';
 }
 
-export function getClientIP(request: Request): string | null {
-  const headers = [
-    'cf-connecting-ip',
-    'x-real-ip',
-    'x-forwarded-for',
-    'x-client-ip',
-    'true-client-ip'
-  ];
-
-  for (const header of headers) {
-    const value = request.headers.get(header);
-    if (value) {
-      const ip = value.split(',')[0].trim();
-      if (ip && ip !== '::1' && ip !== '127.0.0.1') {
-        return ip;
-      }
-    }
+/**
+ * Who is asking, as far as the server can honestly tell.
+ *
+ * This used to read the first value out of whichever of five forwarding headers
+ * turned up first. Every one of those is written by the client, so it was a
+ * number the caller chose — which is fine for a country column and not fine for
+ * the thing keyed on it: a fresh `X-Forwarded-For` per request gave a fresh
+ * rate-limit bucket, and the sign-up limit that stops this server sending a
+ * stranger's mail was a formality.
+ *
+ * `getClientAddress()` is the adapter's answer instead. It reads the forwarded
+ * chain from the *right* — the end the proxy appended, not the start the caller
+ * supplied — using `ADDRESS_HEADER` and `XFF_DEPTH`, which nixpacks.toml sets.
+ *
+ * Unset, it falls back to the socket address. That is not a hole: behind a proxy
+ * the socket address is the proxy, identical for everyone, so the limit holds as
+ * a single allowance for the whole site rather than one each. Wrong, and
+ * annoying, but wrong in the direction that refuses rather than admits.
+ */
+export function getClientIP(event: RequestEvent): string | null {
+  let address: string;
+  try {
+    address = event.getClientAddress();
+  } catch {
+    // adapter-node throws when ADDRESS_HEADER is set and the header is absent —
+    // a request that reached the app without going through the proxy.
+    return null;
   }
 
-  return null;
+  if (!address || address === '::1' || address === '127.0.0.1') return null;
+  return address;
 }
 
 // In-memory cache for IP → country lookups (avoids hitting rate limits)
 const countryCache = new Map<string, { country: string | null; expires: number }>();
 const CACHE_TTL = 1000 * 60 * 60; // 1 hour
+/** Hard ceiling on cached addresses, whatever their age. */
+const CACHE_MAX = 10000;
+
+/**
+ * An IPv4 or IPv6 address and nothing else.
+ *
+ * The value goes into an outbound URL, so it is checked for being an address
+ * rather than trusted for having come from a header. The host is fixed either
+ * way, but a lookup for something that isn't an address is a request worth not
+ * making — and this is also what keeps the cache below keyed on a bounded set
+ * of shapes rather than on whatever arrives.
+ */
+const IP_ADDRESS = /^(\d{1,3}(\.\d{1,3}){3}|[0-9a-fA-F:]{2,45})$/;
 
 export async function lookupCountry(ip: string): Promise<string | null> {
+  if (!IP_ADDRESS.test(ip)) return null;
+
   if (ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.')) {
     return null;
   }
@@ -189,11 +216,21 @@ export async function lookupCountry(ip: string): Promise<string | null> {
       const country = data.countryCode || null;
       countryCache.set(ip, { country, expires: Date.now() + CACHE_TTL });
 
-      // Evict old entries if cache grows too large
-      if (countryCache.size > 10000) {
+      /*
+       * Evict old entries if cache grows too large — and if that clears
+       * nothing, drop the oldest anyway. Sweeping only expired entries meant a
+       * burst of distinct addresses, none of them yet an hour old, grew the map
+       * without limit; a cache with a ceiling has to have one it can always
+       * reach. Map iterates in insertion order, so the front is the oldest.
+       */
+      if (countryCache.size > CACHE_MAX) {
         const now = Date.now();
         for (const [key, val] of countryCache) {
           if (val.expires < now) countryCache.delete(key);
+        }
+        for (const key of countryCache.keys()) {
+          if (countryCache.size <= CACHE_MAX) break;
+          countryCache.delete(key);
         }
       }
 

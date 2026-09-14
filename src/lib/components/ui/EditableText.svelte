@@ -69,8 +69,7 @@
       onkeydown={handleKeydown}
       class="w-full resize-none rounded border border-gray-600 bg-transparent p-2 focus:border-[var(--theme-primary)] focus:outline-none {className}"
       rows="3"
-      disabled={saving}
-    ></textarea>
+      disabled={saving}></textarea>
   {:else}
     <input
       type="text"

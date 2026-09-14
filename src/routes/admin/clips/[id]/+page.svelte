@@ -4,8 +4,8 @@
   import { keepColor } from '$lib/brand-colors.remote';
   import MediaPicker from '$lib/components/ui/MediaPicker.svelte';
   import {
+    ColorWheel,
     EmojiPicker,
-    ImageSelect,
     LengthMeter,
     SaveStatus,
     TagInput,
@@ -29,11 +29,13 @@
   import { PhoneUploadDialog, QueueClipDialog } from '$lib/components/dialogs';
   import { formatDuration } from '$lib/utils/upload';
   import { fieldClass, labelClass, numberClass } from '$lib/utils/classes';
-  import { insertAtCursor } from '$lib/utils/text';
+  import { insertAtCursor, shortName } from '$lib/utils/text';
   import {
     DEFAULT_CLIP_CONFIG,
     DEFAULT_ADVANCED_CONFIG,
     captionAnchors,
+    stageGraphicId,
+    type BrandStage,
     captionBackdrop,
     captionColor,
     ADVANCED_GROUPS,
@@ -576,6 +578,29 @@
   const showingProof = $derived(Boolean(proofMedia) && shownMedia === proofMedia);
 
   /**
+   * One shot, played straight, when there is no render to play.
+   *
+   * A clip you have just put footage on had nothing in the pane at all — and
+   * the captions and effects are drawn over the video now rather than burned
+   * into it, so the only thing a render was still buying in that state was the
+   * assembly. With a single shot there is nothing to assemble: the proxy of
+   * that shot, with the overlay on top, *is* the preview, and it is never stale
+   * because nothing was cached to go stale.
+   *
+   * Strictly one shot. Two is a cut, and a cut is the one thing a single file
+   * cannot show — it would be a preview that quietly disagrees with the strip.
+   * Nothing here changes what a render does; it only fills a gap the render
+   * used to be the only answer to.
+   */
+  const standIn = $derived.by(() => {
+    if (shownMedia || sources.length !== 1) return null;
+    const row = sources[0];
+    const item = mediaById.get(row.mediaId);
+    if (!item) return null;
+    return { row, item, url: item.previewUrl ?? item.url };
+  });
+
+  /**
    * Where everything sits, worked out from the edit rather than from a render.
    *
    * So the timeline is true while you're building the clip, not only after
@@ -875,28 +900,6 @@
     }
   ];
 
-  /**
-   * The caption half, kept apart from the rest.
-   *
-   * These were two tick boxes up among the footage switches and a picker a
-   * screen further down — three places for one subject. What they have in
-   * common is worth saying out loud, and a heading can say it where a tick box
-   * in a grid of nine cannot: none of them decides how a caption looks, they
-   * decide what a caption means by `Auto`.
-   */
-  const CAPTION_OPTIONS: { key: keyof ClipRenderConfig; label: string; hint: string }[] = [
-    {
-      key: 'colorizeCaption',
-      label: 'Brand colour',
-      hint: 'Captions take the brand colour instead of white, unless one picks its own.'
-    },
-    {
-      key: 'captionBackground',
-      label: 'Backdrop',
-      hint: 'Sit captions on a dark panel instead of outlining them, unless one says otherwise.'
-    }
-  ];
-
   const BRANDING_OPTIONS: { key: keyof ClipRenderConfig; label: string; hint: string }[] = [
     { key: 'intro', label: 'Intro', hint: 'The graphic animates in over the opening.' },
     { key: 'watermark', label: 'Watermark', hint: 'A small corner mark for the whole clip.' },
@@ -906,6 +909,25 @@
       hint: 'Dissolve out to a card showing the graphic at the end.'
     }
   ];
+
+  /**
+   * Whether the branding row's graphic list is showing, and what to measure a
+   * click against — the same outside-click and Escape behaviour every other
+   * menu here has.
+   */
+  let graphicOpen = $state<BrandStage | null>(null);
+  let brandingRow = $state<HTMLElement | null>(null);
+
+  /**
+   * The graphic each stage will actually draw with, for its chip and the overlay.
+   *
+   * The site default when the stage has no mark of its own — the same fallback
+   * the renderer applies, so the chip shows what will come out.
+   */
+  const stageGraphic = $derived((stage: BrandStage) => {
+    const id = stageGraphicId(config, stage) ?? data.defaultGraphicMediaId;
+    return id ? (data.graphics.find((g) => g.id === id) ?? null) : null;
+  });
 
   let showCustomise = $state(false);
 
@@ -1059,7 +1081,9 @@
     if (removed === undefined) return;
 
     toast.undoable(
-      uses > 0 ? `Removed ${name} and ${uses} placement${uses > 1 ? 's' : ''}` : `Removed ${name}`,
+      uses > 0
+        ? `Removed ${shortName(name)} and ${uses} placement${uses > 1 ? 's' : ''}`
+        : `Removed ${shortName(name)}`,
       async () => {
         await autosave.run('the restored media', () =>
           restoreToPool({
@@ -1096,18 +1120,8 @@
       value: String(g.id),
       label: g.filename.replace(/\.[^.]+$/, ''),
       image: g.thumbnailUrl || g.url
-    })),
-    { value: 'random', label: 'Random', hint: 'A different one each render' }
+    }))
   ]);
-
-  /** The graphic a clip will actually render with, for the summary line. */
-  const activeGraphic = $derived(
-    config.randomGraphics
-      ? null
-      : (data.graphics.find(
-          (g) => g.id === (config.graphicMediaId ?? data.defaultGraphicMediaId)
-        ) ?? null)
-  );
 
   async function handleRender(proof = false) {
     const result = await attempt('Could not start the render', () =>
@@ -1266,6 +1280,17 @@
     toast.undoable('Caption removed', () => setCaptions(before));
   }
 </script>
+
+<!-- Bubble phase, so the thumbnail's own click has already run and the row
+     counts as inside. -->
+<svelte:window
+  onclick={(e) => {
+    if (graphicOpen && brandingRow && !brandingRow.contains(e.target as Node)) graphicOpen = null;
+  }}
+  onkeydown={(e) => {
+    if (e.key === 'Escape') graphicOpen = null;
+  }}
+/>
 
 <!--
   Removing a row is the same gesture wherever it appears — a source clip, a
@@ -1633,6 +1658,7 @@
              standing at the front it was a question nobody needed to answer. -->
         <!-- Two presets per row even on the narrowest phone: they're compared
              against each other, and one per row makes that a scroll. -->
+        <span class="mb-2 block text-xs tracking-wide text-gray-500 uppercase">Presets</span>
         <div
           class="grid [grid-template-columns:repeat(auto-fill,minmax(min(100%,7.5rem),1fr))] gap-3"
         >
@@ -1654,7 +1680,11 @@
                 : 'border-gray-700 hover:border-gray-500'}"
             >
               <div class="aspect-[4/3] overflow-hidden bg-gray-950">
-                {#if sources.length}
+                <!-- Pooled footage counts, not just placed: the swatch takes a
+                     frame from the first shot if there is one and the first file
+                     in the pool otherwise, so a clip with media in it can show
+                     its looks before anything is arranged. -->
+                {#if sources.length || pool.length}
                   <img
                     src="/admin/clips/{selected.id}/preset/{preset.id}"
                     alt=""
@@ -1737,6 +1767,129 @@
           </button>
         </div>
 
+        <!-- Branding: three switches that each carry the mark they will draw.
+
+             Titled, like the presets above it — two rows of controls with no
+             names on them read as one undifferentiated block, and the heading
+             is what says where one ends.
+
+             Two targets per chip, which is the whole idea: the picture is what
+             gets drawn, so pressing it asks which picture; the word is whether
+             it gets drawn at all, so pressing it toggles. One dropdown between
+             them, because there is one graphic — three pickers would imply you
+             could give the watermark a different mark from the intro. -->
+        <div class="relative mt-5" bind:this={brandingRow}>
+          <span class="mb-2 block text-xs tracking-wide text-gray-500 uppercase">Branding</span>
+          <div class="flex flex-wrap items-center gap-1.5">
+            {#each BRANDING_OPTIONS as option (option.key)}
+              {@const on = Boolean(config[option.key])}
+              {@const stage = option.key as BrandStage}
+              {@const mark = stageGraphic(stage)}
+              <div
+                class="flex items-stretch overflow-hidden rounded-md border transition-colors {on
+                  ? 'border-violet-500 bg-violet-600/80'
+                  : 'border-gray-700'}"
+              >
+                <button
+                  type="button"
+                  onclick={() => (graphicOpen = graphicOpen === stage ? null : stage)}
+                  title={mark
+                    ? `Drawn with ${mark.filename} — press to change`
+                    : 'No graphic set — press to choose one'}
+                  aria-label="Graphic used for {option.label.toLowerCase()}"
+                  aria-expanded={graphicOpen === stage}
+                  class="flex w-9 shrink-0 items-center justify-center bg-black/30 px-1 transition-colors hover:bg-black/50"
+                >
+                  {#if mark}
+                    <img
+                      src={mark.thumbnailUrl || mark.url}
+                      alt=""
+                      class="h-4 w-full object-contain"
+                    />
+                  {:else}
+                    <span class="text-[10px] text-gray-500">?</span>
+                  {/if}
+                </button>
+                <button
+                  type="button"
+                  onclick={() => patchConfig('the branding', { [option.key]: !on } as never)}
+                  title={option.hint}
+                  aria-pressed={on}
+                  class="px-2.5 py-1 text-xs transition-colors {on
+                    ? 'text-white'
+                    : 'text-gray-400 hover:text-gray-200'}"
+                >
+                  {option.label}
+                </button>
+              </div>
+            {/each}
+          </div>
+
+          <!-- One list, under the row rather than under whichever thumbnail was
+               pressed — but it writes to the stage whose thumbnail opened it, so
+               the outro can carry something the watermark does not.
+
+               Opening upwards, which is not a style choice. The editor pane
+               scrolls, so it clips anything its children put outside it — and
+               this row sits near the bottom, so a list dropping down was cut
+               off at the timeline's edge with the options below that line
+               unreachable: they were behind the cut, so the presses landed on
+               whatever was drawn there instead. There is always room above,
+               because the presets are. -->
+          {#if graphicOpen}
+            {@const stage = graphicOpen}
+            <ul
+              role="listbox"
+              class="absolute bottom-full z-20 mb-1 max-h-64 w-64 overflow-y-auto rounded-lg border border-gray-700 bg-gray-900 p-1 shadow-xl"
+            >
+              {#each graphicOptions as option (option.value)}
+                {@const chosen = option.value === String(stageGraphicId(config, stage) ?? '')}
+                <li>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={chosen}
+                    onclick={() => {
+                      /*
+                       * Which stage, read before the list is closed.
+                       *
+                       * `{@const}` is a reactive binding, not a snapshot — so
+                       * `stage` follows `graphicOpen`, and clearing that first
+                       * turned the key into `nullGraphicMediaId`. The schema
+                       * drops what it does not recognise, so the save went
+                       * through, reported success, and changed nothing.
+                       */
+                      const target = stage;
+
+                      patchConfig('the branding', {
+                        [`${target}GraphicMediaId`]:
+                          option.value === '' ? null : Number(option.value)
+                      } as never);
+                      graphicOpen = null;
+                    }}
+                    class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors {chosen
+                      ? 'bg-violet-600/20 text-violet-200'
+                      : 'text-gray-300 hover:bg-gray-800 hover:text-white'}"
+                  >
+                    <!-- Site default and Random have no picture of their own,
+                         so they keep the space to stay in line with the rest. -->
+                    {#if 'image' in option}
+                      <img
+                        src={option.image}
+                        alt=""
+                        class="h-6 w-8 shrink-0 rounded bg-gray-950 object-contain"
+                      />
+                    {:else}
+                      <span class="h-6 w-8 shrink-0"></span>
+                    {/if}
+                    <span class="min-w-0 flex-1 truncate">{option.label}</span>
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
+
         {#if showCustomise}
           <div class="mt-4 space-y-4">
             <!-- Said once, at the top, because it is the thing the panel stopped
@@ -1748,10 +1901,7 @@
                  happen partway through, and a panel full of switches looks much
                  the same either way. One sentence is cheaper than working it
                  out from which controls are where. -->
-            <p class="text-xs text-gray-500">
-              Everything here applies to the whole clip. Effects that happen partway through go on
-              the timeline instead.
-            </p>
+            <p class="text-xs text-gray-500">These global settings affect the entire timeline.</p>
             <!-- Branding lives here now.
 
                  It was a card of its own, above the presets, holding a graphic
@@ -1759,67 +1909,11 @@
                  touched about as often as the dials below them. A card is a
                  claim on the column; this is a row inside the one place that is
                  already about how the clip looks. -->
-            <div class="mb-5 border-b border-gray-800 pb-5">
-              <!-- What it will actually render with, which is the one thing you
-                   would open this to check. A line rather than the card action
-                   it used to be: there is no card header to hang it on any
-                   more, and a second `actions` snippet in here would only
-                   shadow the one the Look card is using. -->
-              <p class="mb-3 flex items-baseline gap-2 text-xs">
-                <span class="font-medium tracking-wider text-gray-500 uppercase">Branding</span>
-                <span class="min-w-0 flex-1 truncate text-gray-500">
-                  {#if config.randomGraphics}
-                    Random of {data.graphics.length}
-                  {:else if activeGraphic}
-                    {activeGraphic.filename}
-                  {/if}
-                </span>
-              </p>
+            <!-- Branding is not in here any more. Which graphic, and whether
+                 each of the three stages runs, are both set on the row under the
+                 presets — the graphic by pressing the picture on any chip. Two
+                 places to choose one mark is how they drift. -->
 
-              <!-- Graphic and placements on one row: which mark, and where it lands,
-               is a single decision in practice. The toggles stay available with no
-               graphic designated — they're what says whether these stages run at
-               all, so hiding them made the setting unreachable. -->
-              <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
-                {#if data.graphics.length > 0}
-                  <div class="w-48 shrink-0">
-                    <ImageSelect
-                      value={config.randomGraphics ? 'random' : String(config.graphicMediaId ?? '')}
-                      options={graphicOptions}
-                      onchange={(v) =>
-                        patchConfig(
-                          'the branding',
-                          v === 'random'
-                            ? { randomGraphics: true }
-                            : { randomGraphics: false, graphicMediaId: v === '' ? null : Number(v) }
-                        )}
-                    />
-                  </div>
-                {/if}
-
-                {#each BRANDING_OPTIONS as option (option.key)}
-                  <label class="flex items-center gap-2 text-sm text-gray-300" title={option.hint}>
-                    <input
-                      type="checkbox"
-                      checked={config[option.key] as boolean}
-                      onchange={(e) =>
-                        patchConfig('the branding', {
-                          [option.key]: e.currentTarget.checked
-                        } as never)}
-                      class="rounded border-gray-600 bg-gray-700 text-violet-500"
-                    />
-                    {option.label}
-                  </label>
-                {/each}
-              </div>
-
-              {#if data.graphics.length === 0}
-                <p class="mt-3 text-sm text-gray-500">
-                  No clip graphics designated, so these render without a mark. Add some in
-                  <a href="/admin/media" class="text-violet-400 hover:text-violet-300">Media</a>.
-                </p>
-              {/if}
-            </div>
             <!-- The frame comes before the look: it depends on what you shot, not
                on the mood you want, and it's the one choice here with a real
                render cost. Presets used to set it, so changing look silently
@@ -1982,19 +2076,47 @@
                 of this from its block.
               </p>
 
-              <div class="mb-4 flex flex-wrap gap-x-6 gap-y-2">
-                {#each CAPTION_OPTIONS as option (option.key)}
-                  <label class="flex items-center gap-2 text-sm text-gray-300" title={option.hint}>
-                    <input
-                      type="checkbox"
-                      checked={config[option.key] as boolean}
-                      onchange={(e) =>
-                        patchConfig('the look', { [option.key]: e.currentTarget.checked } as never)}
-                      class="rounded border-gray-600 bg-gray-700 text-violet-500"
-                    />
-                    {option.label}
-                  </label>
-                {/each}
+              <!-- Colours, shown as colours.
+
+                   These were two tick boxes — "brand colour" and "backdrop" —
+                   and a tick box cannot show you what it does. You had to
+                   already know that one tinted the words and the other put a
+                   panel behind them, and that the panel was always black
+                   whatever the rest of the clip was doing. The same wheel a
+                   caption carries on its own block says both in the only way
+                   that needs no explaining: here is the colour. -->
+              <div class="mb-4 flex flex-wrap items-start gap-x-8 gap-y-3">
+                <ColorWheel
+                  label="Words"
+                  value={captionColor({}, config, accent)}
+                  swatches={brandColors}
+                  onkeep={keep}
+                  onchange={(c) => patchConfig('the look', { colorizeCaption: true, logoColor: c })}
+                  actions={[
+                    {
+                      label: 'White',
+                      onclick: () => patchConfig('the look', { colorizeCaption: false })
+                    }
+                  ]}
+                />
+
+                <ColorWheel
+                  label="Behind them"
+                  value={captionBackdrop({}, config) ?? 'none'}
+                  swatches={brandColors}
+                  onkeep={keep}
+                  onchange={(c) =>
+                    patchConfig('the look', {
+                      captionBackground: true,
+                      captionBackdropColor: c
+                    })}
+                  actions={[
+                    {
+                      label: 'None',
+                      onclick: () => patchConfig('the look', { captionBackground: false })
+                    }
+                  ]}
+                />
               </div>
 
               <EffectPicker
@@ -2258,12 +2380,60 @@
             {config}
             adv={advanced}
             at={previewAt}
-            graphic={activeGraphic?.thumbnailUrl || activeGraphic?.url || null}
+            graphic={stageGraphic('intro')?.thumbnailUrl || stageGraphic('intro')?.url || null}
+            watermarkGraphic={stageGraphic('watermark')?.thumbnailUrl ||
+              stageGraphic('watermark')?.url ||
+              null}
             introSeconds={introShown}
             {accent}
           />
         {/if}
       </div>
+    {:else if standIn}
+      <!-- The shot itself, standing in for a render that doesn't exist yet.
+
+           The proxy rather than the original: it is the same footage at a size
+           that plays instantly, which is the whole reason it is made. Trimmed
+           with a media fragment so the part you kept is the part that plays,
+           though the browser honours that loosely — it is a preview of timing
+           and look, not a frame-accurate one.
+
+           What it cannot show is the frame: no aspect, no fill, no branding.
+           Those are things the render composes, and this is one file played as
+           it is, with the captions and the look drawn over it exactly as they
+           are drawn over a proof. -->
+      {#key standIn.item.id}
+        <div class="relative">
+          <!-- svelte-ignore a11y_media_has_caption -->
+          <video
+            bind:this={previewVideo}
+            src="{standIn.url}#t={standIn.row.trimStart ?? 0}{standIn.row.trimEnd
+              ? `,${standIn.row.trimEnd}`
+              : ''}"
+            controls
+            ontimeupdate={(e) => (previewAt = (e.currentTarget as HTMLVideoElement).currentTime)}
+            onseeked={(e) => (previewAt = (e.currentTarget as HTMLVideoElement).currentTime)}
+            onplay={() => (previewPlaying = true)}
+            onpause={() => (previewPlaying = false)}
+            onended={() => (previewPlaying = false)}
+            class="w-full rounded-lg bg-black"
+            style={look.filter ? `filter: ${look.filter}` : undefined}
+          ></video>
+          <FootageLook svg={look.svg} overlay={look.overlay} />
+          <ClipOverlay
+            {captions}
+            {config}
+            adv={advanced}
+            at={previewAt}
+            graphic={stageGraphic('intro')?.thumbnailUrl || stageGraphic('intro')?.url || null}
+            watermarkGraphic={stageGraphic('watermark')?.thumbnailUrl ||
+              stageGraphic('watermark')?.url ||
+              null}
+            introSeconds={introShown}
+            {accent}
+          />
+        </div>
+      {/key}
     {:else}
       <!-- Nothing rendered yet, so the box says so, in the same dashed
            treatment as the media drop zones. The button lives below it with

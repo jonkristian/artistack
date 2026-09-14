@@ -1,7 +1,7 @@
 import * as v from 'valibot';
 import { form, command } from '$app/server';
 import { db } from '$lib/server/db';
-import { user, account } from '$lib/server/auth-schema';
+import { user, account, session } from '$lib/server/auth-schema';
 import { eq, ne, and } from 'drizzle-orm';
 import { hashPassword } from 'better-auth/crypto';
 import { createInvite, inviteUrl, sendInviteEmail } from '$lib/server/invites';
@@ -179,6 +179,14 @@ export const resetPassword = command(resetPasswordSchema, async ({ userId, newPa
   // Hash and update new password
   const hashedPassword = await hashPassword(newPassword);
   await db.update(account).set({ password: hashedPassword }).where(eq(account.id, userAccount.id));
+
+  /*
+   * And sign them out everywhere. An admin resetting someone else's password is
+   * usually locking an account down, not doing them a favour — so every session
+   * that password ever opened goes with it, including the one whoever prompted
+   * the reset may be sitting in.
+   */
+  await db.delete(session).where(eq(session.userId, userId));
 
   return { success: true };
 });

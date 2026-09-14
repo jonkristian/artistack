@@ -30,3 +30,24 @@ export function insertAtCursor(el: HTMLTextAreaElement | HTMLInputElement, text:
 export function looksLikeHtml(value: string): boolean {
   return /<[a-z][^>]*>/i.test(value);
 }
+
+/**
+ * A name short enough to sit inside a sentence.
+ *
+ * For the middle of a line of prose — a toast, a confirmation — where the name
+ * is there to identify what you just did to something, not to be read out. An
+ * uploaded file arrives called `Første øving Rotvoll A57290EA-7CE5-45C6-8588-
+ * AA3D6036D58C.mp4`, and a message carrying all of it is three lines of
+ * identifier wrapped around four useful words.
+ *
+ * The tail is kept as well as the head, because the end of a filename is where
+ * its extension is, and `…mp4` is worth more than three more characters of
+ * UUID. Anything already short enough comes back untouched, so this never
+ * mangles a name someone actually chose.
+ */
+export function shortName(value: string, max = 36): string {
+  const name = value.trim();
+  if (name.length <= max) return name;
+  const tail = Math.min(8, Math.floor((max - 1) / 3));
+  return `${name.slice(0, max - tail - 1)}…${name.slice(-tail)}`;
+}

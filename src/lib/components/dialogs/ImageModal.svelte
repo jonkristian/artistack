@@ -11,13 +11,7 @@
    * instance script is a component accessor, not a module export.
    */
   export type Shape =
-    | 'circle'
-    | 'rounded'
-    | 'square'
-    | 'portrait'
-    | 'portrait-rounded'
-    | 'wide'
-    | 'wide-rounded';
+    'circle' | 'rounded' | 'square' | 'portrait' | 'portrait-rounded' | 'wide' | 'wide-rounded';
 
   /** What proportions the crop is taken in. */
   export type Aspect = 'circle' | 'square' | 'portrait' | 'landscape';

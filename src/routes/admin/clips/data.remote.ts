@@ -3,8 +3,7 @@ import { getClipSettings, updateClipSettings } from '$lib/server/settings';
 import * as v from 'valibot';
 import { command, query } from '$app/server';
 import { db } from '$lib/server/db';
-import { unlink } from 'fs/promises';
-import { mediaPath } from '$lib/server/paths';
+import { removeMediaFile } from '$lib/server/paths';
 import { rotateMedia } from '$lib/server/media-rotate';
 import { resolveTags, setTags, clearTags, pruneOrphanTags, listTags } from '$lib/server/tags';
 import {
@@ -139,6 +138,7 @@ const configSchema = v.partial(
     aspect: v.picklist(['9:16', '1:1', '16:9']),
     colorizeCaption: v.boolean(),
     captionBackground: v.boolean(),
+    captionBackdropColor: v.nullable(v.string()),
     captionEffect: v.nullable(appliedEffectSchema),
     /** Footage effects, each optionally placed on the timeline. */
     effects: v.array(
@@ -165,8 +165,9 @@ const configSchema = v.partial(
     intro: v.boolean(),
     outro: v.boolean(),
     watermark: v.boolean(),
-    graphicMediaId: v.nullable(v.number()),
-    randomGraphics: v.boolean(),
+    introGraphicMediaId: v.nullable(v.number()),
+    watermarkGraphicMediaId: v.nullable(v.number()),
+    outroGraphicMediaId: v.nullable(v.number()),
     logoMediaId: v.nullable(v.number()),
     logoColor: v.nullable(v.string()),
     loudnorm: v.boolean(),
@@ -289,12 +290,19 @@ export const deleteProject = command(v.number(), async (id) => {
   await requireUser();
 
   const [project] = await db
-    .select({ outputMediaId: clipProjects.outputMediaId })
+    .select({
+      outputMediaId: clipProjects.outputMediaId,
+      proofMediaId: clipProjects.proofMediaId
+    })
     .from(clipProjects)
     .where(eq(clipProjects.id, id))
     .limit(1);
 
   await db.delete(clipSources).where(eq(clipSources.projectId, id));
+  // The pool goes too. It is a row per file per project, so leaving it behind
+  // leaves rows pointing at a project that no longer exists — inert, but they
+  // are also the list the editor reads, and they never stop arriving.
+  await db.delete(clipMedia).where(eq(clipMedia.projectId, id));
   await db.delete(clipAudio).where(eq(clipAudio.projectId, id));
   await db.delete(renderJobs).where(eq(renderJobs.projectId, id));
   // A phone-upload QR bound to this clip would otherwise stay valid until it
@@ -306,10 +314,16 @@ export const deleteProject = command(v.number(), async (id) => {
   await db.delete(clipProjects).where(eq(clipProjects.id, id));
   await pruneOrphanTags();
 
-  // The render goes with the clip. There's no way to delete a render on its
-  // own — a new one supersedes the old, and this removes the last — so leaving
-  // it behind would strand a file nothing points at.
+  /*
+   * Both renders go with the clip.
+   *
+   * There is no way to delete either on its own — a new one supersedes the old,
+   * and this removes the last — so leaving one behind strands a file nothing
+   * points at. Only the full render was discarded, which meant every clip ever
+   * deleted left its last quick render on disk for good.
+   */
   if (project?.outputMediaId) await discardRender(project.outputMediaId);
+  if (project?.proofMediaId) await discardRender(project.proofMediaId);
 
   return { success: true };
 });
@@ -317,24 +331,31 @@ export const deleteProject = command(v.number(), async (id) => {
 /**
  * Deletes a clip's rendered video and its thumbnail.
  *
- * Only ever touches rows this app produced (`role: 'render'`) and only when no
- * other project still points at them, so a hand-picked asset that happened to
- * be set as an output can't be swept up. Never allowed to fail the delete.
+ * Only ever touches rows this app produced — a `render` or a `proof` — and only
+ * when no other project still points at them, so a hand-picked asset that
+ * happened to be set as an output can't be swept up. Never allowed to fail the
+ * delete.
+ *
+ * It refused anything that wasn't a `render`, which is why passing it a quick
+ * render did nothing at all: the file stayed, the row stayed, and the caller
+ * had no way of knowing. Whichever kind it is decides which column to check for
+ * other claimants — a proof is never anyone's output, and vice versa.
  */
 async function discardRender(mediaId: number): Promise<void> {
   try {
     const [item] = await db.select().from(media).where(eq(media.id, mediaId)).limit(1);
-    if (!item || item.role !== 'render') return;
+    if (!item || (item.role !== 'render' && item.role !== 'proof')) return;
 
+    const column = item.role === 'proof' ? clipProjects.proofMediaId : clipProjects.outputMediaId;
     const others = await db
       .select({ id: clipProjects.id })
       .from(clipProjects)
-      .where(eq(clipProjects.outputMediaId, mediaId));
+      .where(eq(column, mediaId));
     if (others.length) return;
 
     await db.delete(media).where(eq(media.id, mediaId));
     for (const url of [item.url, item.thumbnailUrl]) {
-      if (url) await unlink(mediaPath(url)).catch(() => {});
+      await removeMediaFile(url);
     }
   } catch (e) {
     console.error('[Clips] Could not discard render on delete:', e);

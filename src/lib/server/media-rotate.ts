@@ -4,7 +4,7 @@ import sharp from 'sharp';
 import { eq } from 'drizzle-orm';
 import { db } from './db';
 import { media } from './schema';
-import { UPLOAD_DIR, THUMBNAIL_SIZE, mediaPath } from './paths';
+import { UPLOAD_DIR, THUMBNAIL_SIZE, mediaPath, removeMediaFile } from './paths';
 import { canRotateLosslessly, extractPosterFrame, probeVideo, writeRotation } from './ffmpeg';
 import { queuePreviewRendition, removePreview } from './media-preview';
 
@@ -155,7 +155,7 @@ export async function rotateMedia(
   // leaves the old one in place, which is the safe way to fail.
   await unlink(current).catch(() => {});
   if (thumbnailName && item.thumbnailUrl && item.thumbnailUrl !== thumbnailUrl) {
-    await unlink(mediaPath(item.thumbnailUrl)).catch(() => {});
+    await removeMediaFile(item.thumbnailUrl);
   }
 
   /*

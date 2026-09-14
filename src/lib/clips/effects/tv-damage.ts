@@ -73,7 +73,7 @@ const tvDamage: CaptionEffect = {
       key: 'lasting',
       label: 'Lasting',
       type: 'number',
-      default: 1,
+      default: 0.3,
       min: 0.1,
       max: 10,
       step: 0.1,
@@ -92,8 +92,10 @@ const tvDamage: CaptionEffect = {
      * Held for the whole line this stops being a fault and becomes a typeface:
      * the eye takes about a second to accept anything constant as simply how
      * this caption looks, and a caption that is permanently broken is one
-     * nobody reads as broken. A second of it and then clean text is a signal
-     * recovering, which is what the effect is imitating.
+     * nobody reads as broken. A third of a second and then clean text is a
+     * signal recovering, which is what the effect is imitating — and the words
+     * are legible for nearly all the time they are up, which matters more for a
+     * caption than it does for a picture.
      *
      * Capped at the caption's own length, so a short line is damaged for all of
      * it rather than being promised a second it does not have.

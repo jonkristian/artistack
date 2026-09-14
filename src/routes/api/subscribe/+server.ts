@@ -15,7 +15,8 @@ import { getSettings } from '$lib/server/settings';
  * or not the address was already on the list, so this can't be used to ask
  * whether someone is a subscriber.
  */
-export const POST: RequestHandler = async ({ request, url }) => {
+export const POST: RequestHandler = async (event) => {
+  const { request, url } = event;
   const siteSettings = await getSettings();
   if (!siteSettings?.subscribersEnabled) {
     return json({ success: false, message: 'Not accepting sign-ups.' }, { status: 404 });
@@ -47,7 +48,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
    * didn't happen, and a script that has been throttled learns nothing it can't
    * already see from the clock.
    */
-  const ip = getClientIP(request);
+  const ip = getClientIP(event);
   const limit = rateLimit(`subscribe:${ip ?? 'unknown'}`, 10, 60 * 60 * 1000);
   if (!limit.allowed) {
     return json(

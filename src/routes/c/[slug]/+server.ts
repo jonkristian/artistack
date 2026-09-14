@@ -15,12 +15,13 @@ import type { RequestHandler } from './$types';
  * Unknown slugs redirect too: a typo in a caption that's already been posted
  * should still land the visitor on the page, not on a 404.
  */
-export const GET: RequestHandler = async ({ params, request, url }) => {
+export const GET: RequestHandler = async (event) => {
+  const { params, request, url } = event;
   const userAgent = request.headers.get('user-agent') || '';
 
   if (!isBot(userAgent)) {
     // Fire and forget, like the hook does — analytics shouldn't delay the redirect.
-    recordPageView(request, `/c/${params.slug}`, userAgent, url.hostname).catch(() => {
+    recordPageView(event, `/c/${params.slug}`, userAgent, url.hostname).catch(() => {
       // Silently ignore tracking errors
     });
   }

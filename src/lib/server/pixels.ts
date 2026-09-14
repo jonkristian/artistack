@@ -1,3 +1,4 @@
+import type { RequestEvent } from '@sveltejs/kit';
 import { getSettings, getMetaSettings } from './settings';
 import { getClientIP } from './tracking';
 
@@ -29,7 +30,7 @@ export interface PublicPixelConfig {
 export async function sendMetaConversion(options: {
   eventName: string;
   sourceUrl: string;
-  request: Request;
+  event: RequestEvent;
   /** Sent alongside the event so Meta can deduplicate against the browser pixel. */
   eventId?: string;
 }): Promise<void> {
@@ -47,8 +48,8 @@ export async function sendMetaConversion(options: {
         user_data: {
           // The only two identifiers we hold. Meta hashes email and phone when
           // you send them; we send neither, so there is nothing here to hash.
-          client_ip_address: getClientIP(options.request) ?? undefined,
-          client_user_agent: options.request.headers.get('user-agent') ?? undefined
+          client_ip_address: getClientIP(options.event) ?? undefined,
+          client_user_agent: options.event.request.headers.get('user-agent') ?? undefined
         }
       }
     ]

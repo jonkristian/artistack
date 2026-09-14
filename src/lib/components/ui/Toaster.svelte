@@ -56,7 +56,17 @@
             />
           </svg>
         {/if}
-        <span class="flex-1 break-words">{t.message}</span>
+        <!-- `min-w-0`, or the row grows instead of the text wrapping.
+
+             A flex child's automatic minimum is its min-content width, and
+             `overflow-wrap: break-word` does not lower that — it permits a
+             break to stop an overflow, it doesn't make the box measure itself
+             any narrower. So one long unbreakable run, which is what an
+             uploaded filename with a UUID in it is, set a floor under this
+             span that the sidebar could not meet: the row spilled past its
+             edge and carried Undo and the dismiss cross out of the panel with
+             it, since both are `shrink-0` and had nowhere to go. -->
+        <span class="min-w-0 flex-1 break-words">{t.message}</span>
         {#if t.action}
           <button
             onclick={() => {

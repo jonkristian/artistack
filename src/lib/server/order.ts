@@ -85,6 +85,15 @@ export function validateCart(lines: CartLine[]): string | null {
     return 'The basket mixes currencies. Buy these separately.';
   }
 
+  /*
+   * A line has to be a positive whole number of something. The cart commands
+   * enforce this on the way in; this is the check that matters, because it is
+   * the one standing between a row and an amount handed to a payment provider,
+   * and a basket can predate the validation that now guards it.
+   */
+  const nonsense = lines.find((line) => !Number.isInteger(line.quantity) || line.quantity < 1);
+  if (nonsense) return 'Something in the basket has gone wrong. Empty it and try again.';
+
   const short = lines.find((line) => line.stock != null && line.stock < line.quantity);
   if (short) {
     // Named with its size, because "T-Shirt has sold out" is confusing when the

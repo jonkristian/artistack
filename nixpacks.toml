@@ -7,6 +7,21 @@
 # Debian packages rather than Nix ones, because Debian's ffmpeg is built with
 # libass — which the ASS caption filter needs.
 
+# How the app works out who is calling. Set here rather than left to whoever
+# deploys it, because anything built this way is behind Coolify's proxy by
+# definition — and forgetting them is not an error anyone would notice: the
+# sign-up rate limit quietly becomes ten an hour for the whole site instead of
+# per visitor, and every page view logs no country at all.
+#
+# The address is read one entry from the *right* of the forwarded chain, which
+# is the part the proxy wrote. The left of it is whatever the caller sent.
+#
+# Put another proxy in front — Cloudflare, say — and this wants XFF_DEPTH=2.
+# Set it in Coolify's environment; a value passed at run time beats this one.
+[variables]
+ADDRESS_HEADER = "x-forwarded-for"
+XFF_DEPTH = "1"
+
 [phases.setup]
 aptPkgs = [
   # The renderer. ffprobe ships in the same package.

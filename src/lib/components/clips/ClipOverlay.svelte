@@ -32,6 +32,14 @@
     at,
     /** The branding graphic, already resolved by the page. */
     graphic = null,
+    /**
+     * The watermark's own, when it differs from the intro's.
+     *
+     * The three stages can each carry a mark now, and the two this draws are
+     * the two that can disagree on screen. Absent falls back to `graphic`,
+     * which is what happens whenever a clip has not given either its own.
+     */
+    watermarkGraphic = null,
     /** How long the intro logo stays up. Zero when there is no intro. */
     introSeconds = 0,
     accent = '#8b5cf6'
@@ -41,6 +49,7 @@
     adv: ClipAdvancedConfig;
     at: number;
     graphic?: string | null;
+    watermarkGraphic?: string | null;
     introSeconds?: number;
     accent?: string;
   } = $props();
@@ -204,9 +213,9 @@
        Placed from `watermarkX`/`watermarkY`, which are offsets from the top
        left — the corner the render's `overlay` measures from. It was drawn in
        the opposite corner here, which looked deliberate and was simply wrong. -->
-  {#if graphic && config.watermark && at >= introSeconds}
+  {#if (watermarkGraphic ?? graphic) && config.watermark && at >= introSeconds}
     <img
-      src={graphic}
+      src={watermarkGraphic ?? graphic}
       alt=""
       class="absolute"
       style="left: {(adv.watermarkX / frame.w) * 100}cqw; top: {(adv.watermarkY / frame.h) *

@@ -1,4 +1,4 @@
-import { redirect, error } from '@sveltejs/kit';
+import { redirect, error, type RequestEvent } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import { links, linkClicks } from '$lib/server/schema';
 import { eq } from 'drizzle-orm';
@@ -12,7 +12,8 @@ import {
 import { sendMetaConversion } from '$lib/server/pixels';
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = async ({ params, request, url, cookies }) => {
+export const GET: RequestHandler = async (event) => {
+  const { params, request, url, cookies } = event;
   const linkId = parseInt(params.linkId, 10);
 
   if (isNaN(linkId)) {
@@ -30,7 +31,7 @@ export const GET: RequestHandler = async ({ params, request, url, cookies }) => 
   const userAgent = request.headers.get('user-agent') || '';
 
   if (!isBot(userAgent)) {
-    trackClick(linkId, request).catch(() => {});
+    trackClick(linkId, event).catch(() => {});
 
     /*
      * The conversion an ad platform actually cares about: someone reached a
@@ -43,7 +44,7 @@ export const GET: RequestHandler = async ({ params, request, url, cookies }) => 
     sendMetaConversion({
       eventName: 'PlatformClick',
       sourceUrl: url.href,
-      request
+      event
     }).catch(() => {});
   }
 
@@ -101,11 +102,11 @@ function withQuery(destination: string, incoming: URLSearchParams): string {
   }
 }
 
-async function trackClick(linkId: number, request: Request): Promise<void> {
-  const referrer = parseReferrer(request.headers.get('referer'));
-  const ip = getClientIP(request);
+async function trackClick(linkId: number, event: RequestEvent): Promise<void> {
+  const referrer = parseReferrer(event.request.headers.get('referer'));
+  const ip = getClientIP(event);
   const country = ip ? await lookupCountry(ip) : null;
-  const device = deviceFromUserAgent(request.headers.get('user-agent') || '');
+  const device = deviceFromUserAgent(event.request.headers.get('user-agent') || '');
 
   await db.insert(linkClicks).values({
     linkId,

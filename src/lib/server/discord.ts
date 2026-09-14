@@ -4,7 +4,7 @@ import { db } from './db';
 import { getDiscordSettings, updateDiscordSettings } from './settings';
 import type { DiscordSettings } from './schema';
 import { settings } from './schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 export interface DiscordReportData {
   title: string;
@@ -264,6 +264,44 @@ export async function sendScheduledReport(
  * Send scheduled Discord report (called by scheduler)
  * Gets profile from DB, sends report, updates lastSent timestamp
  */
+/**
+ * Take today's send, if nobody else has.
+ *
+ * The check that guards this report used to read `lastSent`, send, and write
+ * `lastSent` afterwards — with a webhook round trip in the middle. That is only
+ * a guard against a ticker that has already finished, not one running alongside:
+ * four schedulers fired at 09:00, all four read last week's timestamp, all four
+ * sent, and one write landed 600ms later on top of the rest. Four identical
+ * reports in the channel.
+ *
+ * So the slot is claimed before the send rather than recorded after it, and the
+ * claim is one UPDATE with the test in its WHERE clause. SQLite settles that
+ * against the write lock, so it is decided for every caller at once — whether
+ * they are timers in one process or separate instances — and exactly one gets
+ * `changes === 1`.
+ *
+ * Returns what was there before, so a failed send can put it back.
+ */
+function claimSend(startOfDay: number, stamp: number): { won: boolean; previous: number | null } {
+  const [row] = db
+    .select({ value: settings.value })
+    .from(settings)
+    .where(eq(settings.key, 'discord'))
+    .limit(1)
+    .all();
+  const previous = (row?.value as DiscordSettings | undefined)?.lastSent ?? null;
+
+  const claimed = db.run(
+    sql`UPDATE ${settings}
+        SET value = json_set(${settings.value}, '$.lastSent', ${stamp})
+        WHERE ${settings.key} = 'discord'
+          AND (json_extract(${settings.value}, '$.lastSent') IS NULL
+               OR json_extract(${settings.value}, '$.lastSent') < ${startOfDay})`
+  );
+
+  return { won: claimed.changes === 1, previous };
+}
+
 export async function sendScheduledDiscordReport(): Promise<{ success: boolean; error?: string }> {
   const discord = await getDiscordSettings();
 
@@ -271,11 +309,29 @@ export async function sendScheduledDiscordReport(): Promise<{ success: boolean; 
     return { success: false, error: 'Discord not configured or disabled' };
   }
 
-  const result = await sendScheduledReport(discord);
+  const midnight = new Date();
+  midnight.setHours(0, 0, 0, 0);
+  const { won, previous } = claimSend(midnight.getTime(), Date.now());
+  if (!won) return { success: false, error: 'Already sent today' };
 
-  if (result.success) {
-    // Update lastSent timestamp
-    await updateDiscordSettings({ lastSent: Date.now() });
+  let result: { success: boolean; error?: string };
+  try {
+    result = await sendScheduledReport(discord);
+  } catch (e) {
+    result = { success: false, error: e instanceof Error ? e.message : String(e) };
+  }
+
+  /*
+   * Hand the slot back if the send failed, so the next hourly tick tries again.
+   *
+   * Claiming first means the claim outlives a failure unless something undoes
+   * it, and a weekly report that gives up for a week because Discord was down
+   * for a minute is worse than the duplicate this is all guarding against.
+   * A crash between the two still loses the slot — the alternative is a lease
+   * with a timeout, which is a lot of machinery for one webhook.
+   */
+  if (!result.success) {
+    await updateDiscordSettings({ lastSent: previous });
   }
 
   return result;
