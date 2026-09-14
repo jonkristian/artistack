@@ -12,6 +12,7 @@ import { clearAbandonedStaging } from './clip-render';
 import { sweepClipLeftovers, sweptAnything } from './clip-sweep';
 import { runReleaseTick, checkPublishCoverage } from './clip-queue';
 import { remindStaleInvites } from './invites';
+import { rollUpOldPageViews } from './analytics-retention';
 import { env } from '$env/dynamic/private';
 import { desc } from 'drizzle-orm';
 
@@ -117,10 +118,27 @@ export function initScheduler(): void {
             `${swept.poolRows} pool row(s), ${swept.swatches} swatch(es)`
         );
       }
+
+      /*
+       * Same hour, same reason: a row describing one visit has a shelf life,
+       * and rolling the old ones into daily totals is the part that lets them
+       * be deleted without losing the history.
+       */
+      const rolled = await rollUpOldPageViews().catch((e) => {
+        console.error('[Analytics] Roll-up failed:', e);
+        return null;
+      });
+      if (rolled?.removed) {
+        console.log(
+          `[Analytics] Rolled up ${rolled.days} day(s), removed ${rolled.removed} raw row(s)`
+        );
+      }
     })
   );
 
-  console.log('[Scheduler] Started - hourly tasks, coverage check every 15m, nightly clip sweep');
+  console.log(
+    '[Scheduler] Started - hourly tasks, coverage check every 15m, nightly sweep and roll-up'
+  );
 }
 
 async function runScheduledTasks(): Promise<void> {

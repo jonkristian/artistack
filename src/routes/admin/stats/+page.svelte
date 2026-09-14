@@ -51,6 +51,10 @@
         <div class="mt-2 text-3xl font-bold text-white">
           {formatNumber(data.overview.monthViews)}
         </div>
+        <!-- People rather than hits. The number the view count is usually mistaken for. -->
+        <div class="mt-1 text-sm text-gray-500">
+          {formatNumber(data.pageViews.uniqueVisitors)} visitors
+        </div>
         <div
           class="mt-1 flex items-center gap-1 text-sm {data.viewsChange >= 0
             ? 'text-green-400'

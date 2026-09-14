@@ -1,6 +1,22 @@
 import { db } from './db';
 import { pageViews, linkClicks, links } from './schema';
-import { sql, eq, gte, and, desc, count } from 'drizzle-orm';
+import { sql, eq, gte, lt, and, desc, count, isNotNull } from 'drizzle-orm';
+
+/*
+ * `created_at` on both page_views and link_clicks is `mode: 'timestamp'` —
+ * seconds, not milliseconds. That matters twice over, and both were wrong:
+ *
+ *   - `date(created_at, 'unixepoch')` takes seconds. Dividing by 1000 first
+ *     dated every link click to January 1970, so the clicks-per-day chart drew
+ *     one bar in the wrong decade.
+ *   - a bound written as raw SQL has to be seconds too. `getTime()` is
+ *     milliseconds, so `created_at < <ms>` is true of every row ever written —
+ *     the previous period silently included the current one, and the trend
+ *     arrow pointed the wrong way.
+ *
+ * So bounds go through drizzle's `gte`/`lt` with a Date, which converts to the
+ * column's own unit. Don't hand-roll the comparison.
+ */
 
 export interface DateRange {
   start: Date;
@@ -9,6 +25,12 @@ export interface DateRange {
 
 export interface PageViewStats {
   totalViews: number;
+  /**
+   * People rather than hits, as far as a day-scoped token can tell. Summed
+   * across days, so someone returning on Tuesday counts twice — the token is
+   * deliberately unable to say otherwise. See `visitor.ts`.
+   */
+  uniqueVisitors: number;
   uniquePaths: number;
   viewsByDay: { date: string; count: number }[];
   viewsByPath: { path: string; count: number }[];
@@ -220,8 +242,24 @@ export async function getPageViewStats(days: number = 30): Promise<PageViewStats
     .orderBy(desc(count()))
     .limit(10);
 
+  /*
+   * Distinct tokens per day, then added up. The token changes at midnight by
+   * design, so the same person on three days is three tokens whatever we do —
+   * summing per-day counts at least makes each day honest on its own, and is
+   * what every cookieless tracker reports.
+   */
+  const [visitorsResult] = await db.select({ count: sql<number>`coalesce(sum(v), 0)` }).from(
+    db
+      .select({ v: sql<number>`count(distinct ${pageViews.visitor})`.as('v') })
+      .from(pageViews)
+      .where(and(gte(pageViews.createdAt, range.start), isNotNull(pageViews.visitor)))
+      .groupBy(sql`date(${pageViews.createdAt}, 'unixepoch')`)
+      .as('daily')
+  );
+
   return {
     totalViews: totalResult?.count ?? 0,
+    uniqueVisitors: Number(visitorsResult?.count ?? 0),
     uniquePaths: uniquePathsResult.length,
     viewsByDay: viewsByDay.map((r) => ({ date: r.date, count: r.count })),
     viewsByPath: viewsByPath.map((r) => ({ path: r.path, count: r.count })),
@@ -343,13 +381,13 @@ export async function getLinkClickStats(days: number = 30): Promise<LinkClickSta
   // Clicks by day
   const clicksByDay = await db
     .select({
-      date: sql<string>`date(${linkClicks.createdAt} / 1000, 'unixepoch')`,
+      date: sql<string>`date(${linkClicks.createdAt}, 'unixepoch')`,
       count: count()
     })
     .from(linkClicks)
     .where(gte(linkClicks.createdAt, range.start))
-    .groupBy(sql`date(${linkClicks.createdAt} / 1000, 'unixepoch')`)
-    .orderBy(sql`date(${linkClicks.createdAt} / 1000, 'unixepoch')`);
+    .groupBy(sql`date(${linkClicks.createdAt}, 'unixepoch')`)
+    .orderBy(sql`date(${linkClicks.createdAt}, 'unixepoch')`);
 
   // Clicks by referrer
   const clicksByReferrer = await db
@@ -404,12 +442,7 @@ export async function getPreviousPeriodViewsByDay(
       count: count()
     })
     .from(pageViews)
-    .where(
-      and(
-        gte(pageViews.createdAt, previousStart),
-        sql`${pageViews.createdAt} < ${Math.floor(currentStart.getTime() / 1000)}`
-      )
-    )
+    .where(and(gte(pageViews.createdAt, previousStart), lt(pageViews.createdAt, currentStart)))
     .groupBy(sql`date(${pageViews.createdAt}, 'unixepoch')`)
     .orderBy(sql`date(${pageViews.createdAt}, 'unixepoch')`);
 
@@ -435,12 +468,7 @@ export async function getComparisonStats(days: number = 30): Promise<{
   const [previousViewsResult] = await db
     .select({ count: count() })
     .from(pageViews)
-    .where(
-      and(
-        gte(pageViews.createdAt, previousStart),
-        sql`${pageViews.createdAt} < ${currentStart.getTime()}`
-      )
-    );
+    .where(and(gte(pageViews.createdAt, previousStart), lt(pageViews.createdAt, currentStart)));
 
   const [currentClicksResult] = await db
     .select({ count: count() })
@@ -450,12 +478,7 @@ export async function getComparisonStats(days: number = 30): Promise<{
   const [previousClicksResult] = await db
     .select({ count: count() })
     .from(linkClicks)
-    .where(
-      and(
-        gte(linkClicks.createdAt, previousStart),
-        sql`${linkClicks.createdAt} < ${currentStart.getTime()}`
-      )
-    );
+    .where(and(gte(linkClicks.createdAt, previousStart), lt(linkClicks.createdAt, currentStart)));
 
   return {
     currentViews: currentViewsResult?.count ?? 0,

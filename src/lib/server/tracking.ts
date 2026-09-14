@@ -5,6 +5,7 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import { db } from './db';
 import { pageViews } from './schema';
+import { visitorToken } from './visitor';
 
 // Bot detection patterns
 const BOT_PATTERNS = [
@@ -114,7 +115,9 @@ export async function recordPageView(
     path,
     referrer,
     country,
-    userAgent: userAgent.substring(0, 500)
+    // The class, not the string it came from. See the column's own note.
+    device: deviceFromUserAgent(userAgent),
+    visitor: visitorToken(ip, userAgent, hostname)
   });
 }
 

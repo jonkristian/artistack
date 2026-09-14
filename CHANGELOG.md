@@ -12,6 +12,10 @@
 - Intro, watermark and outro each carry their own graphic, as three buttons outside Customise
 - The strip carries a column of icons naming each lane, and the overview along the bottom shows effects too
 - Renders, stray files and cached previews that nothing points at are cleared at startup and once a night
+- Stats count visitors, not just hits. A day-scoped code, salted and thrown away nightly, tells a returning reader from a new one without a cookie and without keeping anything that identifies anyone
+- Page views keep a device class instead of the full browser string, which was a fingerprint kept per visit. Existing rows were converted before it was dropped
+- Visit records are kept 90 days, then reduced to daily totals. Nothing was ever deleted before
+- The privacy page describes the advertising pixels when they're switched on, and says there are none when they're off
 - Security headers on every response: no framing by another site, no content sniffing, less referrer leaked
 - Changing a password signs out your other devices; an admin reset signs out all of theirs
 - Runs on Node 24, having been built on 18 since before it went end of life. Dependencies are current, including fixes in the database layer and in Svelte's rendering
@@ -27,6 +31,9 @@
 - Fixed: the ten-an-hour sign-up limit counted a header the caller set, so it was no limit at all
 - Fixed: a name from the sign-up form could run as a formula in the exported fan list
 - Fixed: the click beacon took clicks on links that don't exist, from anyone, unlimited
+- Fixed: the trend arrow pointed the wrong way. The previous period included the current one, so a rise was reported as a fall
+- Fixed: every link click charted on the same day in 1970, so the clicks-per-day graph has never shown anything
+- Fixed: press kit downloads and other files counted as page views, depending on whether the extension happened to be on a list
 
 # 1.6.0 (11-09-2026)
 

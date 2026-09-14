@@ -6,6 +6,26 @@
   const settings = $derived(data.settings);
   const profile = $derived(data.profile);
   const siteName = $derived(settings?.siteTitle || profile?.name || 'This site');
+
+  /*
+   * The advertising paragraphs are written only when there is advertising to
+   * describe. A policy that claims no tracking cookies while the pixels are
+   * loading is worse than no policy — it is a statement that is checkably
+   * false — and one that describes pixels on a site carrying none is just as
+   * wrong in the other direction.
+   *
+   * Note this makes the page honest, not lawful: naming a tracker is not the
+   * same as asking permission before loading it. See TrackingPixels.svelte.
+   */
+  const pixels = $derived(data.pixels ?? null);
+  const pixelNames = $derived(
+    [
+      pixels?.metaPixelId ? 'Meta (Facebook and Instagram)' : null,
+      pixels?.tiktokPixelId ? 'TikTok' : null
+    ]
+      .filter(Boolean)
+      .join(' and ')
+  );
 </script>
 
 <svelte:head>
@@ -54,15 +74,33 @@
         </h2>
         <p>
           This site is primarily a public link hub. We do not require visitors to create accounts or
-          submit personal information. When you visit, standard server logs may record your IP
-          address, browser type, and referring page for operational and security purposes.
+          submit personal information. We count visits ourselves rather than handing that job to
+          anyone else: each one records the page, the referring site, a country worked out from your
+          IP address, and whether you were on a phone, a tablet or a computer. Your IP address is
+          used for that lookup and is not stored.
+        </p>
+        <p>
+          To tell a returning reader from a new one within a single day, we store a code made from
+          your IP address and browser, scrambled with a random value that is discarded every night.
+          The code cannot be turned back into your address, and the same visitor produces a
+          different code tomorrow, so it cannot be used to follow anyone over time.
         </p>
 
         <h2 class="!mt-8 text-lg font-semibold" style="color: var(--color-text)">Cookies</h2>
         <p>
-          We use minimal cookies required for site functionality (e.g., admin session management).
-          We do not use advertising or cross-site tracking cookies.
+          We use minimal cookies required for site functionality — an admin session, a basket while
+          you shop, and a note of which music service you last chose. Our own visit counting sets no
+          cookie at all.
         </p>
+        {#if pixels}
+          <p>
+            This site also loads advertising pixels from {pixelNames}, which set their own cookies
+            in your browser and report your visit back to {pixelNames} so that advertising can be measured.
+            These are set by {pixelNames} and are governed by their privacy policies, not ours.
+          </p>
+        {:else}
+          <p>We do not use advertising or cross-site tracking cookies.</p>
+        {/if}
 
         <h2 class="!mt-8 text-lg font-semibold" style="color: var(--color-text)">
           Third-Party Services
@@ -70,14 +108,20 @@
         <p>
           This site may embed content from third-party platforms such as Spotify, YouTube,
           SoundCloud, or social media networks. These embeds are governed by their respective
-          privacy policies. We may also use third-party analytics to understand aggregate traffic
-          patterns.
+          privacy policies.
         </p>
+        {#if pixels}
+          <p>
+            While advertising measurement is switched on, we also send {pixelNames} a record of clicks
+            on our music links directly from our server, including your IP address and browser. This happens
+            whether or not the pixel loaded in your browser.
+          </p>
+        {/if}
 
         <h2 class="!mt-8 text-lg font-semibold" style="color: var(--color-text)">Data Retention</h2>
         <p>
-          Server logs are retained for a limited period for security and diagnostic purposes and are
-          then deleted. We do not sell or share personal data with third parties.
+          Individual visit records are kept for 90 days and then reduced to daily totals, which
+          carry no record of any single visit. We do not sell personal data.
         </p>
 
         <h2 class="!mt-8 text-lg font-semibold" style="color: var(--color-text)">Contact</h2>

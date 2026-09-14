@@ -8,19 +8,35 @@
 # libass — which the ASS caption filter needs.
 
 # How the app works out who is calling. Set here rather than left to whoever
-# deploys it, because anything built this way is behind Coolify's proxy by
-# definition — and forgetting them is not an error anyone would notice: the
+# deploys it, because forgetting them is not an error anyone would notice: the
 # sign-up rate limit quietly becomes ten an hour for the whole site instead of
 # per visitor, and every page view logs no country at all.
 #
-# The address is read one entry from the *right* of the forwarded chain, which
-# is the part the proxy wrote. The left of it is whatever the caller sent.
+# The address is read XFF_DEPTH entries from the *right* of the forwarded chain.
+# The right-hand end is what the nearest proxy wrote; the left is whatever the
+# caller sent, which is why counting from the wrong end is the whole bug this
+# replaced.
 #
-# Put another proxy in front — Cloudflare, say — and this wants XFF_DEPTH=2.
-# Set it in Coolify's environment; a value passed at run time beats this one.
+# DEPTH IS HOP COUNT, and both domains sit behind Cloudflare as well as
+# Coolify's own proxy:
+#
+#   visitor -> Cloudflare -> Traefik -> app
+#   X-Forwarded-For: <visitor>, <cloudflare-edge>
+#
+# so the visitor is the second entry from the right. With this set to 1 the
+# country on every page view is a Cloudflare datacentre. Serving straight from
+# Coolify with nothing in front of it would be 1.
+#
+# Counting hops rather than reading `cf-connecting-ip` is deliberate. Both are
+# right for traffic that came through Cloudflare, but if anyone reaches the
+# origin directly they can set `cf-connecting-ip` to whatever they like, while a
+# short chain makes the adapter throw — and a throw is caught as "no address",
+# which is the answer that grants nothing.
+#
+# Coolify's own environment overrides this; a value passed at run time wins.
 [variables]
 ADDRESS_HEADER = "x-forwarded-for"
-XFF_DEPTH = "1"
+XFF_DEPTH = "2"
 
 [phases.setup]
 aptPkgs = [

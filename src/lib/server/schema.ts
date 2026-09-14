@@ -681,14 +681,62 @@ export const pageViews = sqliteTable(
     path: text('path').notNull(), // e.g., '/', '/links'
     referrer: text('referrer'), // e.g., 'google.com', 'instagram.com', 'direct'
     country: text('country'), // 2-letter country code from IP
-    userAgent: text('user_agent'), // Browser/device info
+    /**
+     * 'mobile' | 'tablet' | 'desktop'. This column used to hold the whole
+     * user-agent string, which is a fingerprint: enough to recognise a person
+     * across visits, and the one field here that made a row personal data.
+     * `link_clicks` had already settled on the class instead; this is the same
+     * decision applied a table late.
+     */
+    device: text('device'),
+    /**
+     * Who, for one day. A hash that cannot be reversed and changes at midnight
+     * — see `visitor.ts` for why that is the whole design. Lets a day's views
+     * be counted as people rather than hits, and nothing more.
+     */
+    visitor: text('visitor'),
     createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
   },
   (table) => [
     index('page_views_created_at_idx').on(table.createdAt),
-    index('page_views_path_idx').on(table.path)
+    index('page_views_path_idx').on(table.path),
+    index('page_views_visitor_idx').on(table.visitor)
   ]
 );
+
+/**
+ * Page views older than the retention window, added up.
+ *
+ * Raw rows are deleted after 90 days — a row per visit kept forever is the
+ * thing a retention policy exists to prevent, and the privacy page already
+ * promises it doesn't happen. Rolling them up first means the history survives
+ * as numbers: the same dimensions, one row per day per combination, with
+ * nothing left that describes a visit.
+ *
+ * Visitor counts don't add up across dimensions, so they live in their own
+ * table rather than being repeated here and silently summed.
+ */
+export const pageViewDaily = sqliteTable(
+  'page_view_daily',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    /** YYYY-MM-DD, UTC. */
+    date: text('date').notNull(),
+    path: text('path').notNull(),
+    referrer: text('referrer'),
+    country: text('country'),
+    device: text('device'),
+    views: integer('views').notNull()
+  },
+  (table) => [index('page_view_daily_date_idx').on(table.date)]
+);
+
+/** Distinct visitors per day, kept after the raw rows that produced it are gone. */
+export const pageViewDailyVisitors = sqliteTable('page_view_daily_visitors', {
+  /** YYYY-MM-DD, UTC. */
+  date: text('date').primaryKey(),
+  visitors: integer('visitors').notNull()
+});
 
 // Link click tracking
 export const linkClicks = sqliteTable(

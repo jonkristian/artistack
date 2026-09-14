@@ -14,6 +14,13 @@ const SKIP_PATHS = [
   '/go/', // Link tracking has its own endpoint
   '/preview/', // Internal clip review, not audience traffic
   '/invite/', // Account setup, not audience traffic
+  /*
+   * Files, not pages. The extension list below catches an image or a font, but
+   * not a .zip, .mp4 or .pdf — so a press kit download was landing in the same
+   * column as someone reading the front page, and whether a file counted came
+   * down to whether its extension happened to be listed.
+   */
+  '/uploads/',
   '/healthz', // Orchestrator probe, not a visitor
   '/_app',
   '/favicon',
