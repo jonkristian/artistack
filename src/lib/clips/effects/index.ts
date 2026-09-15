@@ -12,6 +12,7 @@ import { basics } from './basics';
 import { tvDamagePack } from './tv-damage';
 import { gradesPack } from './grades';
 import { vhsPack } from './vhs';
+import { motion } from './motion';
 import { effectParams } from './types';
 import { DEFAULT_CAPTION_EFFECT } from '../types';
 import type { AppliedEffect, PlacedEffect, TimedCaption } from '../types';
@@ -26,7 +27,7 @@ import type {
 
 export * from './types';
 
-export const PACKS: EffectPack[] = [basics, gradesPack, tvDamagePack, vhsPack];
+export const PACKS: EffectPack[] = [basics, gradesPack, motion, tvDamagePack, vhsPack];
 
 /** Effects on the words. */
 export const EFFECTS: CaptionEffect[] = PACKS.flatMap((pack) => pack.captions ?? []);
@@ -74,8 +75,35 @@ export function captionEffectOf(
  * with no effect on it is just footage, so the honest answer to a pack that has
  * been removed is to leave the picture alone.
  */
+/**
+ * Moves that were split four ways and are now one.
+ *
+ * `pan-left`, `pan-right`, `pan-up` and `pan-down` were four effects doing the
+ * same thing in four directions, plus a combined push. One slow drift is what
+ * a still actually wants, so the rest went — and anything already placed on a
+ * timeline is pointed at the survivor rather than silently resolving to
+ * nothing, which is what an unknown id does.
+ */
+const RENAMED: Record<string, string> = {
+  /*
+   * The pans are gone from the lane entirely. They had to invent a zoom to have
+   * anywhere to go, because by the time an effect runs the picture has already
+   * been cropped to the frame. Drifting is a property of the shot now, where
+   * the material outside the frame still exists — so anything placed as a pan
+   * becomes the push it was really doing, and the drift is set on the block.
+   */
+  'pan-left': 'push-in',
+  'pan-right': 'push-in',
+  'pan-up': 'push-in',
+  'pan-down': 'push-in',
+  pan: 'push-in',
+  'push-in-left': 'push-in'
+};
+
 export function pictureEffectById(id: string | undefined | null): PictureEffect | null {
-  return PICTURE_EFFECTS.find((effect) => effect.id === id) ?? null;
+  if (!id) return null;
+  const current = RENAMED[id] ?? id;
+  return PICTURE_EFFECTS.find((effect) => effect.id === current) ?? null;
 }
 
 /**
@@ -118,6 +146,10 @@ export function clipWideEffect(config: {
 function gateFor(effect: PictureEffect, placed: PlacedEffect, ctx: PictureEffectContext) {
   const windowed = placed.start != null || placed.end != null;
 
+  // Something that moves does its own clamping and must never be switched off
+  // partway: see `selfTimed`.
+  if (effect.selfTimed) return null;
+
   /*
    * A block is its own answer to "when".
    *
@@ -155,12 +187,25 @@ function gateFor(effect: PictureEffect, placed: PlacedEffect, ctx: PictureEffect
  * editor cannot show is better absent than wrong, and the full render is where
  * the truth is either way.
  */
+/**
+ * Where a placement runs, with the unsaid halves filled in.
+ *
+ * An effect with no window is the whole clip — that is what "no window" has
+ * always meant to `gateFor`, which simply omits the gate. Stating it as a pair
+ * of numbers here means an effect that moves can treat both cases the same
+ * instead of every such effect re-deciding what absent means.
+ */
+function windowOf(placed: PlacedEffect, duration: number): { start: number; end: number } {
+  return { start: placed.start ?? 0, end: placed.end ?? Math.max(duration, placed.start ?? 0) };
+}
+
 export function pictureCss(
   config: { effects?: PlacedEffect[]; pictureEffect?: AppliedEffect | null },
-  frame: { width: number; height: number; fps: number },
+  frame: { width: number; height: number; fps: number; duration: number },
   at: number
-): { filter: string; svg: PictureSvg[]; overlay: PictureOverlay[] } {
+): { filter: string; transform: string; svg: PictureSvg[]; overlay: PictureOverlay[] } {
   const filters: string[] = [];
+  const transforms: string[] = [];
   const svg: PictureSvg[] = [];
   const overlay: PictureOverlay[] = [];
 
@@ -177,13 +222,20 @@ export function pictureCss(
      * — the dropout uses it to stop consulting its own schedule.
      */
     const windowed = placed.start != null || placed.end != null;
-    const drawn = effect.css({ params: effectParams(effect, placed), ...frame, at, windowed });
+    const drawn = effect.css({
+      params: effectParams(effect, placed),
+      ...frame,
+      window: windowOf(placed, frame.duration),
+      at,
+      windowed
+    });
     if (drawn.filter) filters.push(drawn.filter);
+    if (drawn.transform) transforms.push(drawn.transform);
     if (drawn.svg) svg.push(drawn.svg);
     if (drawn.overlay) overlay.push(...drawn.overlay);
   }
 
-  return { filter: filters.join(' '), svg, overlay };
+  return { filter: filters.join(' '), transform: transforms.join(' '), svg, overlay };
 }
 
 /**
@@ -204,7 +256,7 @@ export function pictureCss(
  */
 export function pictureGraph(
   config: { effects?: PlacedEffect[]; pictureEffect?: AppliedEffect | null },
-  frame: { width: number; height: number; fps: number },
+  frame: { width: number; height: number; fps: number; duration: number },
   input: string,
   output: string
 ): string[] {
@@ -215,7 +267,11 @@ export function pictureGraph(
     const effect = pictureEffectById(placed.id);
     if (!effect) return;
 
-    const ctx = { params: effectParams(effect, placed), ...frame };
+    const ctx = {
+      params: effectParams(effect, placed),
+      ...frame,
+      window: windowOf(placed, frame.duration)
+    };
     const gate = gateFor(effect, placed, ctx);
     const id = `fx${index}`;
 
@@ -281,7 +337,7 @@ export function pictureGraph(
 /** The filters a clip's effects contribute, in order. Empty for none. */
 export function pictureFilters(
   config: { effects?: PlacedEffect[]; pictureEffect?: AppliedEffect | null },
-  frame: { width: number; height: number; fps: number },
+  frame: { width: number; height: number; fps: number; duration: number },
   options: { stillOnly?: boolean } = {}
 ): string[] {
   const filters: string[] = [];
@@ -296,7 +352,11 @@ export function pictureFilters(
      */
     if (options.stillOnly && (!effect.stillSafe || placed.start != null)) continue;
 
-    const ctx = { params: effectParams(effect, placed), ...frame };
+    const ctx = {
+      params: effectParams(effect, placed),
+      ...frame,
+      window: windowOf(placed, frame.duration)
+    };
     const gate = options.stillOnly ? null : gateFor(effect, placed, ctx);
     /*
      * Quoted, not escaped: single quotes protect the commas inside the

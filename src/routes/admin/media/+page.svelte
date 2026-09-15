@@ -21,7 +21,11 @@
     ACCEPT_IMAGE,
     ACCEPT_VIDEO,
     ACCEPT_AUDIO,
-    ACCEPT_DOCUMENT
+    ACCEPT_DOCUMENT,
+    MAX_IMAGE_SIZE,
+    MAX_AUDIO_SIZE,
+    MAX_VIDEO_SIZE,
+    asMegabytes
   } from '$lib/utils/upload';
   import { page } from '$app/state';
   import { PhoneUploadDialog } from '$lib/components/dialogs';
@@ -153,11 +157,9 @@
     input.value = '';
   }
 
-  // Images are buffered server-side and stay small; video and audio stream to
-  // disk, so they get larger ceilings. All are enforced on the server too.
-  const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
-  const MAX_AUDIO_SIZE = 100 * 1024 * 1024;
-  const MAX_VIDEO_SIZE = 500 * 1024 * 1024;
+  // Refused here so an oversized file isn't uploaded for a minute before being
+  // rejected — and again on the server, because the browser isn't trusted. The
+  // numbers come from one place so the two can't disagree.
 
   async function uploadFile(file: File) {
     const limit = isVideoFile(file)
@@ -166,7 +168,7 @@
         ? MAX_AUDIO_SIZE
         : MAX_IMAGE_SIZE;
     if (file.size > limit) {
-      toast.error(`File "${file.name}" is too large. Max ${limit / 1024 / 1024}MB.`);
+      toast.error(`File "${file.name}" is too large. Max ${asMegabytes(limit)}MB.`);
       return;
     }
 

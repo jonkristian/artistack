@@ -206,6 +206,14 @@ export interface PictureOverlay {
 export interface PictureCss {
   /** Unitless CSS filter functions — saturate, contrast, brightness. */
   filter?: string;
+  /**
+   * A transform on the picture itself — `scale(1.1) translate(-2%, 0)`.
+   *
+   * Separate from `filter` because it moves the frame rather than recolouring
+   * it, and because the two compose independently: a push-in under a grade is
+   * one of each, not one string doing both.
+   */
+  transform?: string;
   svg?: PictureSvg;
   overlay?: PictureOverlay[];
 }
@@ -242,6 +250,20 @@ export interface PictureEffectContext {
   width: number;
   height: number;
   fps: number;
+  /**
+   * When this placement runs, in clip seconds.
+   *
+   * Most effects never read it: a grade is the same in every frame it touches,
+   * and `enable=` already decides which frames those are. Anything that *moves*
+   * needs more than being switched on — it has to know how far through itself
+   * it is, and `t` alone cannot say, because `t` is the clip's clock rather
+   * than the effect's.
+   *
+   * Always resolved, never null: an effect placed with no window covers the
+   * whole clip, so the caller fills in `0` and the clip's length rather than
+   * leaving every effect to work out what absent means.
+   */
+  window: { start: number; end: number };
 }
 
 /**
@@ -280,6 +302,20 @@ export interface PictureEffect {
    * `span` when unsaid, because most looks are.
    */
   shape?: 'burst' | 'span';
+  /**
+   * The effect times itself, so no `enable` gate is put around it.
+   *
+   * `enable` switches a filter off outside its window, which is right for
+   * everything that is a *state* — a grade, a tape look, a tear. It is wrong
+   * for anything that is a *journey*: gated, a move snapped back to where it
+   * started the instant its window ended, because the filter simply stopped
+   * being applied. What you saw was a pan across a chorus followed by a jump.
+   *
+   * An effect claiming this reads `window` itself and clamps — so before its
+   * start it draws the opening framing, after its end it holds the closing
+   * one, and there is no edge to see.
+   */
+  selfTimed?: boolean;
   /**
    * How long a new block of it should be, in seconds.
    *

@@ -12,6 +12,10 @@
 - Intro, watermark and outro each carry their own graphic, as three buttons outside Customise
 - The strip carries a column of icons naming each lane, and the overview along the bottom shows effects too
 - Renders, stray files and cached previews that nothing points at are cleared at startup and once a night
+- Stills go on the timeline like any other shot. Drag the edge to change how long one is held
+- Each shot decides how it fills the frame, how far in it sits, and whether it drifts slowly across what falls outside
+- Moves on the effects lane: push in and pull out, over a whole clip or a moment of it
+- The footage lane is called Picture, since a photograph isn't footage
 - Stats count visitors, not just hits. A day-scoped code, salted and thrown away nightly, tells a returning reader from a new one without a cookie and without keeping anything that identifies anyone
 - Page views keep a device class instead of the full browser string, which was a fingerprint kept per visit. Existing rows were converted before it was dropped
 - Visit records are kept 90 days, then reduced to daily totals. Nothing was ever deleted before
@@ -34,6 +38,12 @@
 - Fixed: the trend arrow pointed the wrong way. The previous period included the current one, so a rise was reported as a fall
 - Fixed: every link click charted on the same day in 1970, so the clicks-per-day graph has never shown anything
 - Fixed: press kit downloads and other files counted as page views, depending on whether the extension happened to be on a list
+- Fixed: clips whose shots ran back to back failed to render at all — the join was handed paths it couldn't resolve
+- Fixed: saving a file while a render was running deleted that render's working files, which is why cancelling and starting again worked
+- Fixed: a clip could come out longer than its blocks said, because the loudness pass leaves a tail of audio behind the picture
+- Fixed: the render bar could go backwards, and gave a six-second shot the same share as a one-second one
+- Fixed: an effect's dials were squeezed into two columns that didn't fit, so 'Amount' read as 'A…'
+- Fixed: a bed always played from the start of the song when you pressed play, whatever its rail was set to
 
 # 1.6.0 (11-09-2026)
 

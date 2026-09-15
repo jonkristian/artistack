@@ -18,6 +18,8 @@ import {
   settings,
   taggings,
   DEFAULT_CLIP_CONFIG,
+  DEFAULT_STILL_SECONDS,
+  isImage,
   type ClipRenderConfig
 } from '$lib/server/schema';
 import { CLIP_ROTATIONS } from '$lib/clips/types';
@@ -497,12 +499,30 @@ export const placeSource = command(
       return Math.max(furthest, (row.start ?? 0) + length / speed);
     }, 0);
 
+    /*
+     * A still is placed with a window; footage is placed without one.
+     *
+     * Everything else on the lane gets its length from the file it points at,
+     * and a picture has no length to get — so the window that means "which part
+     * of this" for footage means "how long to hold it" here. Written at
+     * placement rather than left null so the block has a size the moment it
+     * lands, and so dragging its edge is the same gesture as trimming a shot.
+     */
+    const [item] = await db
+      .select({ mimeType: media.mimeType })
+      .from(media)
+      .where(eq(media.id, mediaId))
+      .limit(1);
+    const held = item && isImage(item);
+
     const [created] = await db
       .insert(clipSources)
       .values({
         projectId,
         mediaId,
         start: Math.round(end * 100) / 100,
+        trimStart: held ? 0 : null,
+        trimEnd: held ? DEFAULT_STILL_SECONDS : null,
         position: existing.reduce((max, s) => Math.max(max, s.position ?? 0), 0) + 1
       })
       .returning();
@@ -614,7 +634,13 @@ export const updateSource = command(
     start: v.optional(v.pipe(v.number(), v.minValue(0))),
     lane: v.optional(v.pipe(v.number(), v.minValue(0))),
     // Right angles only — this straightens footage, it doesn't tilt it.
-    rotation: v.optional(v.picklist([...CLIP_ROTATIONS]))
+    rotation: v.optional(v.picklist([...CLIP_ROTATIONS])),
+    // How this one fills the frame; null hands the decision back to the clip.
+    fit: v.optional(v.nullable(v.picklist(['crop', 'black', 'blur']))),
+    // How far into the picture the shot sits, on top of the fill.
+    zoom: v.optional(v.pipe(v.number(), v.minValue(1), v.maxValue(3))),
+    // Drift slowly across whatever the fill crops away.
+    pan: v.optional(v.boolean())
   }),
   async ({ id, ...fields }) => {
     await requireUser();

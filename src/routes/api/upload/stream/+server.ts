@@ -18,14 +18,15 @@ import {
 } from '$lib/server/ffmpeg';
 import type { RequestHandler } from './$types';
 import { UPLOAD_DIR, THUMBNAIL_SIZE } from '$lib/server/paths';
+import { MAX_VIDEO_SIZE, MAX_AUDIO_SIZE, MAX_STREAMED_SIZE } from '$lib/utils/upload';
 
 // These are streamed straight to disk rather than buffered, so the caps are
 // about keeping the library sane, not about memory pressure.
 const MAX_SIZE: Record<DetectedType['kind'], number> = {
-  video: 500 * 1024 * 1024,
-  audio: 100 * 1024 * 1024
+  video: MAX_VIDEO_SIZE,
+  audio: MAX_AUDIO_SIZE
 };
-const MAX_ANY_SIZE = Math.max(...Object.values(MAX_SIZE));
+const MAX_ANY_SIZE = MAX_STREAMED_SIZE;
 
 const ACCEPTED = 'MP4, MOV, WebM, WAV, MP3, M4A, FLAC, OGG';
 

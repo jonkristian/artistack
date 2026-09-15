@@ -14,7 +14,8 @@ import {
   settings,
   DEFAULT_CLIP_CONFIG,
   type ClipRenderConfig,
-  type TimedCaption
+  type TimedCaption,
+  isImage
 } from './schema';
 import { renderClip, type ClipSourceInput, type ClipAudioInput } from './clip-render';
 import { stageGraphicId, type BrandStage } from '$lib/clips/types';
@@ -327,7 +328,11 @@ async function buildRenderInput(projectId: number, proof = false) {
       fadeIn: row.fadeIn,
       fadeOut: row.fadeOut,
       start: row.start ?? 0,
-      lane: row.lane ?? 0
+      lane: row.lane ?? 0,
+      still: isImage(item),
+      fit: (row.fit as ClipSourceInput['fit']) ?? null,
+      zoom: row.zoom ?? 1,
+      pan: row.pan ?? false
     };
   });
 

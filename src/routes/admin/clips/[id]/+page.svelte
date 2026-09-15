@@ -487,14 +487,38 @@
         : config.aspect === '16:9'
           ? { width: 1920, height: 1080 }
           : { width: 1080, height: 1920 };
-    const drawn = pictureCss(config, { ...frame, fps: advanced.fps }, previewAt);
+    const drawn = pictureCss(
+      config,
+      { ...frame, fps: advanced.fps, duration: layout.duration },
+      previewAt
+    );
     const refs = drawn.svg.map((_, index) => `url(#footage-look-${index})`).join(' ');
     return {
       filter: [drawn.filter, refs].filter(Boolean).join(' '),
+      /*
+       * A move is a transform on the picture, not a filter over it, so it is
+       * carried separately and applied as one — the same bargain the captions
+       * and the grade already make: shown live in the browser rather than
+       * charged as a render every time the dial moves.
+       */
+      transform: drawn.transform,
       svg: drawn.svg,
       overlay: drawn.overlay
     };
   });
+
+  /**
+   * The look as one inline style.
+   *
+   * Three players show it — a proof, a lone source, a borrowed shot — and each
+   * had its own ternary. A move needed a second property in all three, which is
+   * three chances to add it twice and once not at all.
+   */
+  const lookStyle = $derived(
+    [look.filter && `filter: ${look.filter}`, look.transform && `transform: ${look.transform}`]
+      .filter(Boolean)
+      .join('; ') || undefined
+  );
 
   /**
    * How long the opening logo stays up, worked out the way the renderer does.
@@ -657,7 +681,11 @@
         speed,
         muted: source?.muted ?? false,
         fadeIn: source?.fadeIn ?? false,
-        fadeOut: source?.fadeOut ?? false
+        fadeOut: source?.fadeOut ?? false,
+        still: Boolean(item?.mimeType?.startsWith('image/')),
+        fit: (source?.fit as 'crop' | 'black' | 'blur' | null) ?? null,
+        zoom: source?.zoom ?? 1,
+        pan: source?.pan ?? false
       };
     })
   );
@@ -1031,11 +1059,20 @@
   async function handleAddMedia(ids: number[]) {
     if (!selected || ids.length === 0) return;
 
+    /*
+     * Footage, music and stills. A picture held for a few seconds is a shot
+     * like any other, so it goes in the pool beside the video rather than
+     * being dropped on the way in — which is what happened when this list was
+     * video and audio only, silently and with a success message.
+     */
     const picked = ids
       .map((id) => data.media.find((m) => m.id === id))
-      .filter(
-        (m): m is (typeof data.media)[number] =>
-          Boolean(m?.mimeType?.startsWith('video/')) || Boolean(m?.mimeType?.startsWith('audio/'))
+      .filter((m): m is (typeof data.media)[number] =>
+        Boolean(
+          m?.mimeType?.startsWith('video/') ||
+          m?.mimeType?.startsWith('audio/') ||
+          m?.mimeType?.startsWith('image/')
+        )
       );
     if (picked.length === 0) return;
 
@@ -1550,7 +1587,7 @@
 
         {#if pool.length === 0}
           <p class="text-sm text-gray-500">
-            Nothing yet. Add footage or music, then place it on the timeline.
+            Nothing yet. Add footage, stills or music, then place it on the timeline.
           </p>
         {:else}
           <!-- Tiles, not rows.
@@ -1566,6 +1603,7 @@
             {#each pool as entry (entry.id)}
               {@const item = mediaById.get(entry.mediaId)}
               {@const isAudio = Boolean(item?.mimeType?.startsWith('audio/'))}
+              {@const isStill = Boolean(item?.mimeType?.startsWith('image/'))}
               {@const uses = isAudio
                 ? tracks.filter((t) => t.mediaId === entry.mediaId).length
                 : sources.filter((source) => source.mediaId === entry.mediaId).length}
@@ -1573,8 +1611,12 @@
                 class="group overflow-hidden rounded-lg bg-gray-800/50 transition-colors hover:bg-gray-800"
               >
                 <div class="relative aspect-[4/3] bg-gray-950">
-                  {#if item?.thumbnailUrl}
-                    <img src={item.thumbnailUrl} alt="" class="h-full w-full object-cover" />
+                  {#if item?.thumbnailUrl || (isStill && item?.url)}
+                    <img
+                      src={item.thumbnailUrl ?? item.url}
+                      alt=""
+                      class="h-full w-full object-cover"
+                    />
                   {:else}
                     <div class="flex h-full w-full items-center justify-center">
                       <svg
@@ -1610,7 +1652,9 @@
                 </p>
                 <div class="flex items-center gap-0.5 px-1 pb-1">
                   <span class="min-w-0 flex-1 truncate pl-1 text-[10px] text-gray-500">
-                    {formatDuration(item?.durationMs)}
+                    <!-- A still has no running time of its own; how long it is
+                         held is a property of where it sits on the strip. -->
+                    {isStill ? 'Still' : formatDuration(item?.durationMs)}
                   </span>
                   {#if !isAudio}
                     {@render rowButton(
@@ -2331,15 +2375,27 @@
       {@const quarter = turn === 90 || turn === 270}
       {#key `${borrowed.item.id}#${from}`}
         <div class="flex w-full items-center justify-center overflow-hidden rounded-lg bg-black">
-          <!-- svelte-ignore a11y_media_has_caption -->
-          <video
-            bind:this={sourceVideo}
-            src="{borrowed.item.previewUrl ?? borrowed.item.url}#t={from}"
-            controls
-            preload="metadata"
-            class="max-h-[60vh] {quarter ? 'max-w-[60vh]' : 'w-full'}"
-            style="transform: rotate({turn}deg)"
-          ></video>
+          {#if borrowed.item.mimeType?.startsWith('image/')}
+            <!-- A still has nothing to scrub. Its block on the strip is where
+                 its length lives, so this is the picture and nothing else —
+                 no transport bar promising a playhead that cannot move. -->
+            <img
+              src={borrowed.item.url}
+              alt={borrowed.item.alt ?? borrowed.item.filename ?? ''}
+              class="max-h-[60vh] {quarter ? 'max-w-[60vh]' : 'w-full'} object-contain"
+              style="transform: rotate({turn}deg)"
+            />
+          {:else}
+            <!-- svelte-ignore a11y_media_has_caption -->
+            <video
+              bind:this={sourceVideo}
+              src="{borrowed.item.previewUrl ?? borrowed.item.url}#t={from}"
+              controls
+              preload="metadata"
+              class="max-h-[60vh] {quarter ? 'max-w-[60vh]' : 'w-full'}"
+              style="transform: rotate({turn}deg)"
+            ></video>
+          {/if}
         </div>
       {/key}
     {:else if shownMedia}
@@ -2347,7 +2403,14 @@
            retyping a line lands on the picture instead of costing a render. A
            full render has them burned in already, and drawing them twice would
            be worse than not drawing them at all. -->
-      <div class="relative">
+      <!-- `overflow-hidden`, because a move is a transform on the video and a
+           transform is not clipped by its parent unless the parent says so.
+           Without it a push-in grew the picture out over the captions, the
+           transport and the page — which read as the pan being broken rather
+           than as the box being open. The overlays stay outside the transform
+           on purpose: the render burns captions in after the look, so they do
+           not travel with the picture there either. -->
+      <div class="relative overflow-hidden rounded-lg">
         <!-- svelte-ignore a11y_media_has_caption -->
         <!-- Whatever is newest: the proof when there is one, the render
              otherwise. It played `outputMedia` regardless, so a fresh quick
@@ -2371,7 +2434,7 @@
           onpause={() => (previewPlaying = false)}
           onended={() => (previewPlaying = false)}
           class="w-full rounded-lg bg-black"
-          style={showingProof && look.filter ? `filter: ${look.filter}` : undefined}
+          style={showingProof ? lookStyle : undefined}
         ></video>
         {#if showingProof}
           <FootageLook svg={look.svg} overlay={look.overlay} />
@@ -2403,22 +2466,33 @@
            it is, with the captions and the look drawn over it exactly as they
            are drawn over a proof. -->
       {#key standIn.item.id}
-        <div class="relative">
-          <!-- svelte-ignore a11y_media_has_caption -->
-          <video
-            bind:this={previewVideo}
-            src="{standIn.url}#t={standIn.row.trimStart ?? 0}{standIn.row.trimEnd
-              ? `,${standIn.row.trimEnd}`
-              : ''}"
-            controls
-            ontimeupdate={(e) => (previewAt = (e.currentTarget as HTMLVideoElement).currentTime)}
-            onseeked={(e) => (previewAt = (e.currentTarget as HTMLVideoElement).currentTime)}
-            onplay={() => (previewPlaying = true)}
-            onpause={() => (previewPlaying = false)}
-            onended={() => (previewPlaying = false)}
-            class="w-full rounded-lg bg-black"
-            style={look.filter ? `filter: ${look.filter}` : undefined}
-          ></video>
+        <div class="relative overflow-hidden rounded-lg">
+          {#if standIn.item.mimeType?.startsWith('image/')}
+            <!-- The same stand-in for a still: the picture, with the look and
+                 the captions drawn over it exactly as they are over a proof. -->
+            <img
+              src={standIn.item.url}
+              alt={standIn.item.alt ?? standIn.item.filename ?? ''}
+              class="w-full rounded-lg bg-black object-contain"
+              style={lookStyle}
+            />
+          {:else}
+            <!-- svelte-ignore a11y_media_has_caption -->
+            <video
+              bind:this={previewVideo}
+              src="{standIn.url}#t={standIn.row.trimStart ?? 0}{standIn.row.trimEnd
+                ? `,${standIn.row.trimEnd}`
+                : ''}"
+              controls
+              ontimeupdate={(e) => (previewAt = (e.currentTarget as HTMLVideoElement).currentTime)}
+              onseeked={(e) => (previewAt = (e.currentTarget as HTMLVideoElement).currentTime)}
+              onplay={() => (previewPlaying = true)}
+              onpause={() => (previewPlaying = false)}
+              onended={() => (previewPlaying = false)}
+              class="w-full rounded-lg bg-black"
+              style={lookStyle}
+            ></video>
+          {/if}
           <FootageLook svg={look.svg} overlay={look.overlay} />
           <ClipOverlay
             {captions}
@@ -2458,12 +2532,23 @@
            the element that does — kept out of sight, because a second scrubber
            under the render would only invite you to line the bed up against the
            wrong picture. -->
-      <audio
-        bind:this={bedAudio}
-        src={mediaById.get(selectedTrack.mediaId)?.url ?? undefined}
-        preload="metadata"
-        class="hidden"
-      ></audio>
+      <!-- Cued to where the bed actually comes in, the way the source player
+           above is cued to a shot's in-point.
+           The rail under a bed says which part of the song is used, and this
+           element ignored it — so moving the rail and pressing play started at
+           0:00 every time, which reads as the rail doing nothing. The render
+           had it right all along; only the way you check it was wrong.
+           Keyed on the cue point as well as the file, because a media element
+           already holding a song does not re-seek when its `src` fragment
+           changes — it has to be built again. -->
+      {#key `${selectedTrack.mediaId}#${selectedTrack.seek ?? 0}`}
+        <audio
+          bind:this={bedAudio}
+          src="{mediaById.get(selectedTrack.mediaId)?.url ?? ''}#t={selectedTrack.seek ?? 0}"
+          preload="metadata"
+          class="hidden"
+        ></audio>
+      {/key}
     {/if}
 
     <!-- Render, on its own directly under the preview: it acts on the video
@@ -2799,7 +2884,16 @@
           const source = sources.find((s) => s.id === id);
           if (!source) return;
 
-          const length = (mediaById.get(source.mediaId)?.durationMs ?? 0) / 1000;
+          const item = mediaById.get(source.mediaId);
+          const length = (item?.durationMs ?? 0) / 1000;
+          /*
+           * A still has no file length to be bounded by. Everywhere else here
+           * clamps against the footage that exists, and a picture reports none
+           * — so the same arithmetic pinned every edge to zero and the save
+           * bailed before it was written. Held pictures are bounded by the
+           * clip instead, which is to say by nothing this handler knows about.
+           */
+          const held = Boolean(item?.mimeType?.startsWith('image/'));
 
           /*
            * Slipped: the window moves through the footage, the block doesn't
@@ -2807,6 +2901,8 @@
            * what keeps the length — and so the placement — identical.
            */
           if (changes.slip !== undefined) {
+            // Nothing to slip through on a still; the same frame either way.
+            if (held) return;
             const from = (source.trimStart ?? 0) + changes.slip;
             const to = (source.trimEnd ?? length) + changes.slip;
             if (from < -0.01 || to > length + 0.01) return;
@@ -2841,7 +2937,8 @@
            * "use the whole file".
            */
           const from = Math.max(0, (source.trimStart ?? 0) + head * speed);
-          const to = Math.min(length, (source.trimEnd ?? length) + tail * speed);
+          const grown = (source.trimEnd ?? length) + tail * speed;
+          const to = held ? grown : Math.min(length, grown);
           if (to - from < 0.1) return;
 
           await autosave.run('the trim', () =>
@@ -2864,6 +2961,14 @@
           await invalidateAll();
         }}
         video={borrowed ? undefined : previewVideo}
+        onfit={async (id, fit) => {
+          await autosave.run('the framing', () => updateSource({ id, fit }));
+          await invalidateAll();
+        }}
+        onframing={async (id, patch) => {
+          await autosave.run('the framing', () => updateSource({ id, ...patch }));
+          await invalidateAll();
+        }}
         onscrubsource={(kind, id, seconds) => {
           // Only the one that's actually on screen. Everything else is
           // playing somewhere this page can't see.
@@ -2902,7 +3007,7 @@
 
 {#if mediaPickerOpen}
   <MediaPicker
-    label="Add footage or music"
+    label="Add footage, stills or music"
     media={data.media}
     kind="all"
     noCrop

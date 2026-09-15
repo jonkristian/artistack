@@ -1,8 +1,9 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { mkdtemp, mkdir, rm, readdir, writeFile } from 'fs/promises';
-import { join } from 'path';
+import { mkdtemp, mkdir, rm, readdir, writeFile, stat } from 'fs/promises';
+import { join, basename } from 'path';
 import { runFfmpeg, probeVideo, probeDuration, rasterizeSvg, hasBinary } from './ffmpeg';
+import { DEFAULT_STILL_SECONDS } from './schema';
 import { DATA_DIR } from './paths';
 import {
   captionAnchors,
@@ -13,6 +14,7 @@ import {
   DEFAULT_ADVANCED_CONFIG,
   type ClipRenderConfig,
   type ClipAdvancedConfig,
+  type ClipFill,
   type ClipAudioTrack,
   type TimedCaption,
   type ClipAspect
@@ -65,13 +67,38 @@ async function stagingDir(): Promise<string> {
  * Called at startup, alongside the sweep that fails the jobs those renders
  * belonged to.
  */
+/**
+ * Long enough that nothing still being written is ever inside it.
+ *
+ * This used to take every `clip-*` directory it found, on the reasoning that it
+ * only runs at startup and nothing can be rendering yet. That is true of
+ * production and false of development, where Vite re-evaluates server modules
+ * on save and `hooks.server.ts` calls `initScheduler` at the top level — so
+ * saving a file during a render deleted that render's working directory out
+ * from under it. What you saw was ffprobe failing on a part that existed a
+ * moment earlier, and a retry working because nothing was saved that time.
+ *
+ * An hour is far longer than any render and far shorter than anything worth
+ * keeping. It is the same reasoning, and the same number, as the clip sweep.
+ */
+const STAGING_GRACE_MS = 60 * 60 * 1000;
+
 export async function clearAbandonedStaging(): Promise<number> {
   const entries = await readdir(STAGING_ROOT, { withFileTypes: true }).catch(() => []);
   let cleared = 0;
 
   for (const entry of entries) {
     if (!entry.isDirectory() || !entry.name.startsWith('clip-')) continue;
-    await rm(join(STAGING_ROOT, entry.name), { recursive: true, force: true }).catch(() => {});
+
+    const path = join(STAGING_ROOT, entry.name);
+    // Untouched for an hour, or leave it alone: a render in flight is writing
+    // into one of these right now.
+    const touched = await stat(path)
+      .then((info) => Math.max(info.mtimeMs, info.ctimeMs))
+      .catch(() => 0);
+    if (touched && Date.now() - touched < STAGING_GRACE_MS) continue;
+
+    await rm(path, { recursive: true, force: true }).catch(() => {});
     cleared += 1;
   }
 
@@ -136,7 +163,13 @@ export function previewFilters(
   filters.push(
     ...pictureFilters(
       config,
-      { ...(DIMENSIONS[config.aspect ?? '9:16'] ?? DIMENSIONS['9:16']), fps: adv.fps },
+      {
+        ...(DIMENSIONS[config.aspect ?? '9:16'] ?? DIMENSIONS['9:16']),
+        fps: adv.fps,
+        // A swatch is one frame; nothing that moves survives `stillOnly`, so
+        // the length it would have moved over is never consulted.
+        duration: 0
+      },
       { stillOnly: true }
     )
   );
@@ -174,6 +207,28 @@ export interface ClipSourceInput {
   /** Fade this shot up from, and down to, whatever is underneath it. */
   fadeIn?: boolean | null;
   fadeOut?: boolean | null;
+  /**
+   * A still rather than footage.
+   *
+   * Told rather than sniffed, because the caller has the media row and the
+   * renderer only has a path. Everything downstream is unaffected: a still is
+   * turned into a part of the right length here, and by the time the composite
+   * runs it is an mp4 like any other.
+   */
+  still?: boolean | null;
+  /**
+   * How this shot fills the frame; null inherits the clip's own setting.
+   *
+   * A property of the placement rather than of the clip, because two shots in
+   * one edit can want different answers — and a still beside footage almost
+   * always does. A portrait photo wants cropping to fill; a landscape one
+   * cropped to 9:16 loses most of itself and wants the blurred surround.
+   */
+  fit?: ClipFill | null;
+  /** How far into the picture this shot sits, on top of the fill. 1 is as-is. */
+  zoom?: number | null;
+  /** Drift slowly across whatever the fill crops away. */
+  pan?: boolean | null;
 }
 
 export interface RenderInput {
@@ -454,6 +509,48 @@ function rotateFilter(rotation: number | null | undefined): string {
   }
 }
 
+/**
+ * How fast a drift crosses the frame, as a share of its width per second.
+ *
+ * Small on purpose. The point is that you notice the shot is alive without
+ * ever catching it moving.
+ *
+ * One per cent a second: a four-second still travels a twenty-fifth of the
+ * frame, a twenty-second hold about a fifth of it. Three per cent was the first
+ * guess and read as a camera move rather than as breathing — slow enough to be
+ * smooth, fast enough to watch, which is the wrong side of the line.
+ *
+ * A rate rather than a distance, so a long hold drifts further than a short one
+ * instead of covering the same ground more slowly. At 1080 wide this is about a
+ * third of a pixel per frame, which is why the drift is cropped at twice the
+ * size — see the note where that happens.
+ */
+const DRIFT_PER_SECOND = 0.01;
+
+/**
+ * Where a drifting window sits at each end of a shot, 0 to 1 across the room
+ * available to it.
+ *
+ * Returns null when there is nowhere to go: a picture the same shape as the
+ * frame has no overflow, and a drift with no room would be a scale change
+ * nobody asked for. The axis is chosen rather than offered — it is whichever
+ * one the material actually has room on.
+ */
+function driftWindow(
+  room: { x: number; y: number },
+  width: number,
+  seconds: number
+): { axis: 'x' | 'y'; from: number; to: number } | null {
+  const axis = room.x >= room.y ? 'x' : 'y';
+  const available = axis === 'x' ? room.x : room.y;
+  if (available < 2) return null;
+
+  // Never further than there is room for, and never faster than the rate.
+  const travel = Math.min(available, DRIFT_PER_SECOND * seconds * width);
+  const half = travel / available / 2;
+  return { axis, from: 0.5 - half, to: 0.5 + half };
+}
+
 function buildFill(
   fill: string,
   width: number,
@@ -461,7 +558,9 @@ function buildFill(
   adv: ClipAdvancedConfig,
   rotation?: number | null,
   /** The footage's displayed size, so a fill that would be invisible is skipped. */
-  source?: { width: number; height: number }
+  source?: { width: number; height: number },
+  /** This shot's own framing: how far in it sits, and whether it drifts. */
+  framing?: { zoom: number; pan: boolean; seconds: number }
 ): string {
   const head = `[0:v]fps=${adv.fps},setpts=PTS-STARTPTS${rotateFilter(rotation)}`;
 
@@ -499,9 +598,71 @@ function buildFill(
    * render, faster.
    */
   if (fill === 'crop' || fills) {
+    /*
+     * Cover, and the only place a drift can happen.
+     *
+     * This scale makes the picture bigger than the frame and the crop throws
+     * the rest away — so this is the one moment the material outside the frame
+     * still exists. An effect on the lane runs long after it is gone, which is
+     * why panning is a property of the shot and not something the lane can
+     * offer.
+     *
+     * The scale is fixed for the whole shot, so `crop` may read `iw`/`ih` here:
+     * it evaluates them once, which is correct precisely because they do not
+     * change. (A zoom that moved over time could not use them — see the moves
+     * pack, which writes its own sizes out for that reason.)
+     */
+    const zoom = Math.max(1, framing?.zoom ?? 1);
+
+    /*
+     * A drift is done at twice the size and scaled back down.
+     *
+     * `crop` takes whole pixels, so a slow move advances two and then none —
+     * which is what a drift *is*, slow, so it is exactly the case that shows
+     * it. Doing the crop on a picture twice as large makes each of those steps
+     * half an output pixel, and the scale down turns the remainder into
+     * interpolation instead of a jump. It is the standard answer to the same
+     * problem in `zoompan`, where the usual advice is to feed it an
+     * 8000-wide intermediate for a 1920 output.
+     *
+     * Two rather than four. Four is smoother again and costs several times the
+     * render, and past two there is nothing left to gain on a picture that
+     * isn't enormous to begin with — the crop arithmetic improves, the detail
+     * does not. Only paid when something actually drifts.
+     */
+    const drifting = Boolean(framing?.pan);
+    const over = drifting ? 2 : 1;
+    const zoomed = `scale=${Math.round(width * zoom * over)}:${Math.round(height * zoom * over)}`;
+    const cw = width * over;
+    const ch = height * over;
+
+    let x = '(iw-ow)/2';
+    let y = '(ih-oh)/2';
+
+    if (framing?.pan && source && source.width > 0 && source.height > 0) {
+      const quarter = Math.abs((((rotation ?? 0) % 360) + 360) % 360) % 180 === 90;
+      const sw = quarter ? source.height : source.width;
+      const sh = quarter ? source.width : source.height;
+      // What `force_original_aspect_ratio=increase` will settle on.
+      const factor = Math.max((width * zoom) / sw, (height * zoom) / sh);
+      const room = { x: sw * factor - width, y: sh * factor - height };
+      const drift = driftWindow(room, width, framing.seconds);
+
+      if (drift) {
+        const span = Math.max(0.05, framing.seconds);
+        const p = `clip(t/${span.toFixed(3)},0,1)`;
+        const at = `(${drift.from.toFixed(4)}+${(drift.to - drift.from).toFixed(4)}*${p})`;
+        if (drift.axis === 'x') x = `(iw-ow)*${at}`;
+        else y = `(ih-oh)*${at}`;
+      }
+    }
+
+    // Back to the frame after the crop, which is where the half-pixels become
+    // interpolation. A no-op when nothing is drifting and `over` is 1.
+    const down = over > 1 ? `,scale=${width}:${height}` : '';
     return (
-      `${head},scale=${width}:${height}:force_original_aspect_ratio=increase` +
-      `:force_divisible_by=2,crop=${width}:${height},setsar=1[filled]`
+      `${head},${zoomed}:force_original_aspect_ratio=increase` +
+      `:force_divisible_by=2,crop=${cw}:${ch}:'${x}':'${y}'${down},setsar=1[filled]`
     );
   }
 
@@ -789,10 +950,50 @@ async function renderPart(
   // the clip's own clock, and in here every shot starts again at zero.
 
   const chain = effects.length ? effects.join(',') : 'null';
-  // Read here rather than further down, because the fill wants to know whether
-  // the footage already covers the frame before it decides to build one.
-  const probe = await probeVideo(source.path);
-  const fill = buildFill(config.fill, width, height, adv, source.rotation, probe);
+  const still = Boolean(source.still);
+  /*
+   * How long the still is held, which is the whole of its length.
+   *
+   * Footage has a duration in the file and a trim window cut out of it; a
+   * picture has neither, so the window *is* the length rather than a selection
+   * from one. `placeSource` therefore always writes a window for a still, and
+   * this is the one place that would otherwise divide by nothing.
+   */
+  const stillSeconds =
+    source.trimStart != null && source.trimEnd != null
+      ? Math.max(0.1, source.trimEnd - source.trimStart)
+      : DEFAULT_STILL_SECONDS;
+
+  /*
+   * Read here rather than further down, because the fill wants to know whether
+   * the footage already covers the frame before it decides to build one.
+   *
+   * ffprobe answers for a still too — width and height are what the fill needs
+   * — but its duration is a single frame and it has no audio, so both are
+   * replaced rather than trusted.
+   */
+  const probed = await probeVideo(source.path);
+  const probe = still ? { ...probed, duration: stillSeconds, hasAudio: false } : probed;
+  const fill = buildFill(
+    source.fit ?? config.fill,
+    width,
+    height,
+    adv,
+    source.rotation,
+    probe,
+    // The shot's own framing. `partDuration` is not known yet, so the length is
+    // worked out the same way it is below — a drift is paced by how long the
+    // shot is held, not by how long the file happens to be.
+    {
+      zoom: source.zoom ?? 1,
+      pan: Boolean(source.pan),
+      seconds: still
+        ? stillSeconds
+        : source.trimStart != null && source.trimEnd != null
+          ? Math.max(0, source.trimEnd - source.trimStart)
+          : probe.duration
+    }
+  );
   // Per-clip watermark override, falling back to the project setting.
   /*
    * No branding here any more; see the final pass.
@@ -808,9 +1009,20 @@ async function renderPart(
 
   const filterGraph = `${fill};[filled]${chain}[v]`;
 
-  // Trim on the input side (fast seek); it's re-encoded downstream so it stays accurate.
+  /*
+   * Trim on the input side (fast seek); it's re-encoded downstream so it stays
+   * accurate.
+   *
+   * A still has nothing to seek into. `-loop 1` repeats the one frame forever
+   * and `-t` says when to stop, which is the same pair the logo and watermark
+   * already use — so the part comes out as a piece of video of exactly the
+   * length the block was dragged to.
+   */
   const seek: string[] = [];
-  if (source.trimStart != null && source.trimEnd != null) {
+  if (still) {
+    seek.push('-loop', '1', '-t', stillSeconds.toFixed(3));
+    ctx.onLog?.(`Still: clip ${index + 1} held ${stillSeconds.toFixed(2)}s`);
+  } else if (source.trimStart != null && source.trimEnd != null) {
     const duration = source.trimEnd - source.trimStart;
     if (duration > 0) {
       seek.push('-ss', String(source.trimStart), '-t', duration.toFixed(3));
@@ -836,6 +1048,16 @@ async function renderPart(
       if (ln) audioFilters.push(ln);
     }
   }
+
+  /*
+   * How long this part is meant to be, decided here rather than inferred.
+   * A still is held for its window; footage is its trim, or the whole file.
+   */
+  const partLength = still
+    ? stillSeconds
+    : source.trimStart != null && source.trimEnd != null
+      ? Math.max(0, source.trimEnd - source.trimStart)
+      : probe.duration;
 
   const args: string[] = ['-y', '-loglevel', 'error', ...seek, '-i', source.path];
 
@@ -870,14 +1092,27 @@ async function renderPart(
   args.push('-map', '[v]', '-map', audioMap);
   // -shortest cuts at the end of the picture: the silence and the `apad` above
   // both run forever, so something has to say when the part stops.
-  args.push('-shortest', ...encodeArgs(adv), partPath);
+  /*
+   * Bounded on the way out as well as on the way in.
+   *
+   * `-shortest` stops at whichever stream ends first, and with `apad` above the
+   * audio never ends — so the picture is meant to decide. It does, until
+   * `loudnorm` is in the chain: it runs a lookahead buffer and flushes it when
+   * the input stops, so its output is *longer* than what it was given. Measured
+   * on a 1.5s trim: 1.514s of audio without it, 1.984s with. The part then
+   * reports 1.98s to `probeDuration`, and because that is what the clip's whole
+   * length is worked out from, half a second of audio over no picture became
+   * the clip's own duration — a shot whose block on the strip said 1.5.
+   *
+   * `-t` says how long the part is, which is a thing this function already
+   * knows and was leaving for ffmpeg to infer.
+   */
+  const bound = partLength > 0 ? ['-t', partLength.toFixed(3)] : [];
+  args.push('-shortest', ...bound, ...encodeArgs(adv), partPath);
 
   // Trimmed length if set, otherwise the source's own — ffmpeg reports elapsed
   // output time, which only becomes a fraction against the expected total.
-  const partDuration =
-    source.trimStart != null && source.trimEnd != null
-      ? Math.max(0, source.trimEnd - source.trimStart)
-      : probe.duration;
+  const partDuration = partLength;
 
   const encodeShare = config.loudnorm && !silent ? 1 - LOUDNORM_SHARE : 1;
   const encodeBase = 1 - encodeShare;
@@ -1139,7 +1374,22 @@ async function joinParts(
   // concat demuxer: single-quotes in a path would break the list format, and
   // these are our own temp files, so plain interpolation is safe here.
   const listPath = join(tmp, 'list.txt');
-  await writeFile(listPath, parts.map((p) => `file '${p}'`).join('\n') + '\n');
+  /*
+   * Names only, not paths.
+   *
+   * The concat demuxer resolves each entry relative to the list file, and the
+   * staging directory is relative to the working directory — so writing the
+   * part's own path produced `data/renders/clip-X/data/renders/clip-X/01.mp4`
+   * and the render died with "No such file or directory". Every part is
+   * written into `tmp` beside this list, so the basename is the whole of what
+   * the demuxer needs.
+   *
+   * It failed for exactly the clips that took this path: shots laid end to end
+   * with no crossfade, which is the default. Anything overlapping or faded went
+   * through the composite instead and worked, which is what made it look
+   * intermittent.
+   */
+  await writeFile(listPath, parts.map((p) => `file '${basename(p)}'`).join('\n') + '\n');
 
   // Stream copy: every part came out of renderPart with identical encoder
   // settings, which is exactly the condition the concat demuxer needs. The
@@ -1467,7 +1717,18 @@ export async function renderClip(
      */
     width = Math.round(width / 2 / 2) * 2;
     height = Math.round(height / 2 / 2) * 2;
-    config.fill = 'black';
+    /*
+     * Only the blurred fill goes. It is the single most expensive creative
+     * option — more than tripling even a small render — and black bars change
+     * what the edges look like without changing when anything happens.
+     *
+     * Cropping is not expensive, and used to be dropped along with it. That was
+     * fine while the fill was one clip-wide choice about footage; it stopped
+     * being fine when a shot could ask to fill the frame, because the proof
+     * then answered a question about framing with black bars and looked like
+     * the setting had done nothing.
+     */
+    if (config.fill === 'blur') config.fill = 'black';
     config.loudnorm = false;
 
     /*
@@ -1483,12 +1744,32 @@ export async function renderClip(
     adv.preset = 'ultrafast';
     adv.crf = 30;
     adv.audioBitrateKbps = 96;
-    onLog?.(`Proof: ${width}×${height}, black fill, no loudnorm`);
+    onLog?.(`Proof: ${width}×${height}, ${config.fill} fill, no loudnorm`);
   }
   const accentColor = config.logoColor || '#8b5cf6';
 
   const tmp = await stagingDir();
-  const progress = (percent: number) => onProgress?.(Math.round(clamp(percent, 0, 100)));
+  /*
+   * Never backwards.
+   *
+   * The stages are bands worked out from what this render will actually do —
+   * whether it joins, whether it has an outro — and two of those marks could
+   * cross: joining without an outro reported 65% at the end of the join and
+   * then 64% on the way into the final encode. A bar that retreats reads as
+   * something having gone wrong, which is the one thing it is there to tell you
+   * about.
+   *
+   * Held here rather than fixed in the arithmetic because the arithmetic is
+   * several independent bands, and any of them can be adjusted later without
+   * anyone remembering that two of them must not overlap.
+   */
+  let reported = 0;
+  const progress = (percent: number) => {
+    const next = Math.round(clamp(percent, 0, 100));
+    if (next <= reported) return;
+    reported = next;
+    onProgress?.(next);
+  };
 
   /**
    * Stage timings, written into the job log.
@@ -1563,14 +1844,51 @@ export async function renderClip(
      */
     const willJoin = input.sources.length > 1;
     const willOutro = config.outro && hasOutroGraphic;
-    const joinBand = willJoin ? 10 : 0;
-    const outroBand = willOutro ? 8 : 0;
-    const finalStart = 55 + joinBand + outroBand;
+    /*
+     * Bands sized by where the time actually goes, not by how many stages
+     * there are.
+     *
+     * Timed on a two-source clip: the parts took 2.3s, the join 0.2s and the
+     * final encode 3.6s. The bar gave those 50, 10 and 31 points — so the
+     * cheapest third of the work owned half the bar, and the most expensive
+     * part of it crawled. A single-source clip was worse still: one slice of
+     * fifty points, which jumped from 5% to 55% the moment that part finished
+     * and then sat there for the whole encode.
+     *
+     * These are approximations and will be wrong for any particular clip — a
+     * long still encodes faster than short footage does. They are closer than
+     * counting stages, which is all a bar can honestly claim.
+     */
+    const joinBand = willJoin ? 4 : 0;
+    const outroBand = willOutro ? 6 : 0;
+    const finalStart = 45 + joinBand + outroBand;
 
     const parts: string[] = [];
-    const sourceSlice = 50 / input.sources.length;
+
+    /*
+     * Each source's share of the band, weighted by how long it is.
+     *
+     * Split evenly, a six-second still and a one-second cutaway owned the same
+     * slice — so the bar raced through the short one and then appeared to stall
+     * for the long one, which is the same amount of work described badly. How
+     * long a part takes is roughly how long it *is*, which is the one thing
+     * known before it is rendered.
+     *
+     * Falls back to even shares when nothing declares a length, which is what
+     * the old arithmetic did for everything.
+     */
+    const weights = input.sources.map((source) => {
+      if (source.trimStart != null && source.trimEnd != null) {
+        return Math.max(0.1, source.trimEnd - source.trimStart);
+      }
+      return 1;
+    });
+    const weightTotal = weights.reduce((sum, value) => sum + value, 0) || 1;
+
+    let sliceStart = 5;
     for (let i = 0; i < input.sources.length; i++) {
-      const sliceStart = 5 + i * sourceSlice;
+      const sourceSlice = (40 * weights[i]) / weightTotal;
+      const from = sliceStart;
       parts.push(
         await renderPart(input.sources[i], i, {
           tmp,
@@ -1580,10 +1898,11 @@ export async function renderClip(
           height,
           signal,
           onLog,
-          onProgress: (fraction) => progress(sliceStart + fraction * sourceSlice)
+          onProgress: (fraction) => progress(from + fraction * sourceSlice)
         })
       );
-      progress(sliceStart + sourceSlice);
+      sliceStart = from + sourceSlice;
+      progress(sliceStart);
       mark(`source ${i + 1}/${input.sources.length}`);
     }
 
@@ -1671,7 +1990,7 @@ export async function renderClip(
       onLog?.(`Laid out ${parts.length} placement(s) on the timeline`);
     }
 
-    progress(55 + joinBand);
+    progress(45 + joinBand);
     mark(sequential ? 'join' : 'lay out');
 
     // ---- 3a) the processed look, on the whole clip -----------------------
@@ -1715,7 +2034,14 @@ export async function renderClip(
      */
     const look = input.proof
       ? []
-      : pictureGraph(config, { width, height, fps: adv.fps }, bodyVideo, '[look]');
+      : pictureGraph(
+          config,
+          // The body's length, not the finished clip's: effects run on
+          // `bodyVideo`, which is everything before the outro is appended.
+          { width, height, fps: adv.fps, duration: bodyDuration },
+          bodyVideo,
+          '[look]'
+        );
     if (look.length) {
       // Statements, not one chain: an effect may branch to ruin a strip of the
       // picture and composite it back, which is more than a comma can express.

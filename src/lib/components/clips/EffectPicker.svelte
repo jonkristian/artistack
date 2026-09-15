@@ -126,7 +126,7 @@
        line at any width instead of however many happen to fit — and they fill
        the column rather than leaving a ragged margin down the right of it.
        `items-start`, or each one stretches to its row's height. -->
-  <div class="grid grid-cols-2 items-start gap-2 sm:grid-cols-4">
+  <div class="grid min-w-0 grid-cols-2 items-start gap-2 sm:grid-cols-3 lg:grid-cols-4">
     {#if canInherit || family === 'picture'}
       <button
         type="button"
@@ -186,19 +186,22 @@
   <!-- What the chosen one is, and its dials, in two columns of its own. -->
   {#if chosen}
     <div
-      class="grid grid-cols-2 gap-x-3 gap-y-1.5 self-start sm:border-l sm:border-gray-800 sm:pl-4"
+      class="grid min-w-0 grid-cols-1 gap-x-3 gap-y-1.5 self-start sm:border-l sm:border-gray-800 sm:pl-4"
     >
       <p class="col-span-2 mb-1 text-xs text-gray-500">{chosen.description}</p>
 
       {#if chosen.params?.length}
         {#each chosen.params as param (param.key)}
-          <!-- A fixed label width rather than `justify-between`: spreading the
-               two ends of a half-width cell apart put a label on the left and
-               its number somewhere off to the right with nothing between them.
-               Fixed, the pairs stay together and still line up across both
-               columns. -->
-          <div class="flex items-center gap-2">
-            <span class="w-[4.5rem] shrink-0 truncate text-xs text-gray-400" title={param.label}>
+          <!-- One dial per row, and the label yields before the control does.
+
+               Two columns fitted in the viewport and not in the cell: the
+               dials live in the narrower half of a `max-w-2xl` dialog, so each
+               of the two was about 130px and "Amount" truncated to "A…" beside
+               its own number. A viewport breakpoint cannot know that — it is
+               the container that is narrow, not the window. One column always
+               fits, and there are never more than a handful of dials. -->
+          <div class="flex min-w-0 items-center gap-2">
+            <span class="min-w-0 flex-1 truncate text-xs text-gray-400" title={param.label}>
               {param.label}
             </span>
             {#if param.type === 'toggle'}

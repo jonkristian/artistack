@@ -375,6 +375,21 @@ export function isAudio(item: { mimeType: string }): boolean {
   return item.mimeType.startsWith('audio/');
 }
 
+/**
+ * True when a media row is a still.
+ *
+ * A still goes on the picture lane like any other shot — a photograph held for
+ * three seconds is a shot, and the only thing it lacks is a length of its own.
+ * That is why a still placement always carries an explicit window: everything
+ * else on the lane gets its length from the file, and a picture has to be told.
+ */
+export function isImage(item: { mimeType: string }): boolean {
+  return item.mimeType.startsWith('image/');
+}
+
+/** How long a still runs for when it is first placed, in seconds. */
+export const DEFAULT_STILL_SECONDS = 4;
+
 // ============================================================================
 // Clip Studio — assemble source clips into a branded, post-ready social video
 // ============================================================================
@@ -602,6 +617,34 @@ export const clipSources = sqliteTable(
     muted: integer('muted', { mode: 'boolean' }).default(false),
     // null inherits the project's watermark setting.
     watermark: integer('watermark', { mode: 'boolean' }),
+    /**
+     * How this one fills the frame, overriding the clip's own setting.
+     *
+     * 'crop' | 'black' | 'blur', and null to inherit — the same arrangement as
+     * `watermark` above. A clip-wide choice is right for footage all shot on
+     * the same phone and wrong the moment a still joins it: a portrait photo
+     * wants cropping to fill, a landscape one looks wrong cropped and wants the
+     * blurred surround, and they can sit in the same edit.
+     */
+    fit: text('fit'),
+    /**
+     * How far into the picture this shot sits, on top of whatever `fit` does.
+     *
+     * 1 is the fill as it comes. Above that the picture is scaled further and
+     * the frame shows less of it — which is the point: what falls outside is
+     * the room a drift has to move through.
+     */
+    zoom: real('zoom').default(1),
+    /**
+     * Drift slowly across whatever falls outside the frame.
+     *
+     * Deliberately not a direction. The room comes from the shape of the
+     * picture against the shape of the clip — a landscape photo in a vertical
+     * frame has it sideways, a portrait one in a wide frame has it up and down
+     * — so the axis is a fact about the material rather than a decision to
+     * make. Off by default: a still that should sit still should sit still.
+     */
+    pan: integer('pan', { mode: 'boolean' }).default(false),
     // Degrees clockwise, for footage stored sideways with nothing in the file
     // saying so. The container's own rotation flag is honoured already; this is
     // the override for when there isn't one.

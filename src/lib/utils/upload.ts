@@ -126,6 +126,43 @@ async function uploadError(res: Response): Promise<Error> {
  * Well under Cloudflare's 100MB proxy limit — the ceiling that makes chunking
  * necessary at all — with room for headers and any other proxy in the path.
  */
+/**
+ * The most a file of each kind may be, in bytes.
+ *
+ * Declared here because two places have to agree about them: the browser
+ * refuses an oversized file before spending a minute uploading it, and the
+ * route refuses it again because the browser is not something to trust. They
+ * were two sets of numbers in two files, which is a disagreement waiting to
+ * happen — the client saying 10MB while the server said something else is a
+ * rejection with no explanation attached.
+ *
+ * Images are the small one because they are read whole into memory and handed
+ * to sharp, which decodes them to raw pixels: a 25MB JPEG is a couple of
+ * hundred megabytes of bitmap while it is being resized, and several at once
+ * is the thing that would run a container out of memory. Sharp's own
+ * `limitInputPixels` still guards the far end of that — anything past roughly
+ * 16383x16383 is refused as a decompression bomb whatever its file size.
+ *
+ * Video and audio never land in memory at all; they stream to disk, so their
+ * ceilings are about keeping the library sane rather than about RAM.
+ */
+export const MAX_IMAGE_SIZE = 25 * 1024 * 1024;
+export const MAX_AUDIO_SIZE = 100 * 1024 * 1024;
+export const MAX_VIDEO_SIZE = 500 * 1024 * 1024;
+
+/**
+ * The most any streamed upload may be — derived, not restated.
+ *
+ * The streaming route has to cap the body before it knows what kind of file it
+ * is, and the chunked route caps a running total across requests. Both want
+ * "the largest thing we accept", which is a fact about the two numbers above
+ * rather than a third number to keep in step with them.
+ */
+export const MAX_STREAMED_SIZE = Math.max(MAX_VIDEO_SIZE, MAX_AUDIO_SIZE);
+
+/** For an error message: bytes as whole megabytes. */
+export const asMegabytes = (bytes: number): number => Math.round(bytes / 1024 / 1024);
+
 const CHUNK_THRESHOLD = 50 * 1024 * 1024;
 const CHUNK_SIZE = 8 * 1024 * 1024;
 

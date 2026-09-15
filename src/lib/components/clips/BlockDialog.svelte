@@ -20,11 +20,27 @@
     children: Snippet;
     /** What removing it is called, since a bed and a caption go different ways. */
     removeLabel?: string;
+    /**
+     * Room for a grid rather than a list.
+     *
+     * Most of these are a short column of switches and `md` is generous for
+     * that. The effect picker is a wall of tiles beside a column of dials, and
+     * in `md` the two fought: labels truncated to three letters, a dial landed
+     * on top of its own label, and the dialog grew a sideways scrollbar.
+     */
+    wide?: boolean;
     onremove: () => void;
     onclose: () => void;
   }
 
-  let { title, children, removeLabel = 'Remove', onremove, onclose }: Props = $props();
+  let {
+    title,
+    children,
+    removeLabel = 'Remove',
+    wide = false,
+    onremove,
+    onclose
+  }: Props = $props();
 
   let dialogEl: HTMLDialogElement;
 
@@ -37,7 +53,9 @@
 <dialog
   bind:this={dialogEl}
   use:dismissable
-  class="fixed inset-0 m-auto h-fit w-full max-w-md rounded-xl border border-gray-700 bg-gray-900 p-0 text-white backdrop:bg-black/60"
+  class="fixed inset-0 m-auto h-fit w-full {wide
+    ? 'max-w-2xl'
+    : 'max-w-md'} rounded-xl border border-gray-700 bg-gray-900 p-0 text-white backdrop:bg-black/60"
   {onclose}
 >
   <div class="space-y-5 p-6">

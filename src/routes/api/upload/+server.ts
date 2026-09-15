@@ -7,6 +7,7 @@ import { join } from 'path';
 import sharp from 'sharp';
 import type { RequestHandler } from './$types';
 import { UPLOAD_DIR, THUMBNAIL_SIZE } from '$lib/server/paths';
+import { MAX_IMAGE_SIZE, asMegabytes } from '$lib/utils/upload';
 
 const MAX_DIMENSION = 2048; // Max dimension for full-size images
 const JPEG_QUALITY = 85;
@@ -126,10 +127,9 @@ export const POST: RequestHandler = async ({ request, url: requestUrl }) => {
     throw error(400, 'No file provided');
   }
 
-  // Validate file size first (max 10MB for raw uploads, will be compressed)
-  const maxSize = 10 * 1024 * 1024;
-  if (file.size > maxSize) {
-    throw error(400, 'File too large. Maximum size is 10MB');
+  // Validate file size first; the raw upload is kept, a compressed one made.
+  if (file.size > MAX_IMAGE_SIZE) {
+    throw error(400, `File too large. Maximum size is ${asMegabytes(MAX_IMAGE_SIZE)}MB`);
   }
 
   // Read file buffer for content validation

@@ -3,6 +3,7 @@ import { appendFile, mkdir, stat, unlink } from 'fs/promises';
 import { Readable } from 'stream';
 import { join } from 'path';
 import { UPLOAD_DIR } from '$lib/server/paths';
+import { MAX_STREAMED_SIZE } from '$lib/utils/upload';
 import { finalizeUpload } from '$lib/server/finalize-upload';
 import { finalizeSessionUpload } from '$lib/server/upload-session';
 import { requireUploadAccess } from '$lib/server/api';
@@ -24,7 +25,7 @@ import type { RequestHandler } from './$types';
  * bandwidth-bound anyway, and avoids tracking which offsets have landed.
  */
 
-const MAX_TOTAL_SIZE = 500 * 1024 * 1024;
+const MAX_TOTAL_SIZE = MAX_STREAMED_SIZE;
 const CHUNK_DIR = join(UPLOAD_DIR, '.chunks');
 
 export const POST: RequestHandler = async ({ request, url }) => {

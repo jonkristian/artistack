@@ -86,6 +86,23 @@
     /** Whether it fades up at its start, and away at its end. */
     fadeIn: boolean;
     fadeOut: boolean;
+    /**
+     * A held picture rather than footage.
+     *
+     * It changes what the right-hand edge means. A shot can only give back the
+     * film that was shot, so its edge stops where the file does; a still has no
+     * such end — it is held for as long as it is asked to be, the way a caption
+     * is on screen for as long as it is asked to be. Without this the block
+     * could not be stretched at all, because the file it points at reports no
+     * length and every edge was clamped against that.
+     */
+    still: boolean;
+    /** How it fills the frame, or null while it follows the clip. */
+    fit: 'crop' | 'black' | 'blur' | null;
+    /** How far into the picture it sits, on top of the fill. */
+    zoom: number;
+    /** Whether it drifts across what the fill crops away. */
+    pan: boolean;
   };
 
   export type TimelineTrack = ClipAudioTrack & {
@@ -194,6 +211,10 @@
     onscrubsource?: (kind: 'clip' | 'audio', id: number, seconds: number) => void;
     /** Silences a clip's own audio, so a bed can play over it clean. */
     onmute: (id: number, muted: boolean) => void;
+    /** How one shot fills the frame; null gives the decision back to the clip. */
+    onfit: (id: number, fit: 'crop' | 'black' | 'blur' | null) => void;
+    /** How far in it sits, and whether it drifts across what falls outside. */
+    onframing: (id: number, patch: { zoom?: number; pan?: boolean }) => void;
     /** Fades on a single shot, which dissolve into whatever is underneath. */
     onfade?: (id: number, fades: { fadeIn?: boolean; fadeOut?: boolean }) => void;
     /** Takes the placement off the timeline. Undoable, by whoever handles it. */
@@ -230,6 +251,8 @@
     onclip,
     onpreview,
     onmute,
+    onfit,
+    onframing,
     onfade,
     onremove,
     oncaptionremove,
@@ -410,7 +433,7 @@
   const laneBands = $derived(
     [
       { icon: Sparkles, label: 'Effects', from: 0, count: FX_ROWS },
-      { icon: Film, label: 'Footage', from: CLIPS_AT, count: CLIP_ROWS },
+      { icon: Film, label: 'Picture', from: CLIPS_AT, count: CLIP_ROWS },
       {
         icon: ChatBubbleBottomCenterText,
         label: 'Captions',
@@ -900,9 +923,10 @@
     end: c.end,
     openEnded: false,
     minStart: c.start - c.headroom,
-    maxEnd: c.end + c.tailroom,
-    // Only as much picture as was shot.
-    limit: c.end + c.tailroom
+    // Only as much picture as was shot — unless there was no shooting, in
+    // which case the strip is the only thing in the way.
+    maxEnd: c.still ? reach : c.end + c.tailroom,
+    limit: c.still ? Infinity : c.end + c.tailroom
   });
 
   /**
@@ -2698,19 +2722,65 @@
                     </svg>
                   </button>
                 {/if}
+                <!-- Framing: how it sits in the frame, how far in, and
+                     whether it drifts. A door rather than a switch, because a
+                     zoom is a number and the tool row is for things that are on
+                     or off — and because the row itself only appears on a block
+                     wide enough for it. Same reason a caption's effect has its
+                     own button: the widest block must not be the one whose
+                     settings cannot be reached. -->
                 <button
                   type="button"
                   onpointerdown={pressTool}
-                  onclick={() => onmute(clip.id, !clip.muted)}
-                  title={clip.muted ? 'Its own sound is off' : 'Its own sound is on'}
-                  aria-label="{clip.muted ? 'Unmute' : 'Mute'} {clip.label}"
-                  aria-pressed={clip.muted}
-                  class="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors {clip.muted
+                  onclick={() => (opened = { kind: 'clip', key: clip.id })}
+                  title="How it sits in the frame"
+                  aria-label="Framing for {clip.label}"
+                  class="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors {clip.fit ===
+                    'crop' ||
+                  clip.pan ||
+                  (clip.zoom ?? 1) > 1
                     ? 'bg-white text-gray-900 shadow-sm'
                     : 'bg-black/40 text-white/55 hover:bg-black/60 hover:text-white'}"
                 >
-                  <Icon src={clip.muted ? SpeakerXMark : SpeakerWave} size={`${ICON}`} />
+                  <!-- A frame, with the picture running past its edges. -->
+                  <svg width={ICON} height={ICON} viewBox="0 0 24 24" aria-hidden="true">
+                    <rect
+                      x="4"
+                      y="6"
+                      width="16"
+                      height="12"
+                      rx="1.5"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                    />
+                    <path
+                      d="M2 12h4M18 12h4"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                    />
+                  </svg>
                 </button>
+                <!-- A still has no sound to silence, so it isn't offered the
+                     switch. Muting is about a shot's own recorded audio, and
+                     a picture never had any — the renderer gives it silence
+                     whatever this said. -->
+                {#if !clip.still}
+                  <button
+                    type="button"
+                    onpointerdown={pressTool}
+                    onclick={() => onmute(clip.id, !clip.muted)}
+                    title={clip.muted ? 'Its own sound is off' : 'Its own sound is on'}
+                    aria-label="{clip.muted ? 'Unmute' : 'Mute'} {clip.label}"
+                    aria-pressed={clip.muted}
+                    class="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors {clip.muted
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'bg-black/40 text-white/55 hover:bg-black/60 hover:text-white'}"
+                  >
+                    <Icon src={clip.muted ? SpeakerXMark : SpeakerWave} size={`${ICON}`} />
+                  </button>
+                {/if}
                 <button
                   type="button"
                   onpointerdown={pressTool}
@@ -3236,6 +3306,12 @@
       kind="clip"
       label={clip.label}
       muted={clip.muted}
+      still={clip.still}
+      fit={clip.fit}
+      zoom={clip.zoom}
+      pan={clip.pan}
+      onfit={(fit: 'crop' | 'black' | 'blur' | null) => onfit(clip.id, fit)}
+      onframing={(patch: { zoom?: number; pan?: boolean }) => onframing(clip.id, patch)}
       onmute={(muted) => onmute(clip.id, muted)}
       onremove={() => onremove('clip', clip.id)}
       onclose={() => (opened = null)}
