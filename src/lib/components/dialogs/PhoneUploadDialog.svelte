@@ -72,9 +72,14 @@
 
   function startPolling(sessionId: number) {
     stopPolling();
+    // `refresh()` rather than awaiting the query: a remote query memoises its
+    // promise per argument, so awaiting it on a timer returns the first answer
+    // for the life of the session and no arrival after that one is ever seen.
+    const session = phoneUploadStatus(sessionId);
     pollTimer = setInterval(async () => {
       try {
-        const status = await phoneUploadStatus(sessionId);
+        await session.refresh();
+        const status = session.current;
         if (!status) return;
 
         // Each arrival should show up in the library behind the dialog, so the

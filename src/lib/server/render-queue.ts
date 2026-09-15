@@ -31,9 +31,46 @@ import { probeVideo, extractPosterFrame } from './ffmpeg';
  * reload and a failed render keeps its log for debugging.
  */
 
-let running = false;
-/** Abort controllers for in-flight jobs, so a render can be cancelled. */
-const inFlight = new Map<number, AbortController>();
+/**
+ * The queue's state, parked where a module reload can still find it.
+ *
+ * The same trap the scheduler documents: in dev, Vite re-evaluates a server
+ * module when anything it imports changes, and a fresh copy of this one brings
+ * a fresh `running` saying nothing is rendering and an empty `inFlight` saying
+ * nothing can be cancelled — while the previous copy's ffmpeg is still going.
+ * Two loops then pull from the same queued rows, and Cancel presses a button
+ * attached to a map that no longer holds the controller.
+ *
+ * `globalThis` outlives the module, so every copy shares one answer. It costs
+ * nothing in production, where the module is evaluated once.
+ */
+const QUEUE = Symbol.for('artistack.renderQueue');
+type QueueState = {
+  /** A loop is pulling jobs; a second one must not start. */
+  running: boolean;
+  /**
+   * Something was queued while the loop was finishing.
+   *
+   * `running` alone had a hole in it. The loop asks for a queued job, is told
+   * there are none, and only then releases the flag — so a render started in
+   * that gap inserted its row, was turned away because the flag was still set,
+   * and nothing ever came back for it. The job sat `queued` for good: no
+   * render, no error, and pressing the button again worked because by then the
+   * flag was clear.
+   */
+  woken: boolean;
+  /** Abort controllers for in-flight jobs, so a render can be cancelled. */
+  inFlight: Map<number, AbortController>;
+};
+
+const store = globalThis as typeof globalThis & { [QUEUE]?: QueueState };
+const state: QueueState = (store[QUEUE] ??= {
+  running: false,
+  woken: false,
+  inFlight: new Map()
+});
+
+const inFlight = state.inFlight;
 
 /**
  * Clears jobs left mid-render by a crash or restart.
@@ -93,8 +130,12 @@ export async function cancelRender(jobId: number): Promise<boolean> {
 
 /** Runs queued jobs one at a time until none are left. */
 export async function processQueue(): Promise<void> {
-  if (running) return;
-  running = true;
+  if (state.running) {
+    // Say so rather than simply leaving: the loop may be on its way out.
+    state.woken = true;
+    return;
+  }
+  state.running = true;
 
   try {
     for (;;) {
@@ -105,12 +146,20 @@ export async function processQueue(): Promise<void> {
         .orderBy(asc(renderJobs.createdAt))
         .limit(1);
 
-      if (!job) return;
+      if (!job) {
+        // Nothing left — unless something arrived while we were asking.
+        if (state.woken) {
+          state.woken = false;
+          continue;
+        }
+        return;
+      }
 
+      state.woken = false;
       await runJob(job.id, job.projectId, job.proof ?? false);
     }
   } finally {
-    running = false;
+    state.running = false;
   }
 }
 

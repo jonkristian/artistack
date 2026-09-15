@@ -43,6 +43,7 @@
 - Fixed: a clip could come out longer than its blocks said, because the loudness pass leaves a tail of audio behind the picture
 - Fixed: the render bar could go backwards, and gave a six-second shot the same share as a one-second one
 - Fixed: an effect's dials were squeezed into two columns that didn't fit, so 'Amount' read as 'A…'
+- Fixed: the render bar sat still at whatever it first caught, and a render started after a finished one showed the button again until pressed twice
 - Fixed: a bed always played from the start of the song when you pressed play, whatever its rail was set to
 
 # 1.6.0 (11-09-2026)

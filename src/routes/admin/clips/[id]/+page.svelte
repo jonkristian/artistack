@@ -692,17 +692,25 @@
 
   // Poll while a render is in flight. ffmpeg reports progress into the job row,
   // so this is the only way the UI learns about it.
+  //
+  // `refresh()`, not `await getRenderStatus(id)` — and that is the whole poll.
+  // A remote query memoises its promise per argument and hands every later
+  // caller the same one, so awaiting it on a timer re-reads one answer forever:
+  // the bar froze at whatever progress the first tick caught, and a render
+  // started just after a finished one was told the old job was done and put the
+  // button back. `refresh()` is the documented way to ask the server again.
   $effect(() => {
     if (!isRendering) return;
-    const id = selected.id;
+    const status = getRenderStatus(selected.id);
 
     const timer = setInterval(async () => {
       try {
-        const status = await getRenderStatus(id);
-        liveJob = status as JobShape;
+        await status.refresh();
+        const job = status.current as JobShape | null;
+        liveJob = job;
         // A finished render adds a media row and sets outputMediaId, neither of
         // which is in the current page data.
-        if (status && status.status !== 'queued' && status.status !== 'rendering') {
+        if (job && job.status !== 'queued' && job.status !== 'rendering') {
           await invalidateAll();
         }
       } catch {
