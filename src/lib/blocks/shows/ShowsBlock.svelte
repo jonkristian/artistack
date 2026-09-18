@@ -1,7 +1,7 @@
 <script lang="ts">
   import BlockHeading from '../BlockHeading.svelte';
   import type { Block, Profile, Link, Show, Media, ShowsBlockConfig } from '$lib/server/schema';
-  import { addToCalendar } from '$lib/blocks/utils';
+  import { addToCalendar, trackedHref } from '$lib/blocks/utils';
   import { getPlatformInfoFromUrl } from '$lib/utils/platforms';
 
   let {
@@ -194,7 +194,7 @@
               </span>
             {:else if tour.ticketUrl}
               <a
-                href={tour.ticketUrl}
+                href={trackedHref('tickets', tour.id, tour.ticketUrl)}
                 target="_blank"
                 rel="noopener noreferrer"
                 class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-all hover:opacity-90 active:scale-95 sm:h-auto sm:w-auto sm:gap-1.5 sm:px-3 sm:py-1.5"

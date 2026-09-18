@@ -123,7 +123,7 @@ export async function sendReleaseEmail(
   const services = shown
     .map(
       (link) =>
-        `<a href="${origin}/go/${link.id}" style="display:inline-block;margin:0 8px 8px 0;padding:8px 14px;border:1px solid currentColor;border-radius:999px;text-decoration:none;font-size:14px;color:inherit;">${escapeHtml(
+        `<a href="${origin}/go/${link.id}?src=email" style="display:inline-block;margin:0 8px 8px 0;padding:8px 14px;border:1px solid currentColor;border-radius:999px;text-decoration:none;font-size:14px;color:inherit;">${escapeHtml(
           link.label ?? link.platform
         )}</a>`
     )

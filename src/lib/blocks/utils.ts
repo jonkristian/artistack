@@ -14,6 +14,16 @@ export function trackClick(linkId: number) {
   }
 }
 
+/**
+ * A pre-save or ticket button's address, through /go so the click is counted.
+ *
+ * Straight to the destination while the release or show is unsaved: the editor
+ * preview gives it a temporary negative id, which /go has never heard of.
+ */
+export function trackedHref(action: 'presave' | 'tickets', id: number, url: string): string {
+  return id > 0 ? `/go/${action}/${id}` : url;
+}
+
 // Add to calendar (ICS file)
 export function addToCalendar(
   tour: Show,

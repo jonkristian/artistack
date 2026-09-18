@@ -14,13 +14,22 @@
     viewsByDay,
     previousViewsByDay,
     days = 30,
+    from = null,
+    previousFrom = null,
+    previousLabel = null,
     height = 200,
     locale = 'nb-NO',
     legendTarget = null
   }: {
     viewsByDay: { date: string; count: number }[];
-    previousViewsByDay: { date: string; count: number }[];
+    /** The window before, drawn dashed beside it. Null when there's no before — all time. */
+    previousViewsByDay: { date: string; count: number }[] | null;
     days?: number;
+    /** The window's first day, YYYY-MM-DD. Ends today when not given. */
+    from?: string | null;
+    /** Where the comparison starts, when it isn't simply the window before. */
+    previousFrom?: string | null;
+    previousLabel?: string | null;
     height?: number;
     /** The site's language, so dates read the way the rest of the admin does. */
     locale?: string;
@@ -38,46 +47,55 @@
   let chartContainer: HTMLDivElement;
   let chart: uPlot | null = null;
 
+  const DAY = 24 * 60 * 60 * 1000;
+  const isoDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+  /*
+   * A point per day stops being readable somewhere past a few months: a year is
+   * 365 slivers, and all time only gets denser. So long windows are drawn by
+   * the week, and longer ones by the month.
+   */
+  const bucket = $derived<'day' | 'week' | 'month'>(
+    days > 731 ? 'month' : days > 120 ? 'week' : 'day'
+  );
+
+  function bucketStart(ms: number): number {
+    const d = new Date(ms);
+    if (bucket === 'month') return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
+    if (bucket === 'week') return ms - ((d.getUTCDay() + 6) % 7) * DAY; // Monday
+    return ms;
+  }
+
   function createChart() {
     if (!chartContainer) return;
     if (chartContainer.clientWidth === 0) return;
 
     // Every day in the window, so a day with no views is a zero rather than a
-    // gap the line skips over.
+    // gap the line skips over. UTC days, the grain the server counts in.
     const now = new Date();
-    const allDates: number[] = [];
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      d.setHours(0, 0, 0, 0);
-      allDates.push(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 1000);
+    const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    const start = from ? Date.parse(from) : today - (days - 1) * DAY;
+    // The comparison's own start: a window back by default, the same dates a
+    // year earlier for a calendar year.
+    const previousStart = previousFrom ? Date.parse(previousFrom) : start - days * DAY;
+
+    const currentMap = new Map(viewsByDay.map((d) => [d.date, d.count]));
+    const previousMap = new Map((previousViewsByDay ?? []).map((d) => [d.date, d.count]));
+
+    // Day by day, added into buckets; the previous window is aligned by
+    // position, so each point compares like with like.
+    const buckets = new Map<number, [number, number]>();
+    for (let i = 0; i < days; i++) {
+      const key = bucketStart(start + i * DAY);
+      const entry = buckets.get(key) ?? [0, 0];
+      entry[0] += currentMap.get(isoDay(start + i * DAY)) ?? 0;
+      entry[1] += previousMap.get(isoDay(previousStart + i * DAY)) ?? 0;
+      buckets.set(key, entry);
     }
 
-    const currentMap = new Map<string, number>();
-    for (const d of viewsByDay) {
-      currentMap.set(d.date, d.count);
-    }
-
-    const previousMap = new Map<string, number>();
-    for (const d of previousViewsByDay) {
-      previousMap.set(d.date, d.count);
-    }
-
-    const currentValues: number[] = [];
-    const previousValues: number[] = [];
-
-    for (let i = days - 1; i >= 0; i--) {
-      const currentDate = new Date(now);
-      currentDate.setDate(currentDate.getDate() - i);
-      const currentKey = currentDate.toISOString().split('T')[0];
-      currentValues.push(currentMap.get(currentKey) ?? 0);
-
-      // The same weekday one window back, so the comparison lines up.
-      const prevDate = new Date(currentDate);
-      prevDate.setDate(prevDate.getDate() - days);
-      const prevKey = prevDate.toISOString().split('T')[0];
-      previousValues.push(previousMap.get(prevKey) ?? 0);
-    }
+    const allDates = [...buckets.keys()].map((ms) => ms / 1000);
+    const currentValues = [...buckets.values()].map(([current]) => current);
+    const previousValues = [...buckets.values()].map(([, previous]) => previous);
 
     const allValues = [...currentValues, ...previousValues];
     const maxValue = Math.max(...allValues, 10);
@@ -110,10 +128,12 @@
            * for anyone whose does it the other way round.
            */
           values: (_, ticks) => {
-            const format = new Intl.DateTimeFormat(locale, {
-              day: 'numeric',
-              month: 'numeric'
-            });
+            const format = new Intl.DateTimeFormat(
+              locale,
+              bucket === 'month'
+                ? { month: 'short', year: '2-digit', timeZone: 'UTC' }
+                : { day: 'numeric', month: 'numeric', timeZone: 'UTC' }
+            );
             return ticks.map((t) => format.format(new Date(t * 1000)));
           }
         },
@@ -154,15 +174,18 @@
            * own idea of a locale. This is the readout under the cursor, so it's
            * the date somebody actually reads off the chart.
            */
-          label: 'Day',
+          label: bucket === 'month' ? 'Month' : bucket === 'week' ? 'Week of' : 'Day',
           value: (_, timestamp) =>
             timestamp == null
               ? '--'
-              : new Intl.DateTimeFormat(locale, {
-                  weekday: 'short',
-                  day: 'numeric',
-                  month: 'short'
-                }).format(new Date(timestamp * 1000))
+              : new Intl.DateTimeFormat(
+                  locale,
+                  bucket === 'month'
+                    ? { month: 'long', year: 'numeric', timeZone: 'UTC' }
+                    : bucket === 'week'
+                      ? { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }
+                      : { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }
+                ).format(new Date(timestamp * 1000))
         },
         {
           label: 'This period',
@@ -172,14 +195,18 @@
           paths: uPlot.paths.spline?.(),
           points: { show: false }
         },
-        {
-          label: 'Previous 30 days',
-          stroke: '#60a5fa',
-          width: 1,
-          dash: [6, 4],
-          paths: uPlot.paths.spline?.(),
-          points: { show: false }
-        }
+        ...(previousViewsByDay
+          ? [
+              {
+                label: previousLabel ?? `Previous ${days} days`,
+                stroke: '#60a5fa',
+                width: 1,
+                dash: [6, 4],
+                paths: uPlot.paths.spline?.(),
+                points: { show: false }
+              }
+            ]
+          : [])
       ]
     };
 
@@ -190,16 +217,22 @@
     const chartData: uPlot.AlignedData = [
       new Float64Array(allDates),
       new Float64Array(currentValues),
-      new Float64Array(previousValues)
+      ...(previousViewsByDay ? [new Float64Array(previousValues)] : [])
     ];
     chart = new uPlot(opts, chartData, chartContainer);
   }
 
-  onMount(() => {
-    tick().then(() => {
-      createChart();
-    });
+  /*
+   * Built whenever what it draws changes, not once on mount: the stats page
+   * swaps the window under it, and a chart built only at mount kept drawing
+   * the first one it was given.
+   */
+  $effect(() => {
+    void [viewsByDay, previousViewsByDay, days, from, previousFrom, previousLabel];
+    tick().then(() => createChart());
+  });
 
+  onMount(() => {
     const resizeObserver = new ResizeObserver(() => {
       if (chart && chartContainer) {
         chart.setSize({ width: chartContainer.clientWidth, height });

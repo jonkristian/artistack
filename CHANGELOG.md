@@ -28,6 +28,14 @@
 - A release's streaming links look and edit like a links block's: the same rows, the same dialog, paste to add, drag to order
 - Search engines are told what the site is: the front page describes the band, with its profiles from the links already on it, and a release page describes the recording, its ISRC and where to hear it
 - Settings has an Identity tab: whether the site is for a band, a solo artist or a person, with genres, hometown, year formed, members and other official pages. Search engines are told all of it
+- Pre-save and ticket buttons are counted. A release shows its pre-saves, and a show its ticket clicks under the ticket link
+- A release's stats start with page views and visitors next to its clicks, and the share of views that went on to a service
+- Stats show the most-viewed pages by name, with clip campaign links matched to their clip
+- Clicks on the profile's social icons are counted
+- Clicks from the fan-list email show as "email" rather than "direct"
+- Stats show which devices people visit on, and what's been pressed on pre-save and ticket buttons
+- A show's editor shows its page views beside its ticket clicks, and the fan list shows each subscriber's country
+- Stats reach back past thirty days: 7 days, 30, 90, 12 months, a calendar year or all time, reading the daily totals kept after ninety days alongside recent visits. A year compares with the same dates the year before, and long periods chart by week or month
 - Fixed: deleting a clip left its quick render behind, on disk and in the library
 - Fixed: a shot whose audio ran shorter than its picture was cut to the length of the sound, and rendering appeared to hang partway
 - Fixed: a caption's backdrop was drawn solid black whatever colour was picked, and its opacity dial did nothing
@@ -59,6 +67,8 @@
 - Fixed: a campaign link counted each visit twice
 - Fixed: your own visits and clicks counted, drafts included. Anyone signed in is left out, and the ad pixels don't load for them or in the admin
 - Fixed: download, unsubscribe and phone-upload links were counted as page views with their secret in the address. Existing rows are removed
+- Fixed: the headline views and clicks on Stats covered a slightly different thirty days than the change beside them
+- Fixed: clicks on a deleted link showed as "unknown". They say "Removed link" now
 - Fixed: link clicks were kept forever. Like visits, they're reduced to daily totals after 90 days
 - Fixed: the privacy page said clicks went to TikTok from the server. Only Meta gets them, and only when set up to
 

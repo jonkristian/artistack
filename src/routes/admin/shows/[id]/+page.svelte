@@ -434,6 +434,21 @@
               placeholder="https://"
               class={fieldClass}
             />
+            <!-- Views of the show's page beside the presses, so the two read as
+                 a rate: how many who looked went on to the ticket seller. -->
+            {#if data.ticketClicks > 0 || data.pageViews > 0}
+              <p class="mt-1.5 text-xs text-gray-500">
+                {#if data.pageViews > 0}
+                  Page viewed {data.pageViews}
+                  {data.pageViews === 1 ? 'time' : 'times'}, tickets pressed {data.ticketClicks}
+                  {data.ticketClicks === 1 ? 'time' : 'times'}
+                {:else}
+                  Tickets pressed {data.ticketClicks}
+                  {data.ticketClicks === 1 ? 'time' : 'times'}
+                {/if}
+                in the last 30 days.
+              </p>
+            {/if}
           </div>
 
           <div>

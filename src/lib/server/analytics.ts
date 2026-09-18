@@ -1,5 +1,5 @@
 import { db } from './db';
-import { pageViews, linkClicks, links } from './schema';
+import { pageViews, linkClicks, links, actionClicks, releases, shows } from './schema';
 import { sql, eq, gte, lt, and, desc, count, isNotNull } from 'drizzle-orm';
 
 /*
@@ -36,6 +36,7 @@ export interface PageViewStats {
   viewsByPath: { path: string; count: number }[];
   viewsByReferrer: { referrer: string; count: number }[];
   viewsByCountry: { country: string; count: number }[];
+  viewsByDevice: { device: string; count: number }[];
 }
 
 export interface LinkClickStats {
@@ -177,100 +178,6 @@ export async function getOverviewStats(): Promise<OverviewStats> {
   };
 }
 
-export async function getPageViewStats(days: number = 30): Promise<PageViewStats> {
-  const range = {
-    start: new Date(Date.now() - days * 24 * 60 * 60 * 1000),
-    end: new Date()
-  };
-
-  // Total views
-  const [totalResult] = await db
-    .select({ count: count() })
-    .from(pageViews)
-    .where(gte(pageViews.createdAt, range.start));
-
-  // Unique paths
-  const uniquePathsResult = await db
-    .selectDistinct({ path: pageViews.path })
-    .from(pageViews)
-    .where(gte(pageViews.createdAt, range.start));
-
-  // Views by day
-  const viewsByDay = await db
-    .select({
-      date: sql<string>`date(${pageViews.createdAt}, 'unixepoch')`,
-      count: count()
-    })
-    .from(pageViews)
-    .where(gte(pageViews.createdAt, range.start))
-    .groupBy(sql`date(${pageViews.createdAt}, 'unixepoch')`)
-    .orderBy(sql`date(${pageViews.createdAt}, 'unixepoch')`);
-
-  // Views by path
-  const viewsByPath = await db
-    .select({
-      path: pageViews.path,
-      count: count()
-    })
-    .from(pageViews)
-    .where(gte(pageViews.createdAt, range.start))
-    .groupBy(pageViews.path)
-    .orderBy(desc(count()))
-    .limit(10);
-
-  // Views by referrer
-  const viewsByReferrer = await db
-    .select({
-      referrer: pageViews.referrer,
-      count: count()
-    })
-    .from(pageViews)
-    .where(gte(pageViews.createdAt, range.start))
-    .groupBy(pageViews.referrer)
-    .orderBy(desc(count()))
-    .limit(10);
-
-  // Views by country
-  const viewsByCountry = await db
-    .select({
-      country: pageViews.country,
-      count: count()
-    })
-    .from(pageViews)
-    .where(and(gte(pageViews.createdAt, range.start), sql`${pageViews.country} IS NOT NULL`))
-    .groupBy(pageViews.country)
-    .orderBy(desc(count()))
-    .limit(10);
-
-  /*
-   * Distinct tokens per day, then added up. The token changes at midnight by
-   * design, so the same person on three days is three tokens whatever we do —
-   * summing per-day counts at least makes each day honest on its own, and is
-   * what every cookieless tracker reports.
-   */
-  const [visitorsResult] = await db.select({ count: sql<number>`coalesce(sum(v), 0)` }).from(
-    db
-      .select({ v: sql<number>`count(distinct ${pageViews.visitor})`.as('v') })
-      .from(pageViews)
-      .where(and(gte(pageViews.createdAt, range.start), isNotNull(pageViews.visitor)))
-      .groupBy(sql`date(${pageViews.createdAt}, 'unixepoch')`)
-      .as('daily')
-  );
-
-  return {
-    totalViews: totalResult?.count ?? 0,
-    uniqueVisitors: Number(visitorsResult?.count ?? 0),
-    uniquePaths: uniquePathsResult.length,
-    viewsByDay: viewsByDay.map((r) => ({ date: r.date, count: r.count })),
-    viewsByPath: viewsByPath.map((r) => ({ path: r.path, count: r.count })),
-    viewsByReferrer: viewsByReferrer.map((r) => ({
-      referrer: r.referrer ?? 'direct',
-      count: r.count
-    })),
-    viewsByCountry: viewsByCountry.map((r) => ({ country: r.country ?? 'Unknown', count: r.count }))
-  };
-}
-
 /**
  * How one release is doing.
  *
@@ -331,159 +238,347 @@ export async function getReleaseClickStats(
   };
 }
 
-export async function getLinkClickStats(days: number = 30): Promise<LinkClickStats> {
-  const range = {
-    start: new Date(Date.now() - days * 24 * 60 * 60 * 1000),
-    end: new Date()
-  };
-
-  // Total clicks
-  const [totalResult] = await db
-    .select({ count: count() })
-    .from(linkClicks)
-    .where(gte(linkClicks.createdAt, range.start));
-
-  // Clicks by link (with link details)
-  const clicksByLinkId = await db
+/**
+ * Views of one page. Visitors are counted per day, since that's as long as a
+ * visitor code lives, and added up — the same way the stats page counts them.
+ */
+export async function getPathViewStats(
+  path: string,
+  days: number = 30
+): Promise<{ views: number; visitors: number }> {
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const [row] = await db
     .select({
-      linkId: linkClicks.linkId,
-      count: count()
+      views: count(),
+      visitors: sql<number>`count(distinct ${pageViews.visitor})`
     })
-    .from(linkClicks)
-    .where(gte(linkClicks.createdAt, range.start))
-    .groupBy(linkClicks.linkId)
-    .orderBy(desc(count()))
-    .limit(20);
+    .from(pageViews)
+    .where(and(eq(pageViews.path, path), gte(pageViews.createdAt, since)));
+  return { views: row?.views ?? 0, visitors: row?.visitors ?? 0 };
+}
 
-  // Fetch link details
-  const linkIds = clicksByLinkId.map((r) => r.linkId);
-  const linkDetails =
-    linkIds.length > 0
-      ? await db
-          .select()
-          .from(links)
-          .where(sql`${links.id} IN (${sql.join(linkIds, sql`, `)})`)
-      : [];
+/** Pre-save or ticket clicks on one release or show. */
+export async function getActionClickCount(
+  action: 'presave' | 'tickets',
+  subjectId: number,
+  days: number = 30
+): Promise<number> {
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const [row] = await db
+    .select({ total: count() })
+    .from(actionClicks)
+    .where(
+      and(
+        eq(actionClicks.action, action),
+        eq(actionClicks.subjectId, subjectId),
+        gte(actionClicks.createdAt, since)
+      )
+    );
+  return row?.total ?? 0;
+}
 
-  const linkMap = new Map(linkDetails.map((l) => [l.id, l]));
+/*
+ * ---------------------------------------------------------------------------
+ * History: the stats page's window, reaching past the ninety days of raw rows.
+ *
+ * A row per visit is kept for ninety days, then added up into one row per day
+ * per combination (see analytics-retention.ts). So any window can straddle
+ * two shapes of the same data, and every query below reads a union of both:
+ * the raw rows counted as 1 each, the daily rows as their stored total.
+ *
+ * They never overlap. A raw row is deleted in the same transaction that adds it
+ * to its day, so a given visit is in exactly one of the two at any moment.
+ *
+ * Windows are whole UTC days, because that's the grain the daily tables have:
+ * a window that started at 14:37 would have no honest answer for the day it
+ * started on once that day was rolled up.
+ * ---------------------------------------------------------------------------
+ */
 
-  const clicksByLink = clicksByLinkId.map((r) => {
-    const link = linkMap.get(r.linkId);
-    return {
-      linkId: r.linkId,
-      label: link?.label ?? null,
-      platform: link?.platform ?? 'unknown',
-      url: link?.url ?? '',
-      count: r.count
-    };
-  });
+const DAY_MS = 24 * 60 * 60 * 1000;
 
-  // Clicks by day
-  const clicksByDay = await db
-    .select({
-      date: sql<string>`date(${linkClicks.createdAt}, 'unixepoch')`,
-      count: count()
-    })
-    .from(linkClicks)
-    .where(gte(linkClicks.createdAt, range.start))
-    .groupBy(sql`date(${linkClicks.createdAt}, 'unixepoch')`)
-    .orderBy(sql`date(${linkClicks.createdAt}, 'unixepoch')`);
+/** A span of whole UTC days, `from` included and `to` not, as YYYY-MM-DD. */
+export interface StatsWindow {
+  from: string;
+  to: string;
+  days: number;
+}
 
-  // Clicks by referrer
-  const clicksByReferrer = await db
-    .select({
-      referrer: linkClicks.referrer,
-      count: count()
-    })
-    .from(linkClicks)
-    .where(gte(linkClicks.createdAt, range.start))
-    .groupBy(linkClicks.referrer)
-    .orderBy(desc(count()))
-    .limit(10);
+function isoDay(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
 
-  // Clicks by country
-  const clicksByCountry = await db
-    .select({
-      country: linkClicks.country,
-      count: count()
-    })
-    .from(linkClicks)
-    .where(and(gte(linkClicks.createdAt, range.start), sql`${linkClicks.country} IS NOT NULL`))
-    .groupBy(linkClicks.country)
-    .orderBy(desc(count()))
-    .limit(10);
+/** The last `days` days, today included — or the same length `back` windows earlier. */
+export function statsWindow(days: number, back = 0): StatsWindow {
+  const now = new Date();
+  const tomorrow = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) + DAY_MS;
+  const to = tomorrow - back * days * DAY_MS;
+  return { from: isoDay(to - days * DAY_MS), to: isoDay(to), days };
+}
+
+/** Everything recorded, from the first day anything was. */
+export async function allTimeWindow(): Promise<StatsWindow> {
+  const [row] = db.all<{ first: string | null }>(sql`
+    SELECT min(day) AS first FROM (
+      SELECT min(date(created_at, 'unixepoch')) AS day FROM page_views
+      UNION ALL SELECT min(date) FROM page_view_daily
+      UNION ALL SELECT min(date(created_at, 'unixepoch')) FROM link_clicks
+      UNION ALL SELECT min(date) FROM link_click_daily
+    )`);
+  const today = statsWindow(1);
+  if (!row?.first) return today;
+  const days = Math.round((Date.parse(today.to) - Date.parse(row.first)) / DAY_MS);
+  return { from: row.first, to: today.to, days: Math.max(days, 1) };
+}
+
+/** A calendar year — up to today, for the one we're in. */
+export function yearWindow(year: number): StatsWindow {
+  const today = statsWindow(1);
+  const from = `${year}-01-01`;
+  const to = `${year + 1}-01-01` < today.to ? `${year + 1}-01-01` : today.to;
+  return { from, to, days: Math.round((Date.parse(to) - Date.parse(from)) / DAY_MS) };
+}
+
+/**
+ * The same dates a year earlier, which is what a year compares against: this
+ * year so far beside the same stretch of last year, not beside the 260 days
+ * that happen to precede it.
+ */
+export function yearBefore(w: StatsWindow): StatsWindow {
+  const back = (day: string) => `${Number(day.slice(0, 4)) - 1}${day.slice(4)}`;
+  const from = back(w.from);
+  const to = back(w.to);
+  return { from, to, days: Math.round((Date.parse(to) - Date.parse(from)) / DAY_MS) };
+}
+
+/** Every year with anything recorded in it, newest first. */
+export async function dataYears(): Promise<number[]> {
+  const first = Number((await allTimeWindow()).from.slice(0, 4));
+  const current = new Date().getUTCFullYear();
+  const years: number[] = [];
+  for (let y = current; y >= first; y--) years.push(y);
+  return years;
+}
+
+function toWindow(period: number | StatsWindow): StatsWindow {
+  return typeof period === 'number' ? statsWindow(period) : period;
+}
+
+/** The window's bounds as the epoch seconds `created_at` is stored in. */
+const epochOf = (day: string) => sql`CAST(strftime('%s', ${day}) AS INTEGER)`;
+
+/** Page views in a window, one row per visit or per rolled-up combination. */
+function viewRows(w: StatsWindow) {
+  return sql`
+    SELECT date(created_at, 'unixepoch') AS day, path, referrer, country, device, 1 AS n
+    FROM page_views WHERE created_at >= ${epochOf(w.from)} AND created_at < ${epochOf(w.to)}
+    UNION ALL
+    SELECT date AS day, path, referrer, country, device, views AS n
+    FROM page_view_daily WHERE date >= ${w.from} AND date < ${w.to}`;
+}
+
+/** Visitors per day. Distinct within a day, which is as long as a visitor code lives. */
+function visitorRows(w: StatsWindow) {
+  return sql`
+    SELECT date(created_at, 'unixepoch') AS day, count(DISTINCT visitor) AS n
+    FROM page_views
+    WHERE visitor IS NOT NULL AND created_at >= ${epochOf(w.from)} AND created_at < ${epochOf(w.to)}
+    GROUP BY day
+    UNION ALL
+    SELECT date AS day, visitors AS n
+    FROM page_view_daily_visitors WHERE date >= ${w.from} AND date < ${w.to}`;
+}
+
+/** Link clicks in a window, in the same two shapes. */
+function clickRows(w: StatsWindow) {
+  return sql`
+    SELECT date(created_at, 'unixepoch') AS day, link_id, referrer, country, device, 1 AS n
+    FROM link_clicks WHERE created_at >= ${epochOf(w.from)} AND created_at < ${epochOf(w.to)}
+    UNION ALL
+    SELECT date AS day, link_id, referrer, country, device, clicks AS n
+    FROM link_click_daily WHERE date >= ${w.from} AND date < ${w.to}`;
+}
+
+/** Pre-save and ticket clicks in a window. */
+function actionRows(w: StatsWindow) {
+  return sql`
+    SELECT action, subject_id, 1 AS n
+    FROM action_clicks WHERE created_at >= ${epochOf(w.from)} AND created_at < ${epochOf(w.to)}
+    UNION ALL
+    SELECT action, subject_id, clicks AS n
+    FROM action_click_daily WHERE date >= ${w.from} AND date < ${w.to}`;
+}
+
+type Counted<K extends string> = Record<K, string | null> & { count: number };
+
+/** Rows summed by one column, largest first. */
+function sumBy<K extends string>(rows: ReturnType<typeof sql>, column: K, limit?: number) {
+  const col = sql.raw(column);
+  return db
+    .all<Counted<K>>(
+      sql`SELECT ${col} AS ${col}, sum(n) AS count FROM (${rows}) GROUP BY ${col} ORDER BY count DESC ${
+        limit ? sql`LIMIT ${limit}` : sql``
+      }`
+    )
+    .map((r) => ({ ...r, count: Number(r.count) }));
+}
+
+function total(rows: ReturnType<typeof sql>): number {
+  const [row] = db.all<{ total: number | null }>(sql`SELECT sum(n) AS total FROM (${rows})`);
+  return Number(row?.total ?? 0);
+}
+
+function byDay(rows: ReturnType<typeof sql>): { date: string; count: number }[] {
+  return db
+    .all<{ date: string; count: number }>(
+      sql`SELECT day AS date, sum(n) AS count FROM (${rows}) GROUP BY day ORDER BY day`
+    )
+    .map((r) => ({ date: r.date, count: Number(r.count) }));
+}
+
+export async function getPageViewStats(period: number | StatsWindow = 30): Promise<PageViewStats> {
+  const w = toWindow(period);
+  const rows = viewRows(w);
+
+  const [paths] = db.all<{ n: number }>(sql`SELECT count(DISTINCT path) AS n FROM (${rows})`);
 
   return {
-    totalClicks: totalResult?.count ?? 0,
-    clicksByLink,
-    clicksByDay: clicksByDay.map((r) => ({ date: r.date, count: r.count })),
-    clicksByReferrer: clicksByReferrer.map((r) => ({
+    totalViews: total(rows),
+    /*
+     * Distinct codes per day, then added up. The code changes at midnight by
+     * design, so the same person on three days is three codes whatever we do —
+     * summing per-day counts at least makes each day honest on its own, and is
+     * what every cookieless tracker reports.
+     */
+    uniqueVisitors: total(visitorRows(w)),
+    uniquePaths: Number(paths?.n ?? 0),
+    viewsByDay: byDay(rows),
+    // More than are shown, so rows from before a path stopped counting can be
+    // dropped by the reader and still leave ten.
+    viewsByPath: sumBy(rows, 'path', 20).map((r) => ({ path: r.path ?? '', count: r.count })),
+    viewsByReferrer: sumBy(rows, 'referrer', 10).map((r) => ({
       referrer: r.referrer ?? 'direct',
       count: r.count
     })),
-    clicksByCountry: clicksByCountry.map((r) => ({
-      country: r.country ?? 'Unknown',
-      count: r.count
-    }))
+    viewsByCountry: sumBy(rows, 'country')
+      .filter((r) => r.country)
+      .slice(0, 10)
+      .map((r) => ({ country: r.country ?? 'Unknown', count: r.count })),
+    viewsByDevice: sumBy(rows, 'device')
+      .filter((r) => r.device)
+      .map((r) => ({ device: r.device ?? 'unknown', count: r.count }))
   };
 }
 
-// Get views by day for previous period (for chart comparison)
-export async function getPreviousPeriodViewsByDay(
-  days: number = 30
-): Promise<{ date: string; count: number }[]> {
-  const now = new Date();
-  const currentStart = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
-  const previousStart = new Date(now.getTime() - days * 2 * 24 * 60 * 60 * 1000);
+export async function getLinkClickStats(
+  period: number | StatsWindow = 30
+): Promise<LinkClickStats> {
+  const w = toWindow(period);
+  const rows = clickRows(w);
 
-  const viewsByDay = await db
-    .select({
-      date: sql<string>`date(${pageViews.createdAt}, 'unixepoch')`,
-      count: count()
-    })
-    .from(pageViews)
-    .where(and(gte(pageViews.createdAt, previousStart), lt(pageViews.createdAt, currentStart)))
-    .groupBy(sql`date(${pageViews.createdAt}, 'unixepoch')`)
-    .orderBy(sql`date(${pageViews.createdAt}, 'unixepoch')`);
+  const top = sumBy(rows, 'link_id', 20).map((r) => ({
+    linkId: Number(r.link_id),
+    count: r.count
+  }));
+  const linkIds = top.map((r) => r.linkId);
+  const linkDetails = linkIds.length
+    ? await db
+        .select()
+        .from(links)
+        .where(sql`${links.id} IN (${sql.join(linkIds, sql`, `)})`)
+    : [];
+  const linkMap = new Map(linkDetails.map((l) => [l.id, l]));
 
-  return viewsByDay.map((r) => ({ date: r.date, count: r.count }));
+  return {
+    totalClicks: total(rows),
+    clicksByLink: top.map((r) => {
+      const link = linkMap.get(r.linkId);
+      return {
+        linkId: r.linkId,
+        // A click outlives its link; say so rather than "unknown".
+        label: link ? link.label : 'Removed link',
+        platform: link?.platform ?? 'unknown',
+        url: link?.url ?? '',
+        count: r.count
+      };
+    }),
+    clicksByDay: byDay(rows),
+    clicksByReferrer: sumBy(rows, 'referrer', 10).map((r) => ({
+      referrer: r.referrer ?? 'direct',
+      count: r.count
+    })),
+    clicksByCountry: sumBy(rows, 'country')
+      .filter((r) => r.country)
+      .slice(0, 10)
+      .map((r) => ({ country: r.country ?? 'Unknown', count: r.count }))
+  };
 }
 
-// Get comparison stats for previous period
-export async function getComparisonStats(days: number = 30): Promise<{
+/**
+ * Views by day in the window compared against, for the chart's dashed line —
+ * the window before the last `days`, or the one given.
+ */
+export async function getPreviousPeriodViewsByDay(
+  previous: number | StatsWindow = 30
+): Promise<{ date: string; count: number }[]> {
+  return byDay(viewRows(typeof previous === 'number' ? statsWindow(previous, 1) : previous));
+}
+
+/**
+ * Views and clicks in a window and in the one it's compared against, for the
+ * change figures. Given a number of days, that's the same length just before.
+ */
+export async function getComparisonStats(
+  period: number | StatsWindow = 30,
+  against?: StatsWindow
+): Promise<{
   currentViews: number;
   previousViews: number;
   currentClicks: number;
   previousClicks: number;
 }> {
-  const now = new Date();
-  const currentStart = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
-  const previousStart = new Date(now.getTime() - days * 2 * 24 * 60 * 60 * 1000);
-
-  const [currentViewsResult] = await db
-    .select({ count: count() })
-    .from(pageViews)
-    .where(gte(pageViews.createdAt, currentStart));
-
-  const [previousViewsResult] = await db
-    .select({ count: count() })
-    .from(pageViews)
-    .where(and(gte(pageViews.createdAt, previousStart), lt(pageViews.createdAt, currentStart)));
-
-  const [currentClicksResult] = await db
-    .select({ count: count() })
-    .from(linkClicks)
-    .where(gte(linkClicks.createdAt, currentStart));
-
-  const [previousClicksResult] = await db
-    .select({ count: count() })
-    .from(linkClicks)
-    .where(and(gte(linkClicks.createdAt, previousStart), lt(linkClicks.createdAt, currentStart)));
-
+  const current = toWindow(period);
+  const previous =
+    against ?? (typeof period === 'number' ? statsWindow(period, 1) : statsWindow(current.days, 1));
   return {
-    currentViews: currentViewsResult?.count ?? 0,
-    previousViews: previousViewsResult?.count ?? 0,
-    currentClicks: currentClicksResult?.count ?? 0,
-    previousClicks: previousClicksResult?.count ?? 0
+    currentViews: total(viewRows(current)),
+    previousViews: total(viewRows(previous)),
+    currentClicks: total(clickRows(current)),
+    previousClicks: total(clickRows(previous))
   };
+}
+
+/**
+ * Pre-save and ticket clicks, each named by what was clicked — the release's
+ * title, the show's title or venue and date.
+ */
+export async function getActionClickSummary(
+  period: number | StatsWindow = 30
+): Promise<{ action: 'presave' | 'tickets'; subjectId: number; label: string; count: number }[]> {
+  const rows = db
+    .all<{ action: string; subject_id: number; count: number }>(
+      sql`SELECT action, subject_id, sum(n) AS count FROM (${actionRows(toWindow(period))})
+          GROUP BY action, subject_id ORDER BY count DESC`
+    )
+    .map((r) => ({ action: r.action, subjectId: Number(r.subject_id), count: Number(r.count) }));
+  if (!rows.length) return [];
+
+  const [releaseRows, showRows] = await Promise.all([
+    db.select({ id: releases.id, title: releases.title }).from(releases),
+    db
+      .select({ id: shows.id, title: shows.title, venue: shows.venue, date: shows.date })
+      .from(shows)
+  ]);
+  const releaseTitles = new Map(releaseRows.map((r) => [r.id, r.title]));
+  const showLabels = new Map(
+    showRows.map((s) => [s.id, s.title || `${s.venue?.name ?? 'Show'}, ${s.date}`])
+  );
+
+  return rows.map((r) => {
+    const action = r.action === 'tickets' ? 'tickets' : 'presave';
+    const label =
+      (action === 'tickets' ? showLabels.get(r.subjectId) : releaseTitles.get(r.subjectId)) ??
+      (action === 'tickets' ? 'Removed show' : 'Removed release');
+    return { action, subjectId: r.subjectId, label, count: r.count };
+  });
 }

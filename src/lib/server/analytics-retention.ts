@@ -5,7 +5,9 @@ import {
   pageViewDaily,
   pageViewDailyVisitors,
   linkClicks,
-  linkClickDaily
+  linkClickDaily,
+  actionClicks,
+  actionClickDaily
 } from './schema';
 
 /**
@@ -89,7 +91,9 @@ export async function rollUpOldPageViews(): Promise<RetentionResult> {
   db.transaction((tx) => {
     // In batches: SQLite caps the parameters in one statement.
     for (let i = 0; i < rows.length; i += 500) {
-      tx.insert(pageViewDaily).values(rows.slice(i, i + 500)).run();
+      tx.insert(pageViewDaily)
+        .values(rows.slice(i, i + 500))
+        .run();
     }
 
     for (const day of visitorsByDay) {
@@ -143,9 +147,52 @@ export async function rollUpOldLinkClicks(): Promise<RetentionResult> {
   db.transaction((tx) => {
     // Batched for the same reason, and the first run here rolls up months.
     for (let i = 0; i < rows.length; i += 500) {
-      tx.insert(linkClickDaily).values(rows.slice(i, i + 500)).run();
+      tx.insert(linkClickDaily)
+        .values(rows.slice(i, i + 500))
+        .run();
     }
     removed = tx.delete(linkClicks).where(lt(linkClicks.createdAt, cutoff)).run().changes;
+  });
+
+  return { days: new Set(rows.map((r) => r.date)).size, removed };
+}
+
+/** Pre-save and ticket clicks, rolled up exactly as link clicks are. */
+export async function rollUpOldActionClicks(): Promise<RetentionResult> {
+  const cutoff = new Date(Date.now() - RAW_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const day = sql<string>`date(${actionClicks.createdAt}, 'unixepoch')`;
+
+  const rows = await db
+    .select({
+      date: day,
+      action: actionClicks.action,
+      subjectId: actionClicks.subjectId,
+      referrer: actionClicks.referrer,
+      country: actionClicks.country,
+      device: actionClicks.device,
+      clicks: sql<number>`count(*)`
+    })
+    .from(actionClicks)
+    .where(lt(actionClicks.createdAt, cutoff))
+    .groupBy(
+      day,
+      actionClicks.action,
+      actionClicks.subjectId,
+      actionClicks.referrer,
+      actionClicks.country,
+      actionClicks.device
+    );
+
+  if (!rows.length) return { days: 0, removed: 0 };
+
+  let removed = 0;
+  db.transaction((tx) => {
+    for (let i = 0; i < rows.length; i += 500) {
+      tx.insert(actionClickDaily)
+        .values(rows.slice(i, i + 500))
+        .run();
+    }
+    removed = tx.delete(actionClicks).where(lt(actionClicks.createdAt, cutoff)).run().changes;
   });
 
   return { days: new Set(rows.map((r) => r.date)).size, removed };

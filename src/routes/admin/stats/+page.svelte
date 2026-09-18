@@ -3,10 +3,12 @@
   import { SectionCard } from '$lib/components/cards';
   import ViewsChart from '$lib/components/admin/ViewsChart.svelte';
   import type { PageData } from './$types';
-  import { invalidateAll } from '$app/navigation';
+  import { invalidateAll, goto } from '$app/navigation';
   import { refreshSocialStats } from './data.remote';
 
   let { data }: { data: PageData } = $props();
+
+  const isYear = $derived(/^\d{4}$/.test(data.period));
 
   // Refresh state
   let refreshing = $state(false);
@@ -41,116 +43,152 @@
   }
 </script>
 
+<!-- Up or down against the window before. Absent for all time, which has none. -->
+{#snippet trend(value: number | null)}
+  {#if value !== null}
+    <div
+      class="mt-1 flex items-center gap-1 text-sm {value >= 0 ? 'text-green-400' : 'text-red-400'}"
+    >
+      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d={value >= 0 ? 'M5 10l7-7m0 0l7 7m-7-7v18' : 'M19 14l-7 7m0 0l-7-7m7 7V3'}
+        />
+      </svg>
+      {Math.abs(value)}% vs {data.comparedTo}
+    </div>
+  {/if}
+{/snippet}
+
 <div class="min-h-screen bg-gray-950 p-[clamp(1rem,4vw,1.5rem)]">
   <div class="space-y-6">
+    <!-- The window everything below covers. Each is an address, so a period
+         can be reloaded or sent to someone. Years sit between the rolling
+         windows and all time, and only appear once there's more than one. -->
+    <nav class="flex flex-wrap items-center gap-1" aria-label="Period">
+      {#each data.periods as option (option.value)}
+        {#if option.value === 'all' && data.years.length > 0}
+          <select
+            aria-label="Year"
+            class="rounded-lg border-0 py-1.5 pr-8 pl-3 text-sm transition-colors {isYear
+              ? 'bg-white/10 text-white'
+              : 'bg-transparent text-gray-400 hover:bg-white/5 hover:text-white'}"
+            value={isYear ? data.period : ''}
+            onchange={(e) => goto(`?period=${e.currentTarget.value}`, { noScroll: true })}
+          >
+            <option value="" disabled>Year</option>
+            {#each data.years as year (year)}
+              <option value={String(year)}>{year}</option>
+            {/each}
+          </select>
+        {/if}
+        <a
+          href="?period={option.value}"
+          data-sveltekit-noscroll
+          aria-current={data.period === option.value ? 'page' : undefined}
+          class="rounded-lg px-3 py-1.5 text-sm transition-colors {data.period === option.value
+            ? 'bg-white/10 text-white'
+            : 'text-gray-400 hover:bg-white/5 hover:text-white'}"
+        >
+          {option.label}
+        </a>
+      {/each}
+    </nav>
+
     <!-- Overview Cards -->
     <div class="grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,10rem),1fr))] gap-4">
       <!-- Page Views -->
       <div class="rounded-xl border border-gray-800 bg-gray-900 p-5">
-        <div class="text-sm text-gray-400">Page Views (30d)</div>
+        <div class="text-sm text-gray-400">Page Views</div>
         <div class="mt-2 text-3xl font-bold text-white">
-          {formatNumber(data.overview.monthViews)}
+          {formatNumber(data.currentViews)}
         </div>
         <!-- People rather than hits. The number the view count is usually mistaken for. -->
         <div class="mt-1 text-sm text-gray-500">
           {formatNumber(data.pageViews.uniqueVisitors)} visitors
         </div>
-        <div
-          class="mt-1 flex items-center gap-1 text-sm {data.viewsChange >= 0
-            ? 'text-green-400'
-            : 'text-red-400'}"
-        >
-          {#if data.viewsChange >= 0}
-            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M5 10l7-7m0 0l7 7m-7-7v18"
-              />
-            </svg>
-          {:else}
-            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M19 14l-7 7m0 0l-7-7m7 7V3"
-              />
-            </svg>
-          {/if}
-          {Math.abs(data.viewsChange)}% vs previous period
-        </div>
+        {@render trend(data.viewsChange)}
       </div>
 
       <!-- Link Clicks -->
       <div class="rounded-xl border border-gray-800 bg-gray-900 p-5">
-        <div class="text-sm text-gray-400">Link Clicks (30d)</div>
+        <div class="text-sm text-gray-400">Link Clicks</div>
         <div class="mt-2 text-3xl font-bold text-white">
-          {formatNumber(data.overview.monthClicks)}
+          {formatNumber(data.currentClicks)}
         </div>
-        <div
-          class="mt-1 flex items-center gap-1 text-sm {data.clicksChange >= 0
-            ? 'text-green-400'
-            : 'text-red-400'}"
-        >
-          {#if data.clicksChange >= 0}
-            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M5 10l7-7m0 0l7 7m-7-7v18"
-              />
-            </svg>
-          {:else}
-            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M19 14l-7 7m0 0l-7-7m7 7V3"
-              />
-            </svg>
-          {/if}
-          {Math.abs(data.clicksChange)}% vs previous period
-        </div>
+        {@render trend(data.clicksChange)}
       </div>
 
       <!-- Top Referrer -->
       <div class="rounded-xl border border-gray-800 bg-gray-900 p-5">
         <div class="text-sm text-gray-400">Top Referrer</div>
         <div class="mt-2 truncate text-xl font-bold text-white">
-          {data.overview.topReferrer ?? 'No data yet'}
+          {data.topReferrer ?? 'No data yet'}
         </div>
-        <div class="mt-1 text-sm text-gray-500">Last 30 days</div>
+        <div class="mt-1 text-sm text-gray-500">{data.periodLabel}</div>
       </div>
 
       <!-- Top Link -->
       <div class="rounded-xl border border-gray-800 bg-gray-900 p-5">
         <div class="text-sm text-gray-400">Most Clicked</div>
         <div class="mt-2 truncate text-xl font-bold text-white">
-          {data.overview.topLink?.label ?? data.overview.topLink?.platform ?? 'No clicks yet'}
+          {data.topLink
+            ? (data.topLink.label ?? platformLabel(data.topLink.platform))
+            : 'No clicks yet'}
         </div>
-        {#if data.overview.topLink}
-          <div class="mt-1 text-sm text-gray-500">{data.overview.topLink.clicks} clicks</div>
-        {:else}
-          <div class="mt-1 text-sm text-gray-500">Last 30 days</div>
-        {/if}
+        <div class="mt-1 text-sm text-gray-500">
+          {data.topLink ? `${data.topLink.count} clicks` : data.periodLabel}
+        </div>
       </div>
     </div>
 
     <!-- Page Views Chart -->
-    <SectionCard title="Page Views (Last 30 Days)">
+    <SectionCard title="Page Views">
       <ViewsChart
         locale={data.settings?.locale || 'nb-NO'}
+        days={data.days}
+        from={data.from}
+        previousFrom={data.previousFrom}
+        previousLabel={isYear ? data.comparedTo : null}
         viewsByDay={data.pageViews.viewsByDay}
         previousViewsByDay={data.previousPeriodViews}
       />
     </SectionCard>
 
-    <!-- Two column layout for referrers and geography -->
+    <!-- Two column layout for pages, referrers and geography -->
     <div class="grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr))] gap-6">
+      <!-- Top Pages. Clip campaign links are marked, since whether a posted
+           clip brought anyone is the question they answer. -->
+      <SectionCard title="Top Pages">
+        {#if data.topPages.length > 0}
+          <div class="space-y-3">
+            {#each data.topPages as row (row.path)}
+              <div class="flex items-center justify-between gap-3">
+                <span class="flex min-w-0 items-center gap-2" title={row.path}>
+                  <span class="truncate text-sm text-white">{row.label}</span>
+                  {#if row.campaign}
+                    <span class="shrink-0 text-xs text-violet-400">Clip</span>
+                  {/if}
+                </span>
+                <div class="flex shrink-0 items-center gap-3">
+                  <div class="h-2 w-24 overflow-hidden rounded-full bg-gray-700">
+                    <div
+                      class="h-full rounded-full bg-purple-500"
+                      style="width: {(row.count / data.pageViews.totalViews) * 100}%"
+                    ></div>
+                  </div>
+                  <span class="w-12 text-right text-sm text-gray-400">{row.count}</span>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <div class="py-8 text-center text-gray-500">No page views yet</div>
+        {/if}
+      </SectionCard>
+
       <!-- Top Referrers -->
       <SectionCard title="Top Referrers">
         {#if data.pageViews.viewsByReferrer.length > 0}
@@ -198,10 +236,55 @@
           <div class="py-8 text-center text-gray-500">No geographic data yet</div>
         {/if}
       </SectionCard>
+
+      <!-- Devices: whether people arrive on a phone decides what the page
+           should be good at first. -->
+      <SectionCard title="Devices">
+        {#if data.pageViews.viewsByDevice.length > 0}
+          <div class="space-y-3">
+            {#each data.pageViews.viewsByDevice as row (row.device)}
+              <div class="flex items-center justify-between">
+                <span class="text-sm text-white capitalize">{row.device}</span>
+                <div class="flex items-center gap-3">
+                  <div class="h-2 w-24 overflow-hidden rounded-full bg-gray-700">
+                    <div
+                      class="h-full rounded-full bg-purple-500"
+                      style="width: {(row.count / data.pageViews.totalViews) * 100}%"
+                    ></div>
+                  </div>
+                  <span class="w-12 text-right text-sm text-gray-400">{row.count}</span>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <div class="py-8 text-center text-gray-500">No device data yet</div>
+        {/if}
+      </SectionCard>
+
+      <!-- Only once something's been pressed: most sites have no pre-save up
+           and no tickets on sale most of the time. -->
+      {#if data.actionClicks.length > 0}
+        <SectionCard title="Pre-saves & Tickets">
+          <div class="space-y-3">
+            {#each data.actionClicks as row (`${row.action}-${row.subjectId}`)}
+              <div class="flex items-center justify-between gap-3">
+                <span class="flex min-w-0 items-center gap-2">
+                  <span class="truncate text-sm text-white">{row.label}</span>
+                  <span class="shrink-0 text-xs text-violet-400">
+                    {row.action === 'presave' ? 'Pre-save' : 'Tickets'}
+                  </span>
+                </span>
+                <span class="w-12 shrink-0 text-right text-sm text-gray-400">{row.count}</span>
+              </div>
+            {/each}
+          </div>
+        </SectionCard>
+      {/if}
     </div>
 
     <!-- Link Clicks -->
-    <SectionCard title="Link Clicks (Last 30 Days)">
+    <SectionCard title="Link Clicks">
       {#if data.linkClicks.clicksByLink.length > 0}
         <div class="overflow-x-auto">
           <table class="w-full">
@@ -241,7 +324,7 @@
         </div>
       {:else}
         <div class="py-8 text-center text-gray-500">
-          No link click data yet. Add trackable links using /go/[id] URLs.
+          No link clicks yet. Every link on the site is counted as it's pressed.
         </div>
       {/if}
     </SectionCard>

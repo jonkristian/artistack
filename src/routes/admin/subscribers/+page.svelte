@@ -56,6 +56,7 @@
             <tr class="border-b border-gray-800 text-xs tracking-wider text-gray-500 uppercase">
               <th class="py-2 pr-4 text-left font-normal">Email</th>
               <th class="py-2 pr-4 text-left font-normal">From</th>
+              <th class="py-2 pr-4 text-left font-normal">Country</th>
               <th class="py-2 pr-4 text-left font-normal">Signed up</th>
               <th class="py-2 text-left font-normal">Status</th>
             </tr>
@@ -66,6 +67,9 @@
                 <td class="py-2.5 pr-4 text-gray-200">{subscriber.email}</td>
                 <td class="py-2.5 pr-4 font-mono text-xs text-gray-500">
                   {subscriber.source ? `/${subscriber.source}` : '—'}
+                </td>
+                <td class="py-2.5 pr-4 text-xs text-gray-500 uppercase">
+                  {subscriber.country ?? '—'}
                 </td>
                 <td class="py-2.5 pr-4 text-gray-400 tabular-nums">
                   {formatDate(subscriber.consentAt)}

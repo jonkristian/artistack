@@ -3,6 +3,7 @@
   import { resolveTheme } from '$lib/themes';
   import { EmailCapture } from '$lib/components/ui';
   import { PlatformTile } from '$lib/components/cards';
+  import { trackedHref } from '$lib/blocks/utils';
   import type { Release, Link, PublicSettings, Profile } from '$lib/server/schema';
 
   interface Props {
@@ -115,7 +116,7 @@
 
       {#if !isOut && release.presaveUrl}
         <a
-          href={release.presaveUrl}
+          href={trackedHref('presave', release.id, release.presaveUrl)}
           class="w-full rounded-lg px-5 py-3.5 text-center font-semibold transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2"
           style="background-color: var(--color-accent); color: var(--color-bg); outline-color: var(--color-accent)"
         >

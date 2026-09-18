@@ -1,6 +1,7 @@
 <script lang="ts">
   import BlockHeading from '../BlockHeading.svelte';
   import { getPlatformIcon, contrastSafeColor } from '$lib/utils/platforms';
+  import { trackedHref } from '$lib/blocks/utils';
   import type {
     Block,
     ReleasesBlockConfig,
@@ -83,8 +84,11 @@
    * one thing to do with a record that isn't out, and a stop on the way is a
    * place to drop out. Nothing to offer once it's out, or without a link.
    */
+  // Through /go so the click is counted, the same as the service buttons.
   const presaveOf = (release: ReleaseSummary) =>
-    config.showPresave !== false && !isOut(release) ? release.presaveUrl : null;
+    config.showPresave !== false && !isOut(release) && release.presaveUrl
+      ? trackedHref('presave', release.id, release.presaveUrl)
+      : null;
 
   /**
    * How many services fit beside a title before it has nothing left.

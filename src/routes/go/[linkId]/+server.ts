@@ -31,8 +31,17 @@ export const GET: RequestHandler = async (event) => {
   // Track the click (fire and forget), skipping bots and the site's own people.
   const userAgent = request.headers.get('user-agent') || '';
 
+  /*
+   * The fan-list email marks its buttons, since a mail client sends no referrer
+   * and its clicks would otherwise land in "direct" beside everyone who typed
+   * the address. Taken off before forwarding: it's ours, not the store's.
+   */
+  const fromEmail = url.searchParams.get('src') === 'email';
+  const forward = new URLSearchParams(url.searchParams);
+  forward.delete('src');
+
   if (!isBot(userAgent) && !isOwnVisit(request.headers)) {
-    trackClick(linkId, event).catch(() => {});
+    trackClick(linkId, event, fromEmail ? 'email' : undefined).catch(() => {});
 
     /*
      * The conversion an ad platform actually cares about: someone reached a
@@ -67,7 +76,7 @@ export const GET: RequestHandler = async (event) => {
   });
 
   // Redirect to the actual URL, carrying any query params through.
-  throw redirect(302, withQuery(link.url, url.searchParams));
+  throw redirect(302, withQuery(link.url, forward));
 };
 
 /**
@@ -103,8 +112,8 @@ function withQuery(destination: string, incoming: URLSearchParams): string {
   }
 }
 
-async function trackClick(linkId: number, event: RequestEvent): Promise<void> {
-  const referrer = parseReferrer(event.request.headers.get('referer'));
+async function trackClick(linkId: number, event: RequestEvent, source?: string): Promise<void> {
+  const referrer = source ?? parseReferrer(event.request.headers.get('referer'));
   const ip = getClientIP(event);
   const country = ip ? await lookupCountry(ip) : null;
   const device = deviceFromUserAgent(event.request.headers.get('user-agent') || '');

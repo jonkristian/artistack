@@ -12,7 +12,11 @@ import { clearAbandonedStaging } from './clip-render';
 import { sweepClipLeftovers, sweptAnything } from './clip-sweep';
 import { runReleaseTick, checkPublishCoverage } from './clip-queue';
 import { remindStaleInvites } from './invites';
-import { rollUpOldPageViews, rollUpOldLinkClicks } from './analytics-retention';
+import {
+  rollUpOldPageViews,
+  rollUpOldLinkClicks,
+  rollUpOldActionClicks
+} from './analytics-retention';
 import { env } from '$env/dynamic/private';
 import { desc } from 'drizzle-orm';
 
@@ -134,10 +138,13 @@ export function initScheduler(): void {
         );
       }
 
-      const clicks = await rollUpOldLinkClicks().catch((e) => {
-        console.error('[Analytics] Click roll-up failed:', e);
-        return null;
-      });
+      // Link clicks, then pre-save and ticket clicks, the same way.
+      const clicks = await Promise.all([rollUpOldLinkClicks(), rollUpOldActionClicks()])
+        .then(([a, b]) => ({ days: Math.max(a.days, b.days), removed: a.removed + b.removed }))
+        .catch((e) => {
+          console.error('[Analytics] Click roll-up failed:', e);
+          return null;
+        });
       if (clicks?.removed) {
         console.log(
           `[Analytics] Rolled up ${clicks.days} day(s) of clicks, removed ${clicks.removed} raw row(s)`

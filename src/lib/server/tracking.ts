@@ -4,7 +4,7 @@
 
 import type { RequestEvent } from '@sveltejs/kit';
 import { db } from './db';
-import { pageViews } from './schema';
+import { pageViews, actionClicks } from './schema';
 import { visitorToken } from './visitor';
 import { getSessionCookie } from 'better-auth/cookies';
 
@@ -137,6 +137,30 @@ export async function recordPageView(
     // The class, not the string it came from. See the column's own note.
     device: deviceFromUserAgent(userAgent),
     visitor: visitorToken(ip, userAgent, hostname)
+  });
+}
+
+/** What an action click can be: a release's pre-save, or a show's tickets. */
+export type ClickAction = 'presave' | 'tickets';
+
+/**
+ * A click on a pre-save or ticket button, on its way out of the site.
+ *
+ * Callers are responsible for the bot and own-visit checks, as with page views.
+ * The referrer is the page the button was on, like a link click's.
+ */
+export async function recordAction(
+  event: RequestEvent,
+  action: ClickAction,
+  subjectId: number
+): Promise<void> {
+  const ip = getClientIP(event);
+  await db.insert(actionClicks).values({
+    action,
+    subjectId,
+    referrer: parseReferrer(event.request.headers.get('referer')),
+    country: ip ? await lookupCountry(ip) : null,
+    device: deviceFromUserAgent(event.request.headers.get('user-agent') || '')
   });
 }
 

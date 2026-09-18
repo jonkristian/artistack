@@ -108,6 +108,24 @@
 
   const isOut = $derived(previewDate.getTime() <= Date.now());
 
+  const statFigures = $derived.by(() => {
+    const { views, visitors } = data.pageViews;
+    const clicks = data.clicks.total;
+    return [
+      { label: 'Views', value: String(views), hint: 'Views of the release page' },
+      { label: 'Visitors', value: String(visitors), hint: 'Counted per day and added up' },
+      { label: 'Clicks', value: String(clicks), hint: 'Presses of a service, here and in email' },
+      // Pre-saves while it's coming, the share that went on to a service after.
+      data.presaves > 0 || (!isOut && release?.presaveUrl)
+        ? { label: 'Pre-saves', value: String(data.presaves), hint: 'Presses of Pre-save' }
+        : {
+            label: 'Click-through',
+            value: views ? `${Math.round((clicks / views) * 100)}%` : '–',
+            hint: 'Service clicks as a share of page views'
+          }
+    ];
+  });
+
   async function removeRelease() {
     if (!release) return;
     if (!confirm(`Delete “${release.title}” and its page? This can't be undone.`)) return;
@@ -468,15 +486,23 @@
         {/if}
       </div>
 
-      {#if data.clicks.total > 0}
+      {#if data.clicks.total > 0 || data.pageViews.views > 0 || data.presaves > 0}
         <div class="mt-6">
           <SectionCard title="Last 30 days">
-            <p class="mb-4 text-2xl font-semibold text-white tabular-nums">
-              {data.clicks.total}
-              <span class="text-sm font-normal text-gray-500">
-                {data.clicks.total === 1 ? 'click' : 'clicks'}
-              </span>
-            </p>
+            <!-- Views first, since clicks only mean something next to them: how
+                 many who came went on to press a service. -->
+            <dl class="mb-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
+              {#each statFigures as figure (figure.label)}
+                <div>
+                  <dt class="text-xs tracking-wider text-gray-500 uppercase" title={figure.hint}>
+                    {figure.label}
+                  </dt>
+                  <dd class="mt-1 text-2xl font-semibold text-white tabular-nums">
+                    {figure.value}
+                  </dd>
+                </div>
+              {/each}
+            </dl>
 
             <!-- Bars rather than numbers alone: which platform leads is the
                  question, and a share of the widest bar answers it faster than

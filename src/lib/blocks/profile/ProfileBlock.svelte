@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Block, Profile, Link, Show, Media, ProfileBlockConfig } from '$lib/server/schema';
-  import { socialIcons } from '$lib/blocks/utils';
+  import { socialIcons, trackClick } from '$lib/blocks/utils';
 
   let {
     block,
@@ -80,10 +80,12 @@
         </a>
       {/if}
       {#each socialLinks as link (link.id)}
+        <!-- Counted like a links block's rows: these are links too. -->
         <a
           href={link.url}
           target="_blank"
           rel="noopener noreferrer"
+          onclick={() => trackClick(link.id)}
           class="flex h-9 w-9 items-center justify-center transition-all hover:scale-110"
           style="color: var(--color-text-muted)"
           title="{profile.name} - {link.platform.charAt(0).toUpperCase() + link.platform.slice(1)}"

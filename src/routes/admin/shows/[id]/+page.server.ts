@@ -1,8 +1,9 @@
 import { error } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
-import { shows } from '$lib/server/schema';
+import { shows, pages } from '$lib/server/schema';
 import { requireFeature } from '$lib/server/guards';
 import { eq } from 'drizzle-orm';
+import { getActionClickCount, getPathViewStats } from '$lib/server/analytics';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -19,8 +20,21 @@ export const load: PageServerLoad = async ({ request, params }) => {
   const id = Number(params.id);
   if (!Number.isInteger(id)) error(404, 'Show not found');
 
-  const [show] = await db.select({ id: shows.id }).from(shows).where(eq(shows.id, id)).limit(1);
+  const [show] = await db
+    .select({ id: shows.id, pageId: shows.pageId })
+    .from(shows)
+    .where(eq(shows.id, id))
+    .limit(1);
   if (!show) error(404, 'Show not found');
 
-  return { showId: id };
+  // Counts, not rows: the one thing here that isn't the draft's to edit.
+  const [page] = show.pageId
+    ? await db.select({ slug: pages.slug }).from(pages).where(eq(pages.id, show.pageId)).limit(1)
+    : [];
+  const [ticketClicks, pageViews] = await Promise.all([
+    getActionClickCount('tickets', id),
+    page ? getPathViewStats(`/${page.slug}`).then((s) => s.views) : Promise.resolve(0)
+  ]);
+
+  return { showId: id, ticketClicks, pageViews };
 };

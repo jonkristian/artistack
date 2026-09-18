@@ -804,6 +804,46 @@ export const linkClicks = sqliteTable(
 );
 
 /**
+ * Clicks on buttons that aren't links in the links table: a release's pre-save,
+ * a show's tickets. Kept apart from `link_clicks` rather than squeezed into it,
+ * because those rows promise a link to join to and these have none.
+ */
+export const actionClicks = sqliteTable(
+  'action_clicks',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    /** 'presave' (subject: a release) or 'tickets' (subject: a show). */
+    action: text('action').notNull(),
+    subjectId: integer('subject_id').notNull(),
+    referrer: text('referrer'),
+    country: text('country'),
+    device: text('device'),
+    createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
+  },
+  (table) => [
+    index('action_clicks_subject_idx').on(table.action, table.subjectId),
+    index('action_clicks_created_at_idx').on(table.createdAt)
+  ]
+);
+
+/** The same, added up per day once older than ninety days. */
+export const actionClickDaily = sqliteTable(
+  'action_click_daily',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    /** YYYY-MM-DD, UTC. */
+    date: text('date').notNull(),
+    action: text('action').notNull(),
+    subjectId: integer('subject_id').notNull(),
+    referrer: text('referrer'),
+    country: text('country'),
+    device: text('device'),
+    clicks: integer('clicks').notNull()
+  },
+  (table) => [index('action_click_daily_date_idx').on(table.date)]
+);
+
+/**
  * Link clicks older than the raw window, added up per day — the same rollup
  * `page_view_daily` is for page views, so the privacy page's ninety days holds
  * for clicks too and a release's history survives as numbers.

@@ -2,7 +2,7 @@ import { error } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import { releases, pages, links, subscribers } from '$lib/server/schema';
 import { requireFeature } from '$lib/server/guards';
-import { getReleaseClickStats } from '$lib/server/analytics';
+import { getReleaseClickStats, getPathViewStats, getActionClickCount } from '$lib/server/analytics';
 import { eq, asc, isNull, count } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 
@@ -24,7 +24,11 @@ export const load: PageServerLoad = async ({ request, params }) => {
     .where(eq(links.releaseId, release.id))
     .orderBy(asc(links.position));
 
-  const clicks = await getReleaseClickStats(release.id);
+  const [clicks, pageViews, presaves] = await Promise.all([
+    getReleaseClickStats(release.id),
+    getPathViewStats(`/${page.slug}`),
+    getActionClickCount('presave', release.id)
+  ]);
 
   /*
    * How many people an announcement would actually reach, so the confirmation
@@ -38,5 +42,5 @@ export const load: PageServerLoad = async ({ request, params }) => {
 
   // Media isn't fetched here: the admin layout already loads the library, and
   // MediaPicker takes it straight from there.
-  return { release, page, releaseLinks, clicks, subscriberCount };
+  return { release, page, releaseLinks, clicks, pageViews, presaves, subscriberCount };
 };

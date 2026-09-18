@@ -1,7 +1,7 @@
 <script lang="ts">
   import SiteBackground from './SiteBackground.svelte';
   import { resolveTheme } from '$lib/themes';
-  import { shapeClasses, addToCalendar } from '$lib/blocks/utils';
+  import { shapeClasses, addToCalendar, trackedHref } from '$lib/blocks/utils';
   import { getPlatformInfoFromUrl } from '$lib/utils/platforms';
   import type { PublicSettings } from '$lib/server/settings';
   import type { Show, Profile, Media } from '$lib/server/schema';
@@ -220,7 +220,7 @@
           </span>
         {:else if !isPast && show.ticketUrl}
           <a
-            href={show.ticketUrl}
+            href={trackedHref('tickets', show.id, show.ticketUrl)}
             target="_blank"
             rel="noopener noreferrer"
             class="flex flex-1 items-center justify-center gap-2 rounded-xl px-5 py-3 font-bold tracking-wide uppercase transition-opacity hover:opacity-90"
