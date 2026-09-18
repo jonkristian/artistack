@@ -1,8 +1,8 @@
 <script lang="ts">
   import SiteBackground from './SiteBackground.svelte';
   import { resolveTheme } from '$lib/themes';
-  import { getPlatformIcon, getPlatformColor, contrastSafeColor } from '$lib/utils/platforms';
   import { EmailCapture } from '$lib/components/ui';
+  import { PlatformTile } from '$lib/components/cards';
   import type { Release, Link, PublicSettings, Profile } from '$lib/server/schema';
 
   interface Props {
@@ -53,8 +53,8 @@
    * How many services show before the rest are folded away.
    *
    * A smart link exists to get someone to the player they already have. Past
-   * about five the list stops being a shortcut and becomes something to read,
-   * and the ones below are regional services most visitors will never use.
+   * a row it stops being a shortcut and becomes something to read, and the
+   * ones below are regional services most visitors will never use.
    */
   const VISIBLE_LINKS = 5;
 
@@ -92,14 +92,12 @@
   <Layout {profile} {settings} links={[]} shows={[]} blocks={[]} media={[]}>
     <main class="mx-auto flex w-full max-w-md flex-col items-center gap-6">
       {#if cover}
-        <!-- The border matters: this artwork is close to black, and without an
-           edge it reads as a hole in the page rather than as a record sleeve. -->
         <img
           src={cover}
           alt="{release.title} cover art"
           width="640"
           height="640"
-          class="w-full rounded-xl border border-white/10 shadow-2xl shadow-black/60"
+          class="w-full rounded-xl shadow-2xl shadow-black/60"
         />
       {/if}
 
@@ -126,53 +124,31 @@
       {/if}
 
       {#if orderedLinks.length > 0}
-        <ul class="flex w-full flex-col gap-2.5">
+        <!-- A row of the services' marks, like apps on a home screen: the tile is
+             the button, so there's no card around it to make each one a slab.
+             Wrapped rather than a grid, so a short last row sits centred. -->
+        <ul class="flex w-full flex-wrap justify-center gap-x-3 gap-y-4">
           {#each showAll ? orderedLinks : orderedLinks.slice(0, VISIBLE_LINKS) as link (link.id)}
-            {@const icon = getPlatformIcon(link.platform)}
-            <li>
+            {@const preferred = link.platform === preferredPlatform}
+            <li class="w-[4.5rem]">
               <!-- Through /go so the click is tracked and any campaign params
                  on the incoming URL carry through to the destination. -->
               <a
                 href="/go/{link.id}"
                 rel="noopener"
-                class="flex items-center gap-3 rounded-lg border border-white/10 px-4 py-3 transition hover:border-white/25 focus-visible:outline-2 focus-visible:outline-offset-2"
-                style="background-color: var(--color-card); outline-color: var(--color-accent)"
+                class="group flex flex-col items-center gap-1.5 rounded-xl text-center focus-visible:outline-2 focus-visible:outline-offset-4"
+                style="outline-color: var(--color-accent)"
               >
-                {#if icon}
-                  <svg
-                    viewBox="0 0 24 24"
-                    class="h-5 w-5 shrink-0"
-                    fill={contrastSafeColor(link.platform, settings?.colorBg ?? '#0c0a14')}
-                    aria-hidden="true"
-                  >
-                    <path d={icon} />
-                  </svg>
-                {:else}
-                  <!-- Same fallback as LinkCard: a service we have no mark for
-                     still gets a row that lines up with the others. -->
-                  <div
-                    class="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[10px] font-bold text-white"
-                    style="background-color: {contrastSafeColor(
-                      link.platform,
-                      settings?.colorBg ?? '#0c0a14',
-                      'var(--color-accent)'
-                    )}"
-                    aria-hidden="true"
-                  >
-                    {link.platform.charAt(0).toUpperCase()}
-                  </div>
-                {/if}
-                <span class="font-medium">{link.label ?? link.platform}</span>
-                {#if link.platform === preferredPlatform}
-                  <span
-                    class="rounded-full border px-2 py-0.5 text-[10px] tracking-wide uppercase"
-                    style="border-color: color-mix(in srgb, var(--color-accent) 45%, transparent); color: var(--color-text-muted)"
-                  >
-                    Last used
-                  </span>
-                {/if}
-                <span class="ml-auto text-sm" style="color: var(--color-text-muted)">
-                  {isOut ? 'Play' : 'Save'}
+                <span
+                  class="rounded-xl transition group-hover:-translate-y-0.5 group-hover:brightness-125 group-active:scale-95 {preferred
+                    ? 'ring-2 ring-offset-2'
+                    : ''}"
+                  style="--tw-ring-color: var(--color-accent); --tw-ring-offset-color: var(--color-bg)"
+                >
+                  <PlatformTile platform={link.platform} />
+                </span>
+                <span class="w-full truncate text-xs font-medium" style="color: var(--color-text)">
+                  {link.label ?? link.platform}
                 </span>
               </a>
             </li>

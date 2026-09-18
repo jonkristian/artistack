@@ -271,6 +271,10 @@ export async function publishAllChanges(draftData: UnifiedDraftData) {
       await serverDeleteLink(id);
     }
 
+    // Temp id to real one, so a link added and then dragged in the same edit
+    // keeps the place it was dragged to rather than landing at the end.
+    const linkIdMap = new Map<number, number>();
+
     for (const link of linkDiff.added) {
       // A block-owned link may point at a block created in this same publish,
       // so its temp id is remapped first. A release link has a real owner
@@ -282,7 +286,7 @@ export async function publishAllChanges(draftData: UnifiedDraftData) {
             ? (blockIdMap.get(link.blockId) ?? link.blockId)
             : link.blockId;
 
-      await serverCreateLink({
+      const created = await serverCreateLink({
         url: link.url,
         blockId,
         releaseId: link.releaseId ?? undefined,
@@ -290,6 +294,7 @@ export async function publishAllChanges(draftData: UnifiedDraftData) {
         platform: link.platform ?? undefined,
         label: link.label ?? undefined
       });
+      if (created?.link) linkIdMap.set(link.id, created.link.id);
     }
 
     for (const { id, changes } of linkDiff.updated) {
@@ -307,12 +312,21 @@ export async function publishAllChanges(draftData: UnifiedDraftData) {
       }
     }
 
-    const linkBlockIds = new Set(draftData.links.filter((l) => l.id > 0).map((l) => l.blockId));
-    for (const blockId of linkBlockIds) {
-      const blockLinks = draftData.links
-        .filter((l) => l.blockId === blockId && l.id > 0)
-        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
-      await serverReorderLinks(blockLinks.map((l, i) => ({ id: l.id, position: i })));
+    /*
+     * Numbered per owner, a block or a release. Grouping on the block alone put
+     * every release's links into one list, since none of them has a block.
+     */
+    const byOwner = new Map<string, Link[]>();
+    for (const link of draftData.links) {
+      const key = link.blockId != null ? `block:${link.blockId}` : `release:${link.releaseId}`;
+      byOwner.set(key, [...(byOwner.get(key) ?? []), link]);
+    }
+    for (const owned of byOwner.values()) {
+      const order = owned
+        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+        .map((l) => (l.id < 0 ? (linkIdMap.get(l.id) ?? l.id) : l.id))
+        .filter((id) => id > 0);
+      await serverReorderLinks(order.map((id, position) => ({ id, position })));
     }
   }
 

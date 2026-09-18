@@ -23,6 +23,9 @@
 - Security headers on every response: no framing by another site, no content sniffing, less referrer leaked
 - Changing a password signs out your other devices; an admin reset signs out all of theirs
 - Dependencies are current, including fixes in the database layer and in Svelte's rendering
+- Release pages show their services as a row of icons rather than a list of buttons
+- Store links are also found by barcode on MusicBrainz, which picks up TIDAL and Qobuz. Qobuz links are recognised and have a logo
+- A release's streaming links look and edit like a links block's: the same rows, the same dialog, paste to add, drag to order
 - Fixed: deleting a clip left its quick render behind, on disk and in the library
 - Fixed: a shot whose audio ran shorter than its picture was cut to the length of the sound, and rendering appeared to hang partway
 - Fixed: a caption's backdrop was drawn solid black whatever colour was picked, and its opacity dial did nothing
@@ -46,6 +49,7 @@
 - Fixed: the render bar sat still at whatever it first caught, and a render started after a finished one showed the button again until pressed twice
 - Fixed: a bed always played from the start of the song when you pressed play, whatever its rail was set to
 - Fixed: once one store link was found, the hourly check stopped looking for the others
+- Fixed: a link added and moved in the same edit went to the end once saved
 
 # 1.6.0 (11-09-2026)
 

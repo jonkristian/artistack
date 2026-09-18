@@ -301,43 +301,80 @@ async function resolveViaSpotify(
   return url ? [{ platform: 'spotify', url, source: 'spotify' }] : [];
 }
 
-type MusicBrainzIsrc = {
-  recordings?: Array<{ relations?: Array<{ url?: { resource?: string } }> }>;
-};
+type MusicBrainzRelations = { relations?: Array<{ url?: { resource?: string } }> };
+type MusicBrainzIsrc = { recordings?: MusicBrainzRelations[] };
+type MusicBrainzSearch = { releases?: Array<{ id: string; barcode?: string | null }> };
 
 /**
- * MusicBrainz, which sometimes hands over everything at once — Spotify and
- * TIDAL included, neither of which will answer a stranger's question about
+ * One MusicBrainz request, asked twice if it comes back empty.
+ *
+ * It says no in two different tones and only means one of them. A record it
+ * has never heard of and a server too busy to look both arrive here as nothing
+ * at all, and the second is common enough that three identical lookups in a
+ * row returned everything, everything, and nothing. The throttle puts a second
+ * between the attempts on its own.
+ */
+async function askMusicBrainz<T>(path: string): Promise<T | null> {
+  const ask = () =>
+    throttleMusicBrainz(() =>
+      fetchJson<T>(`https://musicbrainz.org/ws/2/${path}`, {
+        'User-Agent': musicBrainzAgent()
+      })
+    );
+  return (await ask()) ?? (await ask());
+}
+
+/** Barcodes arrive padded differently from different stores. */
+function sameBarcode(a: string | null | undefined, b: string): boolean {
+  return !!a && a.replace(/^0+/, '') === b.replace(/^0+/, '');
+}
+
+/**
+ * MusicBrainz, which sometimes hands over everything at once — TIDAL and
+ * Qobuz included, neither of which will answer a stranger's question about
  * their own catalogue.
  *
  * The catch is coverage: it holds what people have entered, so a well-known
  * record returns four services and a debut single returns nothing. That makes
  * it a bonus rather than a source to rely on. It's also the one worth telling
  * an artist about, because adding a release is a ten-minute job that makes
- * Spotify and TIDAL resolve for free from then on.
+ * the rest resolve for free from then on.
+ *
+ * Asked both ways, because the links live in two places. Popular tracks carry
+ * them on the recording, found by ISRC. A release imported with Harmony carries
+ * them on the release, found by barcode — and its ISRCs are a separate step
+ * that's easy to skip, so the barcode is often the only way in.
  */
-async function resolveViaMusicBrainz(isrc: string): Promise<ResolvedStoreLink[]> {
-  const ask = () =>
-    throttleMusicBrainz(() =>
-      fetchJson<MusicBrainzIsrc>(
-        `https://musicbrainz.org/ws/2/isrc/${encodeURIComponent(isrc)}?inc=url-rels&fmt=json`,
-        { 'User-Agent': musicBrainzAgent() }
-      )
-    );
+async function resolveViaMusicBrainz(
+  isrc: string | null | undefined,
+  upc: string | null | undefined
+): Promise<ResolvedStoreLink[]> {
+  const sources: MusicBrainzRelations[] = [];
 
-  /*
-   * Asked twice, because it says no in two different tones and only means one
-   * of them. A record it has never heard of and a server too busy to look both
-   * arrive here as nothing at all, and the second is common enough that three
-   * identical lookups in a row returned everything, everything, and nothing.
-   * The throttle puts a second between the attempts on its own.
-   */
-  const data = (await ask()) ?? (await ask());
-  if (!data?.recordings?.length) return [];
+  if (isrc) {
+    const data = await askMusicBrainz<MusicBrainzIsrc>(
+      `isrc/${encodeURIComponent(isrc)}?inc=url-rels&fmt=json`
+    );
+    sources.push(...(data?.recordings ?? []));
+  }
+
+  if (upc) {
+    const search = await askMusicBrainz<MusicBrainzSearch>(
+      `release?query=${encodeURIComponent(`barcode:${upc}`)}&limit=5&fmt=json`
+    );
+    // Search is fuzzy; only a release printed with this exact code is ours.
+    const release = search?.releases?.find((r) => sameBarcode(r.barcode, upc));
+    if (release) {
+      const data = await askMusicBrainz<MusicBrainzRelations>(
+        `release/${encodeURIComponent(release.id)}?inc=url-rels&fmt=json`
+      );
+      if (data) sources.push(data);
+    }
+  }
 
   const found: ResolvedStoreLink[] = [];
-  for (const recording of data.recordings) {
-    for (const relation of recording.relations ?? []) {
+  for (const source of sources) {
+    for (const relation of source.relations ?? []) {
       const url = relation.url?.resource;
       if (!url) continue;
       // The same detection the admin uses when a link is pasted, so a service
@@ -372,7 +409,7 @@ export async function resolveStoreLinks(query: StoreLinkQuery): Promise<Resolved
     query.isrc && query.spotify
       ? resolveViaSpotify(query.isrc, query.spotify, country)
       : Promise.resolve([]),
-    query.isrc ? resolveViaMusicBrainz(query.isrc) : Promise.resolve([])
+    query.isrc || upc ? resolveViaMusicBrainz(query.isrc, upc) : Promise.resolve([])
   ]);
 
   const seen = new Set<string>();

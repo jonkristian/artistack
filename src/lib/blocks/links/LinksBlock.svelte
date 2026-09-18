@@ -11,9 +11,9 @@
   } from '$lib/server/schema';
   import type { RepoEmbedData } from '$lib/server/schema';
   import { BandcampEmbed, SpotifyEmbed, YouTubeEmbed } from '$lib/components/embeds';
-  import { RepoCard } from '$lib/components/cards';
+  import { RepoCard, PlatformTile } from '$lib/components/cards';
   import { trackClick } from '$lib/blocks/utils';
-  import { platformIcons, platformColors } from '$lib/utils/platforms';
+  import { platformIcons } from '$lib/utils/platforms';
 
   let {
     block,
@@ -169,25 +169,7 @@
                 </p>
               </div>
             {:else}
-              {#if platformIcons[link.platform]}
-                <div
-                  class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl"
-                  style="background: linear-gradient(135deg, {platformColors[link.platform] ||
-                    'var(--color-accent)'}40, {platformColors[link.platform] ||
-                    'var(--color-accent)'}20)"
-                >
-                  <svg viewBox="0 0 24 24" class="h-6 w-6" style="fill: var(--color-icon)">
-                    <path d={platformIcons[link.platform]} />
-                  </svg>
-                </div>
-              {:else}
-                <div
-                  class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl font-bold"
-                  style="background: linear-gradient(135deg, var(--color-icon, #a1a1aa)40, var(--color-icon, #a1a1aa)20); color: var(--color-icon)"
-                >
-                  {link.platform.charAt(0).toUpperCase()}
-                </div>
-              {/if}
+              <PlatformTile platform={link.platform} />
               <span class="flex-1 font-semibold capitalize" style="color: var(--color-text)">
                 {link.label || link.platform.replace('_', ' ')}
               </span>

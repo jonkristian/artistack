@@ -2,6 +2,7 @@
   import { fieldClass, labelClass } from '$lib/utils/classes';
   import {
     ToggleSwitch,
+    SortableList,
     MediaPicker,
     EditorPreview,
     DateTimePicker,
@@ -9,12 +10,19 @@
     RichTextEditor
   } from '$lib/components/ui';
   import { SectionCard } from '$lib/components/cards';
-  import { SlugDialog } from '$lib/components/dialogs';
+  import { SlugDialog, LinkEditDialog } from '$lib/components/dialogs';
+  import type { LinkValues } from '$lib/components/dialogs/LinkEditDialog.svelte';
+  import LinkRow from '$lib/components/admin/LinkRow.svelte';
   import { slugify } from '$lib/utils/slug';
   import ReleasePage from '$lib/pages/ReleasePage.svelte';
   import { goto, invalidateAll } from '$app/navigation';
   import { toast } from '$lib/stores/toast.svelte';
-  import { platformLabel, platformsInCategory, contrastSafeColor } from '$lib/utils/platforms';
+  import {
+    platformLabel,
+    platformsInCategory,
+    contrastSafeColor,
+    detectPlatformFromUrl
+  } from '$lib/utils/platforms';
   import { tick } from 'svelte';
   import * as draft from '$lib/stores/pageDraft.svelte';
   import {
@@ -75,8 +83,12 @@
   const draftData = draft.getData<UnifiedDraftData>();
   const release = $derived(draftData.releases?.find((r) => r.id === data.release.id));
 
+  // In the order they show on the release page, which is the order they're
+  // dragged into here.
   const releaseLinks = $derived(
-    (draftData.links ?? []).filter((l: Link) => l.releaseId === data.release.id)
+    (draftData.links ?? [])
+      .filter((l: Link) => l.releaseId === data.release.id)
+      .sort((a: Link, b: Link) => (a.position ?? 0) - (b.position ?? 0))
   );
 
   /*
@@ -138,16 +150,45 @@
       label: platformLabel(newPlatform),
       thumbnailUrl: null,
       embedData: null,
-      position: releaseLinks.length,
+      // After the last one rather than at the count: a removed link leaves a
+      // gap, and the count would then tie with whatever sits at the end.
+      position: Math.max(-1, ...releaseLinks.map((l: Link) => l.position ?? 0)) + 1,
       visible: true
     });
 
     newUrl = '';
   }
 
+  function reorderLinks(items: Link[]) {
+    items.forEach((item, i) => {
+      const link = draftData.links.find((l: Link) => l.id === item.id);
+      if (link) link.position = i;
+    });
+  }
+
   function removeLink(id: number) {
     const index = draftData.links.findIndex((l: Link) => l.id === id);
     if (index !== -1) draftData.links.splice(index, 1);
+  }
+  // Pasting a link picks its service, the way a links block does. The select
+  // stays for the ones we can't tell from the address.
+  function detectPlatform() {
+    const detected = detectPlatformFromUrl(newUrl);
+    if (detected?.category === 'streaming') newPlatform = detected.platform;
+  }
+
+  // The same dialog a links block edits with, so a link edits alike everywhere.
+  let editingLink = $state<Link | null>(null);
+
+  function saveLink(values: LinkValues) {
+    const target = draftData.links.find((l: Link) => l.id === editingLink?.id);
+    if (target) Object.assign(target, values);
+    editingLink = null;
+  }
+
+  function deleteLink(id: number) {
+    removeLink(id);
+    editingLink = null;
   }
 
   let finding = $state(false);
@@ -354,55 +395,42 @@
             clicks are counted per platform and campaign tags carry through to the destination.
           </p>
 
-          {#if releaseLinks.length > 0}
-            <ul class="flex flex-col gap-2">
-              {#each releaseLinks as link (link.id)}
-                <li
-                  class="flex items-center gap-3 rounded-lg border border-gray-800 bg-gray-950 p-3"
-                >
-                  <span class="w-28 shrink-0 truncate text-sm text-gray-300">
-                    {link.label ?? platformLabel(link.platform)}
-                  </span>
-                  <!-- Sizing on a wrapper: `fieldClass` already has `w-full`,
-                       and two width utilities on one element are resolved by
-                       stylesheet order, not by the order written here. -->
-                  <div class="min-w-0 flex-1">
-                    <input class={fieldClass} bind:value={link.url} />
-                  </div>
-                  <button
-                    type="button"
-                    class="shrink-0 px-2 text-sm text-gray-500 transition hover:text-red-400"
-                    onclick={() => removeLink(link.id)}
-                    aria-label="Remove {link.platform} link"
-                  >
-                    Remove
-                  </button>
-                </li>
+          <form class="flex gap-2" onsubmit={addLink}>
+            <select
+              aria-label="Platform"
+              class="shrink-0 rounded-lg border border-gray-700 bg-gray-800 px-2 py-2 text-sm text-white focus:border-gray-600 focus:outline-none"
+              bind:value={newPlatform}
+            >
+              {#each platformOptions as platform (platform)}
+                <option value={platform}>{platformLabel(platform)}</option>
               {/each}
-            </ul>
-          {/if}
-
-          <form class="mt-4 flex flex-wrap items-end gap-3" onsubmit={addLink}>
-            <div>
-              <label class={labelClass} for="platform">Platform</label>
-              <select id="platform" class={fieldClass} bind:value={newPlatform}>
-                {#each platformOptions as platform (platform)}
-                  <option value={platform}>{platformLabel(platform)}</option>
-                {/each}
-              </select>
-            </div>
-            <div class="min-w-52 flex-1">
-              <label class={labelClass} for="url">Link</label>
-              <input id="url" class={fieldClass} bind:value={newUrl} placeholder="https://…" />
-            </div>
+            </select>
+            <input
+              type="url"
+              aria-label="Link URL"
+              class="min-w-0 flex-1 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+              bind:value={newUrl}
+              oninput={detectPlatform}
+              placeholder="Paste URL..."
+            />
             <button
               type="submit"
-              class="rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-200 transition hover:border-gray-600 hover:text-white disabled:opacity-50"
-              disabled={!newUrl}
+              class="rounded-lg bg-white/10 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20 disabled:opacity-50"
+              disabled={!newUrl.trim()}
             >
               Add
             </button>
           </form>
+
+          {#if releaseLinks.length > 0}
+            <div class="mt-3">
+              <SortableList items={releaseLinks} onreorder={reorderLinks}>
+                {#snippet children(link: Link)}
+                  <LinkRow {link} onedit={(l) => (editingLink = l)} ondelete={removeLink} />
+                {/snippet}
+              </SortableList>
+            </div>
+          {/if}
         </SectionCard>
 
         <!--
@@ -573,6 +601,20 @@
       title={release.title}
       onsave={(next) => (release.slug = next)}
       onclose={() => (slugOpen = false)}
+    />
+  {/if}
+
+  {#if editingLink}
+    <LinkEditDialog
+      link={editingLink}
+      themeColors={{
+        bg: data.settings?.colorBg ?? '#0c0a14',
+        card: data.settings?.colorCard ?? '#1a1625',
+        accent: data.settings?.colorAccent ?? '#8b5cf6'
+      }}
+      onsave={saveLink}
+      ondelete={deleteLink}
+      onclose={() => (editingLink = null)}
     />
   {/if}
 {/if}
