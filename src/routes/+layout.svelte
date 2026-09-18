@@ -21,8 +21,9 @@
 </script>
 
 <svelte:head>
+  <!-- No description here: every public page writes its own, and a second
+       one ahead of it is the one link previews read. -->
   <title>Artistack</title>
-  <meta name="description" content="Artist link hub" />
 </svelte:head>
 
 <!-- Every public page, so a conversion is attributed wherever someone lands.

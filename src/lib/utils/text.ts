@@ -51,3 +51,26 @@ export function shortName(value: string, max = 36): string {
   const tail = Math.min(8, Math.floor((max - 1) / 3));
   return `${name.slice(0, max - tail - 1)}…${name.slice(-tail)}`;
 }
+
+/**
+ * Text for a meta description: one plain line, since that's how every preview
+ * draws it.
+ *
+ * Written in a textarea it arrives with paragraph breaks, and some link
+ * previewers read a tag with a line break in it as no description at all. A
+ * field that grew a rich editor arrives as HTML, and tags in a preview are
+ * worse than none. Empty comes back as null so the caller's fallback takes over.
+ */
+export function metaText(value: string | null | undefined): string | null {
+  const text = value
+    ?.replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text || null;
+}

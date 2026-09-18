@@ -3,6 +3,7 @@
   import { resolveTheme } from '$lib/themes';
   import SiteBackground from '$lib/pages/SiteBackground.svelte';
   import * as cart from '$lib/stores/cart.svelte';
+  import { metaText } from '$lib/utils/text';
 
   let { data }: { data: PageData } = $props();
 
@@ -22,7 +23,8 @@
   // SEO
   const pageTitle = $derived(settings?.siteTitle || profile?.name || 'Artist');
   const pageDescription = $derived(
-    profile?.bio ?? `Check out ${profile?.name ?? 'this artist'} - links, music, and more.`
+    metaText(profile?.bio) ??
+      `Check out ${profile?.name ?? 'this artist'} - links, music, and more.`
   );
 
   const Layout = $derived(resolveTheme(settings?.layout));

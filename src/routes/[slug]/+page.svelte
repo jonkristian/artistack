@@ -4,6 +4,7 @@
   import CustomPage from '$lib/pages/CustomPage.svelte';
   import ShowPage from '$lib/pages/ShowPage.svelte';
   import ShopPage from '$lib/pages/ShopPage.svelte';
+  import { metaText } from '$lib/utils/text';
 
   let { data }: { data: PageData } = $props();
 
@@ -18,7 +19,7 @@
   const pageTitle = $derived(profile?.name ? `${profile.name} — ${heading}` : heading);
 
   const pageDescription = $derived(
-    page.description ??
+    metaText(page.description) ??
       (release
         ? data.isOut
           ? `Listen to ${release.title} by ${profile?.name ?? 'this artist'}.`

@@ -52,6 +52,7 @@
 - Fixed: a link added and moved in the same edit went to the end once saved
 - Fixed: a YouTube or Bandcamp link on a release fetched a player and thumbnail it had nowhere to show
 - Fixed: a service whose brand colour is black, like TIDAL, drew an invisible tile on a dark page
+- Fixed: link previews showed "Artist link hub" instead of the page's description, and missed descriptions written over several lines
 
 # 1.6.0 (11-09-2026)
 
