@@ -46,9 +46,4 @@ export async function requireUploadAccess(
   throw error(401, 'Unauthorized');
 }
 
-/**
- * Calculate the next position for an ordered list of items.
- */
-export function getNextPosition<T extends { position?: number | null }>(items: T[]): number {
-  return items.reduce((max, item) => Math.max(max, item.position ?? 0), 0) + 1;
-}
+export { getNextPosition } from '$lib/utils/position';

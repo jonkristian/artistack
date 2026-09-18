@@ -27,7 +27,9 @@
   // array, so reading array order here would ignore every reorder.
   const socialLinks = $derived(
     links
-      .filter((l) => l.category === 'social')
+      // This block's own links. Filtering on category alone took every social
+      // link on the page, so a YouTube video in a links block became an icon here.
+      .filter((l) => l.blockId === block.id)
       .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
   );
 

@@ -69,6 +69,8 @@
 - Fixed: download, unsubscribe and phone-upload links were counted as page views with their secret in the address. Existing rows are removed
 - Fixed: the headline views and clicks on Stats covered a slightly different thirty days than the change beside them
 - Fixed: clicks on a deleted link showed as "unknown". They say "Removed link" now
+- Fixed: the profile's icons picked up every social link on the page, so a YouTube video in a links block showed as a second YouTube icon
+- Fixed: a link added after another was removed could tie for last place and land in either order
 - Fixed: link clicks were kept forever. Like visits, they're reduced to daily totals after 90 days
 - Fixed: the privacy page said clicks went to TikTok from the server. Only Meta gets them, and only when set up to
 

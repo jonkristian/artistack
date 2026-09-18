@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Block, Link, Media } from '$lib/server/schema';
   import { SortableList } from '$lib/components/ui';
+  import { getNextPosition } from '$lib/utils/position';
   import LinkRow from '$lib/components/admin/LinkRow.svelte';
   import { toast } from '$lib/stores/toast.svelte';
   import { detectPlatformFromUrl } from '$lib/utils/platforms';
@@ -61,7 +62,7 @@
           label: null,
           thumbnailUrl: null,
           embedData: null,
-          position: links.filter((l) => l.blockId === block.id).length,
+          position: getNextPosition(blockLinks),
           visible: true
         };
         links.push(tempLink);

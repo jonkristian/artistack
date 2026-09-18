@@ -32,6 +32,7 @@
   } from '../../publishDraft';
   import { deleteRelease, announceReleaseNow, findStoreLinksNow } from '../data.remote';
   import type { Link } from '$lib/server/schema';
+  import { getNextPosition } from '$lib/utils/position';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -168,9 +169,7 @@
       label: platformLabel(newPlatform),
       thumbnailUrl: null,
       embedData: null,
-      // After the last one rather than at the count: a removed link leaves a
-      // gap, and the count would then tie with whatever sits at the end.
-      position: Math.max(-1, ...releaseLinks.map((l: Link) => l.position ?? 0)) + 1,
+      position: getNextPosition(releaseLinks),
       visible: true
     });
 

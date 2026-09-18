@@ -3,6 +3,7 @@
   import type { Block, Profile, Link, Media } from '$lib/server/schema';
   import { getTempId } from '$lib/stores/pageDraft.svelte';
   import { socialIcons } from '$lib/blocks/utils';
+  import { getNextPosition } from '$lib/utils/position';
   import RichTextEditor from '$lib/components/ui/RichTextEditor.svelte';
   import { toast } from '$lib/stores/toast.svelte';
 
@@ -21,7 +22,8 @@
   // Social links (shown as icons in profile header)
   const socialLinks = $derived(
     links
-      .filter((l) => l.category === 'social')
+      // This block's own, as on the page — not every social link anywhere.
+      .filter((l) => l.blockId === block.id)
       .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
   );
 
@@ -80,7 +82,7 @@
       label: null,
       thumbnailUrl: null,
       embedData: null,
-      position: socialLinks.length,
+      position: getNextPosition(socialLinks),
       visible: true
     };
 
