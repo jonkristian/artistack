@@ -1,6 +1,12 @@
 import { sql, lt, and, isNotNull } from 'drizzle-orm';
 import { db } from './db';
-import { pageViews, pageViewDaily, pageViewDailyVisitors } from './schema';
+import {
+  pageViews,
+  pageViewDaily,
+  pageViewDailyVisitors,
+  linkClicks,
+  linkClickDaily
+} from './schema';
 
 /**
  * Keeping the numbers and letting go of the visits.
@@ -81,7 +87,10 @@ export async function rollUpOldPageViews(): Promise<RetentionResult> {
   let removed = 0;
 
   db.transaction((tx) => {
-    if (rows.length) tx.insert(pageViewDaily).values(rows).run();
+    // In batches: SQLite caps the parameters in one statement.
+    for (let i = 0; i < rows.length; i += 500) {
+      tx.insert(pageViewDaily).values(rows.slice(i, i + 500)).run();
+    }
 
     for (const day of visitorsByDay) {
       /*
@@ -103,4 +112,41 @@ export async function rollUpOldPageViews(): Promise<RetentionResult> {
   });
 
   return { days: pending.days, removed };
+}
+
+/**
+ * The same for link clicks, which were being kept forever while the privacy
+ * page said ninety days. Simpler than page views: a click carries no visitor,
+ * so there's no distinct count to keep apart from the totals.
+ */
+export async function rollUpOldLinkClicks(): Promise<RetentionResult> {
+  const cutoff = new Date(Date.now() - RAW_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const day = sql<string>`date(${linkClicks.createdAt}, 'unixepoch')`;
+
+  const rows = await db
+    .select({
+      date: day,
+      linkId: linkClicks.linkId,
+      referrer: linkClicks.referrer,
+      country: linkClicks.country,
+      device: linkClicks.device,
+      clicks: sql<number>`count(*)`
+    })
+    .from(linkClicks)
+    .where(lt(linkClicks.createdAt, cutoff))
+    .groupBy(day, linkClicks.linkId, linkClicks.referrer, linkClicks.country, linkClicks.device);
+
+  if (!rows.length) return { days: 0, removed: 0 };
+
+  let removed = 0;
+  // One transaction, as above: the delete is what makes the insert final.
+  db.transaction((tx) => {
+    // Batched for the same reason, and the first run here rolls up months.
+    for (let i = 0; i < rows.length; i += 500) {
+      tx.insert(linkClickDaily).values(rows.slice(i, i + 500)).run();
+    }
+    removed = tx.delete(linkClicks).where(lt(linkClicks.createdAt, cutoff)).run().changes;
+  });
+
+  return { days: new Set(rows.map((r) => r.date)).size, removed };
 }

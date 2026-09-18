@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { afterNavigate } from '$app/navigation';
+
   /**
    * Advertising pixels for the public site.
    *
@@ -24,6 +26,21 @@
   }
 
   let { metaPixelId = null, tiktokPixelId = null }: Props = $props();
+
+  /*
+   * The snippets fire a page view once, as the page loads. A page reached
+   * without a load needs telling them about, or an ad platform only ever sees
+   * the page someone landed on.
+   */
+  afterNavigate(({ type, from, to }) => {
+    if (type === 'enter' || !to || to.url.pathname === from?.url.pathname) return;
+    const w = window as unknown as {
+      fbq?: (...args: unknown[]) => void;
+      ttq?: { page: () => void };
+    };
+    if (metaPixelId) w.fbq?.('track', 'PageView');
+    if (tiktokPixelId) w.ttq?.page();
+  });
 
   /** Meta's standard pixel loader, with the id interpolated as a JSON literal. */
   function metaSnippet(id: string): string {

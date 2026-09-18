@@ -1,5 +1,5 @@
 import { redirect } from '@sveltejs/kit';
-import { isBot, recordPageView } from '$lib/server/tracking';
+import { isBot, isOwnVisit, recordPageView, COUNTED_COOKIE } from '$lib/server/tracking';
 import type { RequestHandler } from './$types';
 
 /**
@@ -19,10 +19,19 @@ export const GET: RequestHandler = async (event) => {
   const { params, request, url } = event;
   const userAgent = request.headers.get('user-agent') || '';
 
-  if (!isBot(userAgent)) {
+  if (!isBot(userAgent) && !isOwnVisit(request.headers)) {
     // Fire and forget, like the hook does — analytics shouldn't delay the redirect.
     recordPageView(event, `/c/${params.slug}`, userAgent, url.hostname).catch(() => {
       // Silently ignore tracking errors
+    });
+
+    // The front page would count this visit again when it lands. A minute is
+    // long enough to arrive and short enough not to swallow a later visit.
+    event.cookies.set(COUNTED_COOKIE, '1', {
+      path: '/',
+      maxAge: 60,
+      httpOnly: true,
+      sameSite: 'lax'
     });
   }
 

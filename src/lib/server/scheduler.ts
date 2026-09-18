@@ -12,7 +12,7 @@ import { clearAbandonedStaging } from './clip-render';
 import { sweepClipLeftovers, sweptAnything } from './clip-sweep';
 import { runReleaseTick, checkPublishCoverage } from './clip-queue';
 import { remindStaleInvites } from './invites';
-import { rollUpOldPageViews } from './analytics-retention';
+import { rollUpOldPageViews, rollUpOldLinkClicks } from './analytics-retention';
 import { env } from '$env/dynamic/private';
 import { desc } from 'drizzle-orm';
 
@@ -131,6 +131,16 @@ export function initScheduler(): void {
       if (rolled?.removed) {
         console.log(
           `[Analytics] Rolled up ${rolled.days} day(s), removed ${rolled.removed} raw row(s)`
+        );
+      }
+
+      const clicks = await rollUpOldLinkClicks().catch((e) => {
+        console.error('[Analytics] Click roll-up failed:', e);
+        return null;
+      });
+      if (clicks?.removed) {
+        console.log(
+          `[Analytics] Rolled up ${clicks.days} day(s) of clicks, removed ${clicks.removed} raw row(s)`
         );
       }
     })

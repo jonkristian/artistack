@@ -1,60 +1,15 @@
 import type { Handle } from '@sveltejs/kit';
 import { initScheduler } from '$lib/server/scheduler';
-import { isBot, recordPageView } from '$lib/server/tracking';
+import {
+  isBot,
+  isOwnVisit,
+  isTrackedPath,
+  recordPageView,
+  COUNTED_COOKIE
+} from '$lib/server/tracking';
 
 // Initialize scheduled tasks (runs once on server start)
 initScheduler();
-
-// Paths to skip tracking
-const SKIP_PATHS = [
-  '/admin',
-  '/api',
-  '/login',
-  '/logout',
-  '/go/', // Link tracking has its own endpoint
-  '/preview/', // Internal clip review, not audience traffic
-  '/invite/', // Account setup, not audience traffic
-  /*
-   * Files, not pages. The extension list below catches an image or a font, but
-   * not a .zip, .mp4 or .pdf — so a press kit download was landing in the same
-   * column as someone reading the front page, and whether a file counted came
-   * down to whether its extension happened to be listed.
-   */
-  '/uploads/',
-  '/healthz', // Orchestrator probe, not a visitor
-  '/_app',
-  '/favicon',
-  '/manifest',
-  '/robots.txt',
-  '/sitemap'
-];
-
-// Static file extensions to skip
-const STATIC_EXTENSIONS = [
-  '.js',
-  '.css',
-  '.map',
-  '.ico',
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.gif',
-  '.svg',
-  '.webp',
-  '.woff',
-  '.woff2',
-  '.ttf',
-  '.eot',
-  '.json',
-  '.xml'
-];
-
-function shouldSkipPath(path: string): boolean {
-  if (STATIC_EXTENSIONS.some((ext) => path.endsWith(ext))) {
-    return true;
-  }
-  return SKIP_PATHS.some((prefix) => path.startsWith(prefix));
-}
 
 /**
  * Headers every response carries.
@@ -106,6 +61,10 @@ export const handle: Handle = async ({ event, resolve }) => {
   const path = url.pathname;
   const userAgent = request.headers.get('user-agent') || '';
 
+  // Read and cleared before resolving, so the clearing reaches the response.
+  const countedAlready = event.cookies.get(COUNTED_COOKIE) != null;
+  if (countedAlready) event.cookies.delete(COUNTED_COOKIE, { path: '/' });
+
   // Always resolve the request first for better performance
   const response = secure(await resolve(event), url.protocol === 'https:');
 
@@ -115,7 +74,18 @@ export const handle: Handle = async ({ event, resolve }) => {
   }
 
   // Skip tracking for bots, admin routes, static files, etc.
-  if (shouldSkipPath(path) || isBot(userAgent)) {
+  if (!isTrackedPath(path) || isBot(userAgent)) {
+    return response;
+  }
+
+  // Someone signed in is working on the site, not visiting it — and that's
+  // mostly drafts and previews, which would otherwise count as the audience.
+  if (isOwnVisit(request.headers)) {
+    return response;
+  }
+
+  // A campaign link has already counted this visit, as itself, on its way here.
+  if (countedAlready) {
     return response;
   }
 

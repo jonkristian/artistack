@@ -184,7 +184,13 @@ export async function load({ request, cookies }) {
     profile: artistProfile ?? null,
     settings: siteSettings ?? null,
     pixels: siteSettings?.pixelsEnabled
-      ? { metaPixelId: meta?.pixelId ?? null, tiktokPixelId: tiktok?.pixelId ?? null }
+      ? {
+          metaPixelId: meta?.pixelId ?? null,
+          tiktokPixelId: tiktok?.pixelId ?? null,
+          // Whether clicks also go to Meta from the server, for the privacy
+          // page to say so. Whether, not the token.
+          metaServerClicks: Boolean(meta?.pixelId && meta?.capiToken)
+        }
       : null,
     links: artistLinks,
     shows: showsWithLineup,

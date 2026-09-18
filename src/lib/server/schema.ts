@@ -804,6 +804,29 @@ export const linkClicks = sqliteTable(
 );
 
 /**
+ * Link clicks older than the raw window, added up per day — the same rollup
+ * `page_view_daily` is for page views, so the privacy page's ninety days holds
+ * for clicks too and a release's history survives as numbers.
+ */
+export const linkClickDaily = sqliteTable(
+  'link_click_daily',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    /** YYYY-MM-DD, UTC. */
+    date: text('date').notNull(),
+    linkId: integer('link_id').notNull(),
+    referrer: text('referrer'),
+    country: text('country'),
+    device: text('device'),
+    clicks: integer('clicks').notNull()
+  },
+  (table) => [
+    index('link_click_daily_date_idx').on(table.date),
+    index('link_click_daily_link_id_idx').on(table.linkId)
+  ]
+);
+
+/**
  * The fan email list.
  *
  * Worth owning rather than leaving to a pre-save service: a hosted pre-save

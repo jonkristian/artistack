@@ -4,6 +4,7 @@ import { links, linkClicks } from '$lib/server/schema';
 import { eq } from 'drizzle-orm';
 import {
   isBot,
+  isOwnVisit,
   parseReferrer,
   getClientIP,
   lookupCountry,
@@ -34,8 +35,8 @@ export const POST: RequestHandler = async (event) => {
   const { request } = event;
   const userAgent = request.headers.get('user-agent') || '';
 
-  // Skip bots
-  if (isBot(userAgent)) {
+  // Skip bots, and the site's own people testing their links
+  if (isBot(userAgent) || isOwnVisit(request.headers)) {
     return json({ success: true });
   }
 

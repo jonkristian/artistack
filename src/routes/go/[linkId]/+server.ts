@@ -4,6 +4,7 @@ import { links, linkClicks } from '$lib/server/schema';
 import { eq } from 'drizzle-orm';
 import {
   isBot,
+  isOwnVisit,
   parseReferrer,
   getClientIP,
   lookupCountry,
@@ -27,10 +28,10 @@ export const GET: RequestHandler = async (event) => {
     throw error(404, 'Link not found');
   }
 
-  // Track the click (fire and forget, skip bots)
+  // Track the click (fire and forget), skipping bots and the site's own people.
   const userAgent = request.headers.get('user-agent') || '';
 
-  if (!isBot(userAgent)) {
+  if (!isBot(userAgent) && !isOwnVisit(request.headers)) {
     trackClick(linkId, event).catch(() => {});
 
     /*

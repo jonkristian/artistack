@@ -110,18 +110,20 @@
           SoundCloud, or social media networks. These embeds are governed by their respective
           privacy policies.
         </p>
-        {#if pixels}
+        {#if pixels?.metaServerClicks}
+          <!-- Meta only: it's the one sent from the server. Naming TikTok here
+               described something that never happens. -->
           <p>
-            While advertising measurement is switched on, we also send {pixelNames} a record of clicks
-            on our music links directly from our server, including your IP address and browser. This happens
-            whether or not the pixel loaded in your browser.
+            While advertising measurement is switched on, we also send Meta a record of clicks on
+            our music links directly from our server, including your IP address and browser. This
+            happens whether or not the pixel loaded in your browser.
           </p>
         {/if}
 
         <h2 class="!mt-8 text-lg font-semibold" style="color: var(--color-text)">Data Retention</h2>
         <p>
-          Individual visit records are kept for 90 days and then reduced to daily totals, which
-          carry no record of any single visit. We do not sell personal data.
+          Individual visit and click records are kept for 90 days and then reduced to daily totals,
+          which carry no record of any single visit. We do not sell personal data.
         </p>
 
         <h2 class="!mt-8 text-lg font-semibold" style="color: var(--color-text)">Contact</h2>

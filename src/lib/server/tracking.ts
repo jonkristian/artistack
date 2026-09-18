@@ -1,11 +1,30 @@
 // Shared bot detection, referrer parsing, IP utilities, and geolocation
-// Used by hooks.server.ts (page views), go/[linkId] (link clicks) and
-// c/[slug] (clip campaign links)
+// Used by hooks.server.ts (page views), api/track/view (in-app navigations),
+// go/[linkId] (link clicks) and c/[slug] (clip campaign links)
 
 import type { RequestEvent } from '@sveltejs/kit';
 import { db } from './db';
 import { pageViews } from './schema';
 import { visitorToken } from './visitor';
+import { getSessionCookie } from 'better-auth/cookies';
+
+export { isTrackedPath } from '$lib/utils/tracked-paths';
+
+/**
+ * Whether the request comes from someone signed in to the admin.
+ *
+ * The cookie's presence, not a session lookup: this runs on every page view,
+ * and an expired cookie still belongs to someone who works on the site.
+ */
+export function isOwnVisit(headers: Headers): boolean {
+  return getSessionCookie(headers) != null;
+}
+
+/**
+ * Set by a campaign link on its way to the front page, which it has already
+ * counted as itself — so the landing isn't counted a second time.
+ */
+export const COUNTED_COOKIE = 'artistack_counted';
 
 // Bot detection patterns
 const BOT_PATTERNS = [

@@ -3,11 +3,28 @@
   import { TrackingPixels } from '$lib/components/ui';
   import { ShopOverlay } from '$lib/components/shop';
   import { readableOn } from '$lib/utils/color';
+  import { isTrackedPath } from '$lib/utils/tracked-paths';
+  import { afterNavigate } from '$app/navigation';
+  import { page } from '$app/state';
   import type { LayoutData } from './$types';
 
   let { children, data }: { children: import('svelte').Snippet; data: LayoutData } = $props();
 
   const pixels = $derived(data.pixels);
+
+  /*
+   * A page reached without a page load, reported so it's counted. The first
+   * page of a visit was counted by the server as it rendered, and a change of
+   * query or hash on the same page isn't a new view.
+   */
+  afterNavigate(({ type, from, to }) => {
+    if (type === 'enter' || !to || to.url.pathname === from?.url.pathname) return;
+    if (!isTrackedPath(to.url.pathname)) return;
+    const body = new Blob([JSON.stringify({ path: to.url.pathname })], {
+      type: 'application/json'
+    });
+    navigator.sendBeacon('/api/track/view', body);
+  });
 
   /** Defaults here so every page gets a complete palette, set up or not. */
   const settings = $derived({
@@ -26,9 +43,11 @@
   <title>Artistack</title>
 </svelte:head>
 
-<!-- Every public page, so a conversion is attributed wherever someone lands.
+<!-- Every public page, so a conversion is attributed wherever someone lands —
+     and only those, not the admin, sign-in or previews. Not for anyone signed
+     in either: an ad platform counting them builds its audiences from the band.
      Renders nothing at all unless pixels are switched on and an id is set. -->
-{#if pixels}
+{#if pixels && !data.user && isTrackedPath(page.url.pathname)}
   <TrackingPixels metaPixelId={pixels.metaPixelId} tiktokPixelId={pixels.tiktokPixelId} />
 {/if}
 

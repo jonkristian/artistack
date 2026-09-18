@@ -53,6 +53,12 @@
 - Fixed: a YouTube or Bandcamp link on a release fetched a player and thumbnail it had nowhere to show
 - Fixed: a service whose brand colour is black, like TIDAL, drew an invisible tile on a dark page
 - Fixed: link previews showed "Artist link hub" instead of the page's description, and missed descriptions written over several lines
+- Fixed: only the first page of a visit was counted. Pages opened from within the site count now, and the ad pixels hear about them too
+- Fixed: a campaign link counted each visit twice
+- Fixed: your own visits and clicks counted, drafts included. Anyone signed in is left out, and the ad pixels don't load for them or in the admin
+- Fixed: download, unsubscribe and phone-upload links were counted as page views with their secret in the address. Existing rows are removed
+- Fixed: link clicks were kept forever. Like visits, they're reduced to daily totals after 90 days
+- Fixed: the privacy page said clicks went to TikTok from the server. Only Meta gets them, and only when set up to
 
 # 1.6.0 (11-09-2026)
 
