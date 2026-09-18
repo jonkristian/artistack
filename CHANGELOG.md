@@ -45,6 +45,7 @@
 - Fixed: an effect's dials were squeezed into two columns that didn't fit, so 'Amount' read as 'A…'
 - Fixed: the render bar sat still at whatever it first caught, and a render started after a finished one showed the button again until pressed twice
 - Fixed: a bed always played from the start of the song when you pressed play, whatever its rail was set to
+- Fixed: once one store link was found, the hourly check stopped looking for the others
 
 # 1.6.0 (11-09-2026)
 

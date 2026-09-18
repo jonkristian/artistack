@@ -486,6 +486,10 @@ export async function fillStoreLinks(releaseId: number, country: string): Promis
  * stores publish within hours of each other, and a placeholder still sitting
  * there a week later is one none of these sources can answer — YouTube Music,
  * most often, which none of them index.
+ *
+ * Tidying also covers a service the lookups can answer but haven't yet. Stores
+ * don't publish in step, so the first one to answer isn't the last one worth
+ * asking about.
  */
 const NOTHING_TO_PRESS_DAYS = 42;
 const STILL_TIDYING_DAYS = 7;
@@ -508,20 +512,27 @@ export async function releasesNeedingStoreLinks(
     .from(releases)
     .where(and(lte(releases.releaseDate, horizon), gte(releases.releaseDate, cutoff)));
 
+  // The services a direct lookup can answer for, so worth waiting on.
+  const spotify = await getSpotifySettings();
+  const answerable = ['deezer', 'apple_music'];
+  if (spotify.clientId && spotify.clientSecret) answerable.push('spotify');
+
   const needing: number[] = [];
   for (const release of candidates) {
     if (!release.isrc && !release.upc) continue;
 
     const rows = await db
-      .select({ url: links.url })
+      .select({ platform: links.platform, url: links.url })
       .from(links)
       .where(eq(links.releaseId, release.id));
 
     const usable = rows.filter((row) => !isPlaceholderUrl(row.url));
     if (usable.length === 0) {
       needing.push(release.id);
-    } else if (rows.length > usable.length && release.date > tidyCutoff) {
-      needing.push(release.id);
+    } else if (release.date > tidyCutoff) {
+      const have = new Set(usable.map((row) => row.platform));
+      const missing = answerable.some((platform) => !have.has(platform));
+      if (missing || rows.length > usable.length) needing.push(release.id);
     }
   }
   return needing;
