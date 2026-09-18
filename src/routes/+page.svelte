@@ -4,6 +4,8 @@
   import SiteBackground from '$lib/pages/SiteBackground.svelte';
   import * as cart from '$lib/stores/cart.svelte';
   import { metaText } from '$lib/utils/text';
+  import { artistData, jsonLdTag } from '$lib/utils/structured-data';
+  import { page } from '$app/state';
 
   let { data }: { data: PageData } = $props();
 
@@ -28,6 +30,22 @@
   );
 
   const Layout = $derived(resolveTheme(settings?.layout));
+
+  // The band, stated outright for search engines, with its official profiles
+  // taken from the links already on the page.
+  const structured = $derived(
+    profile
+      ? jsonLdTag(
+          artistData({
+            origin: page.url.origin,
+            name: profile.name,
+            bio: profile.bio,
+            links,
+            facts: data.identity
+          })
+        )
+      : null
+  );
 </script>
 
 <svelte:head>
@@ -36,10 +54,15 @@
   <meta property="og:title" content={pageTitle} />
   <meta property="og:description" content={pageDescription} />
   <meta property="og:type" content="profile" />
+  <meta property="og:url" content="{page.url.origin}/" />
+  <link rel="canonical" href="{page.url.origin}/" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content={pageTitle} />
   <meta name="twitter:description" content={pageDescription} />
   {@html `<style>html, body { background-color: ${settings?.colorBg ?? '#0c0a14'}; }</style>`}
+  {#if structured}
+    {@html structured}
+  {/if}
 </svelte:head>
 
 <!-- The grain, the colours and the text colour, shared with every other

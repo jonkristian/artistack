@@ -26,6 +26,8 @@
 - Release pages show their services as a row of icons rather than a list of buttons
 - Store links are also found by barcode on MusicBrainz, which picks up TIDAL and Qobuz. Qobuz links are recognised and have a logo
 - A release's streaming links look and edit like a links block's: the same rows, the same dialog, paste to add, drag to order
+- Search engines are told what the site is: the front page describes the band, with its profiles from the links already on it, and a release page describes the recording, its ISRC and where to hear it
+- Settings has an Identity tab: whether the site is for a band, a solo artist or a person, with genres, hometown, year formed, members and other official pages. Search engines are told all of it
 - Fixed: deleting a clip left its quick render behind, on disk and in the library
 - Fixed: a shot whose audio ran shorter than its picture was cut to the length of the sound, and rendering appeared to hang partway
 - Fixed: a caption's backdrop was drawn solid black whatever colour was picked, and its opacity dial did nothing

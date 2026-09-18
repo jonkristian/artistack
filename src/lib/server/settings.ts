@@ -175,6 +175,29 @@ const tiktok = v.object({
 });
 
 /**
+ * Who the site is for: the facts that describe the act rather than the site.
+ * Read by the structured data today; blocks can show them later.
+ */
+const identityMember = v.object({
+  name: v.string(),
+  role: v.nullable(v.string()),
+  /** Years, as written — "2019", not a date nobody knows the day of. */
+  from: v.nullable(v.string()),
+  until: v.nullable(v.string())
+});
+
+const identity = v.object({
+  /** A band, a solo artist, or a person — a personal site, or someone making something other than music. */
+  type: v.picklist(['group', 'solo', 'other']),
+  genres: v.array(v.string()),
+  hometown: v.nullable(v.string()),
+  formed: v.nullable(v.string()),
+  members: v.array(identityMember),
+  /** Official pages elsewhere that aren't buttons on the site — MusicBrainz, Wikidata. */
+  profiles: v.array(v.string())
+});
+
+/**
  * The registry. A key's defaults double as its shape, so a fresh install and a
  * half-filled one behave the same — every read returns a complete object.
  */
@@ -319,6 +342,18 @@ export const SETTING_KEYS = {
     schema: tiktok,
     secret: true,
     defaults: { pixelId: null }
+  },
+  identity: {
+    schema: identity,
+    secret: false,
+    defaults: {
+      type: 'group' as 'group' | 'solo' | 'other',
+      genres: [] as string[],
+      hometown: null,
+      formed: null,
+      members: [] as v.InferOutput<typeof identityMember>[],
+      profiles: [] as string[]
+    }
   }
 } as const;
 
@@ -338,6 +373,8 @@ export type GoogleSettings = SettingValue<'google'>;
 export type SpotifySettings = SettingValue<'spotify'>;
 export type MetaSettings = SettingValue<'meta'>;
 export type TiktokSettings = SettingValue<'tiktok'>;
+export type IdentitySettings = SettingValue<'identity'>;
+export type IdentityMember = IdentitySettings['members'][number];
 
 /**
  * Read one setting.
@@ -461,6 +498,7 @@ export const getGoogleSettings = () => getSetting('google');
 export const getSpotifySettings = () => getSetting('spotify');
 export const getMetaSettings = () => getSetting('meta');
 export const getTiktokSettings = () => getSetting('tiktok');
+export const getIdentitySettings = () => getSetting('identity');
 
 export const updateDiscordSettings = (patch: Partial<DiscordSettings>) =>
   setSetting('discord', patch);

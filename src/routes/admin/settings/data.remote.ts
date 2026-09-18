@@ -1,5 +1,5 @@
 import { requireAdmin } from '$lib/server/guards';
-import { getSettings, updateSiteSettings } from '$lib/server/settings';
+import { getSettings, updateSiteSettings, setSetting } from '$lib/server/settings';
 import * as v from 'valibot';
 import { command, getRequestEvent } from '$app/server';
 import { db } from '$lib/server/db';
@@ -286,4 +286,46 @@ export const sendEmailSamples = command(v.object({}), async () => {
   const { sent, failed } = await sendSampleEmails(me.email, url.origin);
 
   return { to: me.email, sent, failed };
+});
+
+// ============================================================================
+// Identity
+// ============================================================================
+
+const trimmed = v.pipe(v.string(), v.trim());
+const optionalText = v.nullable(v.pipe(trimmed, v.maxLength(200)));
+
+const identitySchema = v.object({
+  type: v.picklist(['group', 'solo', 'other']),
+  genres: v.array(v.pipe(trimmed, v.nonEmpty(), v.maxLength(60))),
+  hometown: optionalText,
+  formed: optionalText,
+  members: v.array(
+    v.object({
+      name: v.pipe(trimmed, v.nonEmpty('A member needs a name'), v.maxLength(120)),
+      role: optionalText,
+      from: optionalText,
+      until: optionalText
+    })
+  ),
+  profiles: v.array(v.pipe(trimmed, v.url('Each profile must be a full address')))
+});
+
+/** Who the site is for. Replaces the whole value: the form always sends all of it. */
+export const updateIdentity = command(identitySchema, async (data) => {
+  await requireAdmin();
+  // Empty text is no answer, not an answer of nothing.
+  const orNull = (value: string | null) => (value ? value : null);
+  await setSetting('identity', {
+    ...data,
+    hometown: orNull(data.hometown),
+    formed: orNull(data.formed),
+    members: data.members.map((m) => ({
+      ...m,
+      role: orNull(m.role),
+      from: orNull(m.from),
+      until: orNull(m.until)
+    }))
+  });
+  return { success: true };
 });

@@ -5,6 +5,7 @@
   import ShowPage from '$lib/pages/ShowPage.svelte';
   import ShopPage from '$lib/pages/ShopPage.svelte';
   import { metaText } from '$lib/utils/text';
+  import { releaseData, jsonLdTag } from '$lib/utils/structured-data';
 
   let { data }: { data: PageData } = $props();
 
@@ -25,6 +26,26 @@
           ? `Listen to ${release.title} by ${profile?.name ?? 'this artist'}.`
           : `${release.title} by ${profile?.name ?? 'this artist'} — out soon.`
         : `${page.title} — ${profile?.name ?? 'this artist'}.`)
+  );
+
+  // The recording, credited to the band the front page describes.
+  const structured = $derived(
+    release
+      ? jsonLdTag(
+          releaseData({
+            origin: new URL(data.canonical).origin,
+            url: data.canonical,
+            artist: profile?.name ?? '',
+            title: release.title,
+            releaseDate: release.releaseDate,
+            isrc: release.isrc,
+            upc: release.upc,
+            image: data.shareImage,
+            links: data.releaseLinks ?? [],
+            facts: data.identity
+          })
+        )
+      : null
   );
 </script>
 
@@ -55,6 +76,9 @@
   {/if}
 
   {@html `<style>html, body { background-color: ${settings?.colorBg ?? '#0c0a14'}; }</style>`}
+  {#if structured}
+    {@html structured}
+  {/if}
 </svelte:head>
 
 {#if release}

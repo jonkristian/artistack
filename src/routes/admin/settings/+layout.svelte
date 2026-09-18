@@ -15,6 +15,7 @@
    */
   const items = [
     { href: '/admin/settings', label: 'General' },
+    { href: '/admin/settings/identity', label: 'Identity' },
     { href: '/admin/settings/integrations', label: 'Integrations' },
     { href: '/admin/settings/users', label: 'Users' }
   ];

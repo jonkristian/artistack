@@ -17,7 +17,12 @@ import { auth } from '$lib/server/auth';
 import { eq, asc, desc, and, isNull, isNotNull } from 'drizzle-orm';
 import { findCart, getCartLines, cartTotal } from '$lib/server/cart';
 import { ensureBlocksExist } from '$lib/server/setup';
-import { getMetaSettings, getTiktokSettings, getSettings } from '$lib/server/settings';
+import {
+  getMetaSettings,
+  getTiktokSettings,
+  getSettings,
+  getIdentitySettings
+} from '$lib/server/settings';
 
 // Track if setup has been run
 let setupComplete = false;
@@ -183,6 +188,8 @@ export async function load({ request, cookies }) {
   return {
     profile: artistProfile ?? null,
     settings: siteSettings ?? null,
+    // Who the site is about, for the structured data. Nothing in it is private.
+    identity: await getIdentitySettings(),
     pixels: siteSettings?.pixelsEnabled
       ? {
           metaPixelId: meta?.pixelId ?? null,
