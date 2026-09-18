@@ -147,7 +147,12 @@
                 >
                   <PlatformTile platform={link.platform} />
                 </span>
-                <span class="w-full truncate text-xs font-medium" style="color: var(--color-text)">
+                <!-- Two lines rather than an ellipsis: "YouTube Music" is the name, and
+                     "YouTube …" is a different service. -->
+                <span
+                  class="line-clamp-2 w-full text-xs leading-tight font-medium"
+                  style="color: var(--color-text)"
+                >
                   {link.label ?? link.platform}
                 </span>
               </a>

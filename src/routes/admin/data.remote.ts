@@ -23,6 +23,7 @@ import {
   fetchGitHubMetadata,
   detectPlatformFromUrl
 } from '$lib/server/oembed';
+import { platformLabel } from '$lib/utils/platforms';
 import type {
   SpotifyEmbedData,
   YouTubeEmbedData,
@@ -518,8 +519,17 @@ export const createLink = command(
       detectedCategory = detected?.category === 'event' ? 'other' : detected?.category || 'other';
     }
 
-    // Auto-fetch metadata for supported URLs
-    const fetched = await fetchPlatformMetadata(url, label || null);
+    // Auto-fetch metadata for supported URLs. Not for a release: its page shows
+    // each service as a mark, so a video's thumbnail and player have nowhere to
+    // go and only make the row look like something it isn't.
+    const fetched =
+      releaseId != null
+        ? {
+            label: label || platformLabel(detectedPlatform || 'link'),
+            thumbnailUrl: null,
+            embedData: null
+          }
+        : await fetchPlatformMetadata(url, label || null);
 
     // Position within the owner, not across every link in the database — a
     // release's first link is 0 even when the artist page already has twenty.

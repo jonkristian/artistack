@@ -50,6 +50,8 @@
 - Fixed: a bed always played from the start of the song when you pressed play, whatever its rail was set to
 - Fixed: once one store link was found, the hourly check stopped looking for the others
 - Fixed: a link added and moved in the same edit went to the end once saved
+- Fixed: a YouTube or Bandcamp link on a release fetched a player and thumbnail it had nowhere to show
+- Fixed: a service whose brand colour is black, like TIDAL, drew an invisible tile on a dark page
 
 # 1.6.0 (11-09-2026)
 

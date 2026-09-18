@@ -14,9 +14,11 @@
   const tint = $derived(platformColors[platform] ?? 'var(--color-icon)');
 </script>
 
+<!-- A faint light base under the tint, so a service whose brand is black (TIDAL)
+     still has a tile rather than a hole in a dark page. -->
 <div
-  class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl font-bold"
-  style="background: linear-gradient(135deg, color-mix(in srgb, {tint} 25%, transparent), color-mix(in srgb, {tint} 12%, transparent)); color: var(--color-icon)"
+  class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/[0.07] font-bold"
+  style="background-image: linear-gradient(135deg, color-mix(in srgb, {tint} 25%, transparent), color-mix(in srgb, {tint} 12%, transparent)); color: var(--color-icon)"
   aria-hidden="true"
 >
   {#if icon}
