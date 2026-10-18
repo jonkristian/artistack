@@ -1,6 +1,7 @@
 <script lang="ts">
   import { beforeNavigate, goto, invalidateAll } from '$app/navigation';
   import { toast } from '$lib/stores/toast.svelte';
+  import { selection } from '$lib/clips/editor.svelte';
   import { toLocalInput, fromLocalInput } from '$lib/utils/datetime';
   import { keepColor } from '$lib/brand-colors.remote';
   import MediaPicker from '$lib/components/ui/MediaPicker.svelte';
@@ -20,12 +21,20 @@
   import {
     ClipOverlay,
     ClipTimeline,
+    ClipTransport,
+    type ZoomTools,
     EffectPicker,
     FootageLook,
     type TimelineClip,
     type TimelineTrack
   } from '$lib/components/clips';
   import { SectionCard } from '$lib/components/cards';
+  import {
+    Icon,
+    MagnifyingGlassMinus,
+    MagnifyingGlassPlus,
+    ArrowsRightLeft
+  } from 'svelte-hero-icons';
   import { EditorPreview } from '$lib/components/ui';
   import { PhoneUploadDialog, QueueClipDialog } from '$lib/components/dialogs';
   import { formatDuration } from '$lib/utils/upload';
@@ -179,14 +188,25 @@
   let tagNames = $state<string[]>([]);
 
   let mediaPickerOpen = $state(false);
-  /** The source clip whose trim and mute are open, or null. */
-  let openSourceId = $state<number | null>(null);
-  /** The track whose settings are open, or null. */
-  let openTrackId = $state<number | null>(null);
+  /*
+   * The open row, read from the selection rather than stored beside it.
+   *
+   * These were two pieces of state that had to be cleared in step — setting one
+   * meant remembering to null the other — and a third copy lived in the strip.
+   * Now there is one owner and these are two views of it.
+   */
+  const openSourceId = $derived(selection.current?.kind === 'clip' ? selection.current.id : null);
+  const openTrackId = $derived(selection.current?.kind === 'audio' ? selection.current.id : null);
   let phoneUploadOpen = $state(false);
   let postSheet = $state<{ markdown: string } | null>(null);
 
   const selected = $derived(data.project);
+
+  // An id from one edit means nothing in the next, so opening another clip
+  // starts with nothing selected.
+  $effect(() => {
+    selection.forProject(data.project.id);
+  });
 
   /*
    * Reset from the project, so opening another clip — or a save landing —
@@ -371,6 +391,93 @@
    * Whichever player the selection is showing in — the pane for a clip, the
    * bar in the panel for a bed.
    */
+  /**
+   * Whichever player the transport drives.
+   *
+   * The pane shows one of four things and each used to carry the browser's own
+   * controls; the bar above the strip replaces all four, so it has to know
+   * which element is live. A bed is not in here: selecting one keeps the render
+   * in the pane, and its own block carries the button that plays it.
+   */
+  const livePlayer = $derived<HTMLMediaElement | undefined>(borrowed ? sourceVideo : previewVideo);
+
+  /*
+   * How much of the page the strip gets, and whether it gets any.
+   *
+   * It sized itself to its rows, which is right until it isn't: a clip with
+   * four bands wants more than the picture can spare, and one with two wants
+   * less than it was given. So the divider above it drags, and the height is
+   * remembered per browser — the same preference on a laptop and a monitor
+   * would be the wrong one in one of the two places.
+   *
+   * Null means "as tall as its rows", which is where everyone starts and what
+   * most clips never need to change.
+   */
+  const STRIP_HEIGHT_KEY = 'artistack:clip-strip-height';
+  const STRIP_HIDDEN_KEY = 'artistack:clip-strip-hidden';
+  const STRIP_MIN = 120;
+
+  /*
+   * The strip's zoom, lent up so the tools row can hold it.
+   *
+   * It is worked out down there — it needs the window's width and the clip's
+   * length — but it belongs up here, in the one row of tools, rather than in a
+   * cluster of its own that scrolled away with the strip.
+   */
+  let zoomTools = $state<ZoomTools | null>(null);
+
+  let stripBox = $state<HTMLDivElement>();
+  let stripHeight = $state<number | null>(null);
+  let stripHidden = $state(false);
+
+  // Reads nothing reactive, so it runs once, where localStorage exists.
+  $effect(() => {
+    const saved = Number(localStorage.getItem(STRIP_HEIGHT_KEY));
+    stripHeight = Number.isFinite(saved) && saved >= STRIP_MIN ? saved : null;
+    stripHidden = localStorage.getItem(STRIP_HIDDEN_KEY) === '1';
+  });
+
+  $effect(() => {
+    if (stripHeight === null) localStorage.removeItem(STRIP_HEIGHT_KEY);
+    else localStorage.setItem(STRIP_HEIGHT_KEY, String(Math.round(stripHeight)));
+  });
+
+  $effect(() => {
+    localStorage.setItem(STRIP_HIDDEN_KEY, stripHidden ? '1' : '0');
+  });
+
+  /**
+   * The divider, dragged.
+   *
+   * Upwards is taller, which is the direction the strip grows. Capped at two
+   * thirds of the window so the picture can't be squeezed out entirely, and at
+   * `STRIP_MIN` so it can't be dragged shut — shutting it is the button's job,
+   * and a strip two pixels tall is a strip nobody can get back.
+   */
+  function resizeStrip(event: PointerEvent, from: number) {
+    const startY = event.clientY;
+    const handle = event.currentTarget as HTMLElement;
+    handle.setPointerCapture(event.pointerId);
+
+    const move = (e: PointerEvent) => {
+      const wanted = from + (startY - e.clientY);
+      stripHeight = Math.min(Math.max(wanted, STRIP_MIN), window.innerHeight * 0.66);
+    };
+    const done = () => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', done);
+      handle.removeEventListener('pointercancel', done);
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', done);
+    handle.addEventListener('pointercancel', done);
+  }
+
+  /** Said rather than left to be guessed, when the transport can't do anything. */
+  const nothingToPlay = $derived(
+    sources.length === 0 ? 'Put some footage on the strip first' : 'Nothing rendered yet'
+  );
+
   const activePlayer = $derived<HTMLMediaElement | undefined>(
     borrowed ? sourceVideo : selectedTrack ? bedAudio : undefined
   );
@@ -416,7 +523,7 @@
     // Captured before it goes: after the reload there is nothing left to
     // describe what was removed.
     const gone = { ...source };
-    if (openSourceId === id) openSourceId = null;
+    if (openSourceId === id) selection.clear();
     const done = await autosave.run('the removed clip', () => removeSource(id));
     await invalidateAll();
     if (done === undefined) return;
@@ -432,7 +539,7 @@
     // restoring has to put back what was there, nulls and all, not the defaults
     // filled in over them.
     const gone = data.audio.find((a) => a.id === id);
-    if (openTrackId === id) openTrackId = null;
+    if (openTrackId === id) selection.clear();
     const done = await autosave.run('the removed track', () => removeAudio(id));
     await invalidateAll();
     if (done === undefined || !gone) return;
@@ -2462,7 +2569,6 @@
             <video
               bind:this={sourceVideo}
               src="{borrowed.item.previewUrl ?? borrowed.item.url}#t={from}"
-              controls
               preload="metadata"
               class="max-h-[60vh] {quarter ? 'max-w-[60vh]' : 'w-full'}"
               style="transform: rotate({turn}deg)"
@@ -2499,7 +2605,6 @@
           bind:this={previewVideo}
           src={shownMedia.url}
           poster={shownMedia.thumbnailUrl ?? undefined}
-          controls
           ontimeupdate={(e) => (previewAt = (e.currentTarget as HTMLVideoElement).currentTime)}
           onseeked={(e) => (previewAt = (e.currentTarget as HTMLVideoElement).currentTime)}
           onplay={() => (previewPlaying = true)}
@@ -2555,7 +2660,6 @@
               src="{standIn.url}#t={standIn.row.trimStart ?? 0}{standIn.row.trimEnd
                 ? `,${standIn.row.trimEnd}`
                 : ''}"
-              controls
               ontimeupdate={(e) => (previewAt = (e.currentTarget as HTMLVideoElement).currentTime)}
               onseeked={(e) => (previewAt = (e.currentTarget as HTMLVideoElement).currentTime)}
               onplay={() => (previewPlaying = true)}
@@ -2812,228 +2916,318 @@
          horizontal scrollbar. Which is how clicking the far end of the
          minimap ended up sliding the entire editor sideways. -->
     <div class="overflow-x-hidden border-t border-gray-800 bg-gray-950">
-      <ClipTimeline
-        duration={layout.duration}
-        clips={timelineClips}
-        {captions}
-        anchors={captionAnchors(advanced)}
-        swatches={brandColors}
-        onkeepcolor={keep}
-        inheritedColor={captionColor({}, config, accent)}
-        inheritedBackdrop={captionBackdrop({}, config)}
-        inheritedEffect={config.captionEffect ?? null}
-        effects={(config.effects ?? []).filter((e) => e.start != null || e.end != null)}
-        wideEffect={clipWideEffect(config)}
-        clipId={selected.id}
-        oneffects={(placed) =>
-          patchConfig('the effects', {
+      <!-- The divider. A row of its own rather than an edge on the panel, so
+           there is something to aim at: a two-pixel border is a target nobody
+           hits on the first go. -->
+      {#if !stripHidden}
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+        <div
+          role="separator"
+          aria-label="Drag to resize the timeline"
+          aria-orientation="horizontal"
+          class="h-1.5 cursor-row-resize bg-transparent transition-colors hover:bg-violet-500/40"
+          onpointerdown={(e) => resizeStrip(e, stripHeight ?? stripBox?.clientHeight ?? STRIP_MIN)}
+        ></div>
+      {/if}
+
+      <!-- Above the strip, because it scrubs against it and because four
+           players with four sets of controls said the same thing four times.
+           It stays when the strip is put away: the picture still plays. -->
+      <div class="flex items-center gap-1 border-b border-gray-800/60 pr-2">
+        <div class="min-w-0 flex-1">
+          <ClipTransport
+            player={livePlayer}
+            disabledReason={nothingToPlay}
+            scrub={Boolean(borrowed)}
+          />
+        </div>
+        {#if zoomTools && !stripHidden}
+          {@const at = zoomTools.now()}
+          <div class="flex shrink-0 items-center gap-1 text-gray-500">
+            <button
+              type="button"
+              onclick={() => zoomTools?.out()}
+              disabled={at <= zoomTools.min()}
+              title="Show more of the clip"
+              aria-label="Zoom out"
+              class="rounded p-1 transition-colors hover:bg-gray-800 hover:text-white disabled:opacity-30"
+            >
+              <Icon src={MagnifyingGlassMinus} size="14" />
+            </button>
+            <input
+              type="range"
+              min={zoomTools.min()}
+              max={zoomTools.max}
+              step="1"
+              value={at}
+              aria-label="How much of the clip is on screen"
+              class="h-1 w-20 accent-violet-500"
+              oninput={(e) => zoomTools?.set(Number(e.currentTarget.value))}
+            />
+            <button
+              type="button"
+              onclick={() => zoomTools?.in()}
+              disabled={at >= zoomTools.max}
+              title="Look closer"
+              aria-label="Zoom in"
+              class="rounded p-1 transition-colors hover:bg-gray-800 hover:text-white disabled:opacity-30"
+            >
+              <Icon src={MagnifyingGlassPlus} size="14" />
+            </button>
+            <button
+              type="button"
+              onclick={() => zoomTools?.fit()}
+              title="Fit the whole clip"
+              aria-label="Fit the whole clip"
+              class="rounded p-1 transition-colors hover:bg-gray-800 hover:text-white"
+            >
+              <Icon src={ArrowsRightLeft} size="14" />
+            </button>
+          </div>
+        {/if}
+        <button
+          type="button"
+          onclick={() => (stripHidden = !stripHidden)}
+          title={stripHidden ? 'Show the timeline' : 'Hide the timeline'}
+          aria-label={stripHidden ? 'Show the timeline' : 'Hide the timeline'}
+          aria-expanded={!stripHidden}
+          class="shrink-0 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-800 hover:text-white"
+        >
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.5"
+              d={stripHidden ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'}
+            />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Scrolls inside its own height once one has been chosen, so dragging
+           the divider up can't leave rows nobody can reach. -->
+      <div
+        bind:this={stripBox}
+        class="{stripHidden ? 'hidden' : ''} {stripHeight === null ? '' : 'overflow-y-auto'}"
+        style={stripHeight === null ? undefined : `height: ${stripHeight}px`}
+      >
+        <ClipTimeline
+          height={stripHidden ? null : stripHeight}
+          onzoom={(tools) => (zoomTools = tools)}
+          duration={layout.duration}
+          clips={timelineClips}
+          {captions}
+          anchors={captionAnchors(advanced)}
+          swatches={brandColors}
+          onkeepcolor={keep}
+          inheritedColor={captionColor({}, config, accent)}
+          inheritedBackdrop={captionBackdrop({}, config)}
+          inheritedEffect={config.captionEffect ?? null}
+          effects={(config.effects ?? []).filter((e) => e.start != null || e.end != null)}
+          wideEffect={clipWideEffect(config)}
+          clipId={selected.id}
+          oneffects={(placed) =>
+            patchConfig('the effects', {
+              /*
+               * The lane owns the placed ones and the Look panel owns the
+               * clip-wide one, so each writes back only its own half. Sending
+               * the whole list from either would mean whichever was touched
+               * last silently cleared the other.
+               */
+              effects: [
+                ...(config.effects ?? []).filter((e) => e.start == null && e.end == null),
+                ...placed
+              ],
+              pictureEffect: null
+            })}
+          oncaptions={setCaptions}
+          {selectionPlaying}
+          onmute={async (id, muted) => {
+            await autosave.run('the mute', () => updateSource({ id, muted }));
+            await invalidateAll();
+          }}
+          onfade={async (id, fades) => {
+            await autosave.run('the fade', () => updateSource({ id, ...fades }));
+            await invalidateAll();
+          }}
+          onremove={(kind, id) => (kind === 'clip' ? dropSource(id) : dropTrack(id))}
+          oncaptionremove={deleteCaption}
+          onripple={async (from, shift) => {
             /*
-             * The lane owns the placed ones and the Look panel owns the
-             * clip-wide one, so each writes back only its own half. Sending
-             * the whole list from either would mean whichever was touched
-             * last silently cleared the other.
+             * Everything from a point onwards, moved together.
+             *
+             * Written as one unit of work: a ripple that saved half of itself
+             * would leave the clip in an arrangement nobody chose, and the
+             * retry you want after a failure is the whole gesture, not the
+             * three placements that happened to get through.
+             *
+             * Captions go in a single write because they live in one column;
+             * clips and beds are rows, so they are one call each.
              */
-            effects: [
-              ...(config.effects ?? []).filter((e) => e.start == null && e.end == null),
-              ...placed
-            ],
-            pictureEffect: null
-          })}
-        oncaptions={setCaptions}
-        selection={showing}
-        {selectionPlaying}
-        onmute={async (id, muted) => {
-          await autosave.run('the mute', () => updateSource({ id, muted }));
-          await invalidateAll();
-        }}
-        onfade={async (id, fades) => {
-          await autosave.run('the fade', () => updateSource({ id, ...fades }));
-          await invalidateAll();
-        }}
-        onremove={(kind, id) => (kind === 'clip' ? dropSource(id) : dropTrack(id))}
-        oncaptionremove={deleteCaption}
-        onripple={async (from, shift) => {
-          /*
-           * Everything from a point onwards, moved together.
-           *
-           * Written as one unit of work: a ripple that saved half of itself
-           * would leave the clip in an arrangement nobody chose, and the
-           * retry you want after a failure is the whole gesture, not the
-           * three placements that happened to get through.
-           *
-           * Captions go in a single write because they live in one column;
-           * clips and beds are rows, so they are one call each.
-           */
-          const movedSources = sources.filter((s) => (s.start ?? 0) >= from - 0.001);
-          const movedTracks = data.audio.filter((a) => (a.start ?? 0) >= from - 0.001);
-          const movedCaptions = captions.some((c) => c.start >= from - 0.001);
-          if (!movedSources.length && !movedTracks.length && !movedCaptions) return;
+            const movedSources = sources.filter((s) => (s.start ?? 0) >= from - 0.001);
+            const movedTracks = data.audio.filter((a) => (a.start ?? 0) >= from - 0.001);
+            const movedCaptions = captions.some((c) => c.start >= from - 0.001);
+            if (!movedSources.length && !movedTracks.length && !movedCaptions) return;
 
-          await autosave.run('the move', async () => {
-            for (const source of movedSources) {
-              await updateSource({
-                id: source.id,
-                start: tidy(Math.max(0, (source.start ?? 0) + shift))
-              });
+            await autosave.run('the move', async () => {
+              for (const source of movedSources) {
+                await updateSource({
+                  id: source.id,
+                  start: tidy(Math.max(0, (source.start ?? 0) + shift))
+                });
+              }
+              for (const track of movedTracks) {
+                await updateAudio({
+                  id: track.id,
+                  start: tidy(Math.max(0, (track.start ?? 0) + shift)),
+                  // A bed with no end of its own keeps not having one.
+                  end: track.end == null ? null : tidy(track.end + shift)
+                });
+              }
+              if (movedCaptions) {
+                await setCaptions(
+                  captions.map((c) =>
+                    c.start >= from - 0.001
+                      ? {
+                          ...c,
+                          start: tidy(Math.max(0, c.start + shift)),
+                          end: tidy(Math.max(0, c.end + shift))
+                        }
+                      : c
+                  )
+                );
+              }
+            });
+            await invalidateAll();
+          }}
+          onpreview={(kind, id, play) => {
+            const already = showing?.kind === kind && showing.id === id;
+
+            // Pressing the same block again puts the render back. The way out
+            // is the way in, so there's no button under the picture saying so —
+            // and which block you're looking at is already said by the ring
+            // around it. Play is exempt: that asks for sound, not for a
+            // different thing on screen.
+            if (already && !play) {
+              selection.clear();
+              return;
             }
-            for (const track of movedTracks) {
-              await updateAudio({
-                id: track.id,
-                start: tidy(Math.max(0, (track.start ?? 0) + shift)),
-                // A bed with no end of its own keeps not having one.
-                end: track.end == null ? null : tidy(track.end + shift)
-              });
+
+            selection.select({ kind, id });
+            if (play) {
+              // Already showing, so its player exists and the press is a
+              // toggle. Otherwise the selection is only now being made, and the
+              // request is what the freshly mounted player picks up.
+              if (already && activePlayer) {
+                if (activePlayer.paused) void activePlayer.play().catch(() => {});
+                else activePlayer.pause();
+              } else {
+                playRequest += 1;
+              }
             }
-            if (movedCaptions) {
-              await setCaptions(
-                captions.map((c) =>
-                  c.start >= from - 0.001
-                    ? {
-                        ...c,
-                        start: tidy(Math.max(0, c.start + shift)),
-                        end: tidy(Math.max(0, c.end + shift))
-                      }
-                    : c
-                )
+          }}
+          onclip={async (id, changes) => {
+            const source = sources.find((s) => s.id === id);
+            if (!source) return;
+
+            const item = mediaById.get(source.mediaId);
+            const length = (item?.durationMs ?? 0) / 1000;
+            /*
+             * A still has no file length to be bounded by. Everywhere else here
+             * clamps against the footage that exists, and a picture reports none
+             * — so the same arithmetic pinned every edge to zero and the save
+             * bailed before it was written. Held pictures are bounded by the
+             * clip instead, which is to say by nothing this handler knows about.
+             */
+            const held = Boolean(item?.mimeType?.startsWith('image/'));
+
+            /*
+             * Slipped: the window moves through the footage, the block doesn't
+             * move at all. Both trim points shift by the same amount, which is
+             * what keeps the length — and so the placement — identical.
+             */
+            if (changes.slip !== undefined) {
+              // Nothing to slip through on a still; the same frame either way.
+              if (held) return;
+              const from = (source.trimStart ?? 0) + changes.slip;
+              const to = (source.trimEnd ?? length) + changes.slip;
+              if (from < -0.01 || to > length + 0.01) return;
+              await autosave.run('the trim', () =>
+                updateSource({ id, trimStart: tidy(from), trimEnd: tidy(to) })
               );
+              await invalidateAll();
+              return;
             }
-          });
-          await invalidateAll();
-        }}
-        onpreview={(kind, id, play) => {
-          const already = showing?.kind === kind && showing.id === id;
 
-          // Pressing the same block again puts the render back. The way out
-          // is the way in, so there's no button under the picture saying so —
-          // and which block you're looking at is already said by the ring
-          // around it. Play is exempt: that asks for sound, not for a
-          // different thing on screen.
-          if (already && !play) {
-            openSourceId = null;
-            openTrackId = null;
-            return;
-          }
-
-          if (kind === 'clip') {
-            openTrackId = null;
-            openSourceId = id;
-          } else {
-            openSourceId = null;
-            openTrackId = id;
-          }
-          if (play) {
-            // Already showing, so its player exists and the press is a
-            // toggle. Otherwise the selection is only now being made, and the
-            // request is what the freshly mounted player picks up.
-            if (already && activePlayer) {
-              if (activePlayer.paused) void activePlayer.play().catch(() => {});
-              else activePlayer.pause();
-            } else {
-              playRequest += 1;
+            // Moved whole: where it starts and which row it's in. The footage
+            // is untouched, so the trim isn't part of this.
+            if (changes.start !== undefined || changes.lane !== undefined) {
+              await autosave.run('the placement', () =>
+                updateSource({ id, start: changes.start, lane: changes.lane })
+              );
+              await invalidateAll();
+              return;
             }
-          }
-        }}
-        onclip={async (id, changes) => {
-          const source = sources.find((s) => s.id === id);
-          if (!source) return;
 
-          const item = mediaById.get(source.mediaId);
-          const length = (item?.durationMs ?? 0) / 1000;
-          /*
-           * A still has no file length to be bounded by. Everywhere else here
-           * clamps against the footage that exists, and a picture reports none
-           * — so the same arithmetic pinned every edge to zero and the save
-           * bailed before it was written. Held pictures are bounded by the
-           * clip instead, which is to say by nothing this handler knows about.
-           */
-          const held = Boolean(item?.mimeType?.startsWith('image/'));
+            const speed = config.speed || 1;
+            const head = changes.head ?? 0;
+            const tail = changes.tail ?? 0;
 
-          /*
-           * Slipped: the window moves through the footage, the block doesn't
-           * move at all. Both trim points shift by the same amount, which is
-           * what keeps the length — and so the placement — identical.
-           */
-          if (changes.slip !== undefined) {
-            // Nothing to slip through on a still; the same frame either way.
-            if (held) return;
-            const from = (source.trimStart ?? 0) + changes.slip;
-            const to = (source.trimEnd ?? length) + changes.slip;
-            if (from < -0.01 || to > length + 0.01) return;
+            /*
+             * Timeline seconds back into source seconds. Cutting into the front
+             * moves the in-point later and the placement with it, so what's
+             * left stays where it was on the timeline rather than sliding back.
+             *
+             * Both trims are always written, even when only one moved: the
+             * renderer reads them as a pair, and one without the other means
+             * "use the whole file".
+             */
+            const from = Math.max(0, (source.trimStart ?? 0) + head * speed);
+            const grown = (source.trimEnd ?? length) + tail * speed;
+            const to = held ? grown : Math.min(length, grown);
+            if (to - from < 0.1) return;
+
             await autosave.run('the trim', () =>
-              updateSource({ id, trimStart: tidy(from), trimEnd: tidy(to) })
+              updateSource({
+                id,
+                trimStart: tidy(from),
+                trimEnd: tidy(to),
+                start: tidy(Math.max(0, (source.start ?? 0) + head))
+              })
             );
             await invalidateAll();
-            return;
-          }
-
-          // Moved whole: where it starts and which row it's in. The footage
-          // is untouched, so the trim isn't part of this.
-          if (changes.start !== undefined || changes.lane !== undefined) {
-            await autosave.run('the placement', () =>
-              updateSource({ id, start: changes.start, lane: changes.lane })
-            );
+          }}
+          {tracks}
+          onaudio={async (id, { seekBy, ...changes }) => {
+            // A head trim arrives as a shift, because only the row knows where
+            // the song was already cued to.
+            const track = seekBy ? data.audio.find((a) => a.id === id) : undefined;
+            const cue = track ? { seek: Math.max(0, tidy((track.seek ?? 0) + seekBy!)) } : {};
+            await autosave.run('the track', () => updateAudio({ id, ...changes, ...cue }));
             await invalidateAll();
-            return;
-          }
-
-          const speed = config.speed || 1;
-          const head = changes.head ?? 0;
-          const tail = changes.tail ?? 0;
-
-          /*
-           * Timeline seconds back into source seconds. Cutting into the front
-           * moves the in-point later and the placement with it, so what's
-           * left stays where it was on the timeline rather than sliding back.
-           *
-           * Both trims are always written, even when only one moved: the
-           * renderer reads them as a pair, and one without the other means
-           * "use the whole file".
-           */
-          const from = Math.max(0, (source.trimStart ?? 0) + head * speed);
-          const grown = (source.trimEnd ?? length) + tail * speed;
-          const to = held ? grown : Math.min(length, grown);
-          if (to - from < 0.1) return;
-
-          await autosave.run('the trim', () =>
-            updateSource({
-              id,
-              trimStart: tidy(from),
-              trimEnd: tidy(to),
-              start: tidy(Math.max(0, (source.start ?? 0) + head))
-            })
-          );
-          await invalidateAll();
-        }}
-        {tracks}
-        onaudio={async (id, { seekBy, ...changes }) => {
-          // A head trim arrives as a shift, because only the row knows where
-          // the song was already cued to.
-          const track = seekBy ? data.audio.find((a) => a.id === id) : undefined;
-          const cue = track ? { seek: Math.max(0, tidy((track.seek ?? 0) + seekBy!)) } : {};
-          await autosave.run('the track', () => updateAudio({ id, ...changes, ...cue }));
-          await invalidateAll();
-        }}
-        video={borrowed ? undefined : previewVideo}
-        onfit={async (id, fit) => {
-          await autosave.run('the framing', () => updateSource({ id, fit }));
-          await invalidateAll();
-        }}
-        onframing={async (id, patch) => {
-          await autosave.run('the framing', () => updateSource({ id, ...patch }));
-          await invalidateAll();
-        }}
-        onscrubsource={(kind, id, seconds) => {
-          // Only the one that's actually on screen. Everything else is
-          // playing somewhere this page can't see.
-          const player =
-            kind === 'clip' && borrowed?.row.id === id
-              ? sourceVideo
-              : kind === 'audio' && selectedTrack?.id === id
-                ? bedAudio
-                : null;
-          if (player) player.currentTime = Math.max(0, seconds);
-        }}
-      />
+          }}
+          video={borrowed ? undefined : previewVideo}
+          onfit={async (id, fit) => {
+            await autosave.run('the framing', () => updateSource({ id, fit }));
+            await invalidateAll();
+          }}
+          onframing={async (id, patch) => {
+            await autosave.run('the framing', () => updateSource({ id, ...patch }));
+            await invalidateAll();
+          }}
+          onscrubsource={(kind, id, seconds) => {
+            // Only the one that's actually on screen. Everything else is
+            // playing somewhere this page can't see.
+            const player =
+              kind === 'clip' && borrowed?.row.id === id
+                ? sourceVideo
+                : kind === 'audio' && selectedTrack?.id === id
+                  ? bedAudio
+                  : null;
+            if (player) player.currentTime = Math.max(0, seconds);
+          }}
+        />
+      </div>
     </div>
   {/snippet}
 </EditorPreview>

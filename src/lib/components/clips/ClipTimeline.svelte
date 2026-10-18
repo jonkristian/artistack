@@ -25,6 +25,7 @@
   import TimelineMinimap from './TimelineMinimap.svelte';
   import { STRIP_PX_PER_SECOND } from '$lib/clips/strip';
   import { secs, tidy } from '$lib/clips/time';
+  import { selection } from '$lib/clips/editor.svelte';
   import { captionAnchorOf, NO_BACKDROP } from '$lib/clips/types';
   import { PICTURE_EFFECTS, pictureEffectById } from '$lib/clips/effects';
   import CaptionDialog from './CaptionDialog.svelte';
@@ -113,6 +114,22 @@
     waveform: string | null;
   };
 
+  /**
+   * The zoom, as much of it as a toolbar needs.
+   *
+   * Functions rather than values, so the toolbar reads the live number each
+   * time it draws instead of being sent a copy that goes stale.
+   */
+  export type ZoomTools = {
+    in: () => void;
+    out: () => void;
+    set: (pxPerSecond: number) => void;
+    fit: () => void;
+    now: () => number;
+    min: () => number;
+    max: number;
+  };
+
   interface Props {
     /** How long the clip runs, worked out from the edit rather than a render. */
     duration: number;
@@ -191,7 +208,6 @@
      */
     onpreview: (kind: 'clip' | 'audio', id: number, play: boolean) => void;
     /** Which source the pane is showing, so its block can say so. */
-    selection?: { kind: 'clip' | 'audio'; id: number } | null;
     /** Whether that one is running, so its button can offer to stop it. */
     selectionPlaying?: boolean;
     onclip: (
@@ -200,6 +216,16 @@
     ) => void;
     /** The preview player, kept in step with the playhead both ways. */
     video?: HTMLMediaElement;
+    /**
+     * How tall the strip has been dragged to, or null for "as tall as its rows".
+     *
+     * Given rather than measured: the heights decide where every block is drawn
+     * and what a pointer at a given y is over, so they have to be known here
+     * rather than read back off the page after the fact.
+     */
+    height?: number | null;
+    /** Hands the zoom out to the toolbar, which is drawn a floor above. */
+    onzoom?: (tools: ZoomTools | null) => void;
     /**
      * While an edge is dragged, the moment in that block's own file under it.
      *
@@ -257,9 +283,10 @@
     onremove,
     oncaptionremove,
     onripple,
-    selection = null,
     selectionPlaying = false,
     video,
+    height = null,
+    onzoom,
     onscrubsource
   }: Props = $props();
 
@@ -305,6 +332,15 @@
    * different kinds of thing".
    */
   const LANE_HEIGHTS = { fx: 22, clip: 52, caption: 38, audio: 38 } as const;
+
+  /*
+   * What kind of block is being dragged, if any.
+   *
+   * Only the kind, and declared up here rather than read from `drag` below,
+   * because the row counts need it and they are worked out before the drag
+   * state exists. It is set and cleared with `drag` itself.
+   */
+  let draggingKind = $state<'caption' | 'audio' | 'clip' | 'fx' | null>(null);
   const LANE_GAP = 5;
   /** Above the first lane and below the last, so nothing sits on the edge. */
   const LANE_INSET = 6;
@@ -367,27 +403,82 @@
    * is lying about how much is on it. The second row separates them on the
    * strip and changes nothing about the file.
    */
-  const FX_ROWS = 2;
-  const CLIP_ROWS = 2;
-  const CAPTION_ROWS = 2;
-  const AUDIO_ROWS = 1;
-  const laneCount = FX_ROWS + CLIP_ROWS + CAPTION_ROWS + AUDIO_ROWS;
+  /*
+   * The second row of a band, only while something is in it.
+   *
+   * The argument above still holds — two rows is the smallest number that can
+   * show an overlap, and an empty one says there is more to add — but it was
+   * paid for permanently by the picture, which is the lane anyone is actually
+   * looking at. So the second row appears when a block is in it, and while a
+   * block of that kind is being dragged, which is when somewhere to drop it has
+   * to exist. Beds go further: nothing is ever created on that row — a bed
+   * arrives from the pool — so with no beds there is no row.
+   *
+   * The first picture, caption and effects rows stay whatever happens: double
+   * clicking an empty row is still the only way to make a caption or an effect,
+   * and a lane you can't see is a lane you can't double click.
+   */
+  const placedEffects = $derived(effects.filter((e) => e.start != null || e.end != null));
 
+  const FX_ROWS = $derived(
+    placedEffects.some((e) => (e.lane ?? 0) >= 1) || draggingKind === 'fx' ? 2 : 1
+  );
+  const CLIP_ROWS = $derived(
+    clips.some((c) => (c.lane ?? 0) >= 1) || draggingKind === 'clip' ? 2 : 1
+  );
+  const CAPTION_ROWS = $derived(
+    captions.some((c) => (c.lane ?? 0) >= 1) || draggingKind === 'caption' ? 2 : 1
+  );
+  const AUDIO_ROWS = $derived(tracks.length > 0 || draggingKind === 'audio' ? 1 : 0);
+  const laneCount = $derived(FX_ROWS + CLIP_ROWS + CAPTION_ROWS + AUDIO_ROWS);
+
+  /**
+   * The height of every row, picture first in line for anything spare.
+   *
+   * Dragging the divider up used to add empty space under the rows, which is
+   * the one place the pixels are no use. They go to the picture instead: it is
+   * the row carrying a filmstrip, where more height shows more of the shot. A
+   * caption is a line of text and reads no better at eighty pixels, and the
+   * effects row is deliberately the shortest so it reads as a different kind of
+   * thing.
+   */
   /** Every row in order, so heights and offsets are read from one list. */
-  const rows = [
+  const rows = $derived([
     ...Array.from({ length: FX_ROWS }, () => 'fx' as const),
     ...Array.from({ length: CLIP_ROWS }, () => 'clip' as const),
     ...Array.from({ length: CAPTION_ROWS }, () => 'caption' as const),
     ...Array.from({ length: AUDIO_ROWS }, () => 'audio' as const)
-  ];
+  ]);
 
-  /** Where each row's top edge sits. Constant, now that the shape is. */
-  const rowTops = rows.reduce<number[]>((tops, kind, index) => {
-    tops.push(
-      index === 0 ? LANE_INSET : tops[index - 1] + LANE_HEIGHTS[rows[index - 1]] + LANE_GAP
-    );
-    return tops;
-  }, []);
+  /** What the rows come to when none of them has been stretched. */
+  const naturalHeight = $derived(
+    rows.reduce((total, kind) => total + LANE_HEIGHTS[kind] + LANE_GAP, LANE_INSET * 2 - LANE_GAP)
+  );
+
+  const laneHeights = $derived.by(() => {
+    const spare = height === null ? 0 : Math.max(0, Math.round(height - naturalHeight));
+    const each = CLIP_ROWS > 0 ? Math.floor(spare / CLIP_ROWS) : 0;
+    // The remainder to the last picture row rather than nowhere, so the strip
+    // fills the box it was dragged to instead of leaving a pixel or two over.
+    let given = 0;
+    return rows.map((kind, index) => {
+      if (kind !== 'clip') return LANE_HEIGHTS[kind];
+      const last = index === CLIPS_AT + CLIP_ROWS - 1;
+      const share = last ? spare - given : each;
+      given += share;
+      return LANE_HEIGHTS.clip + share;
+    });
+  });
+
+  /** Where each row's top edge sits, for whatever shape the strip is in. */
+  const rowTops = $derived(
+    rows.reduce<number[]>((tops, kind, index) => {
+      tops.push(
+        index === 0 ? LANE_INSET : tops[index - 1] + (laneHeights[index - 1] ?? 0) + LANE_GAP
+      );
+      return tops;
+    }, [])
+  );
 
   /**
    * Top and bottom of the lanes themselves, without the inset either side.
@@ -400,18 +491,17 @@
    */
   const lanesTop = LANE_INSET;
 
-  const stripHeight = rows.reduce(
-    (total, kind) => total + LANE_HEIGHTS[kind] + LANE_GAP,
-    LANE_INSET * 2 - LANE_GAP
+  const stripHeight = $derived(
+    laneHeights.reduce((total, tall) => total + tall + LANE_GAP, LANE_INSET * 2 - LANE_GAP)
   );
 
   /** How tall the lanes are between them, for anything drawn across all of them. */
-  const lanesHeight = stripHeight - LANE_INSET * 2;
+  const lanesHeight = $derived(stripHeight - LANE_INSET * 2);
 
   /** Where each group of rows begins. */
-  const CLIPS_AT = FX_ROWS;
-  const CAPTIONS_AT = FX_ROWS + CLIP_ROWS;
-  const AUDIO_AT = FX_ROWS + CLIP_ROWS + CAPTION_ROWS;
+  const CLIPS_AT = $derived(FX_ROWS);
+  const CAPTIONS_AT = $derived(FX_ROWS + CLIP_ROWS);
+  const AUDIO_AT = $derived(FX_ROWS + CLIP_ROWS + CAPTION_ROWS);
 
   /**
    * Width of the column of icons down the left-hand side.
@@ -452,7 +542,7 @@
   const laneTop = (row: number) => rowTops[row] ?? LANE_INSET;
 
   /** How tall that lane is, which now depends on what lives in it. */
-  const laneHeight = (row: number) => LANE_HEIGHTS[rows[row] ?? 'caption'];
+  const laneHeight = (row: number) => laneHeights[row] ?? LANE_HEIGHTS[rows[row] ?? 'caption'];
 
   /** Which rows a kind of block is allowed in. */
   function bandOf(kind: Kind): { from: number; count: number } {
@@ -596,14 +686,39 @@
     // already does the useful thing here.
     if (e.shiftKey) return;
 
+    /*
+     * A plain wheel scrolls, as it does everywhere else.
+     *
+     * It used to zoom, which was quick for anyone who knew and a surprise for
+     * everyone else — and once the strip could be dragged taller than its box,
+     * it was also the only way to reach the rows below the fold, which it
+     * refused to do. Zoom moved to the modifier every browser, map and editor
+     * already uses for it, and to the buttons under the strip.
+     */
+    if (!e.ctrlKey && !e.metaKey) return;
+
     e.preventDefault();
 
     const rect = box.getBoundingClientRect();
     const offset = e.clientX - rect.left;
-    const at = (box.scrollLeft + offset) / pxPerSecond;
+    zoomTo(pxPerSecond * Math.exp(-e.deltaY * 0.002), offset);
+  }
 
-    const factor = Math.exp(-e.deltaY * 0.002);
-    const next = Math.min(MAX_ZOOM, Math.max(minZoom, pxPerSecond * factor));
+  /**
+   * Zoom, holding one point still.
+   *
+   * `at` is where to hold, measured from the left edge of the window; the
+   * middle when nothing says otherwise, which is what the buttons want — you
+   * press + to see more of what you are looking at, and what you are looking
+   * at is in front of you.
+   */
+  function zoomTo(wanted: number, at?: number) {
+    const box = scroller;
+    if (!box) return;
+
+    const offset = at ?? box.clientWidth / 2;
+    const second = (box.scrollLeft + offset) / pxPerSecond;
+    const next = Math.min(MAX_ZOOM, Math.max(minZoom, wanted));
     if (next === pxPerSecond) return;
 
     chosenZoom = next;
@@ -611,8 +726,35 @@
     // Set after the width has been applied, or the container clamps the scroll
     // to a width it hasn't grown into yet.
     requestAnimationFrame(() => {
-      box.scrollLeft = Math.max(0, at * next - offset);
+      box.scrollLeft = Math.max(0, second * next - offset);
     });
+  }
+
+  /*
+   * The zoom, handed to whoever drew the toolbar.
+   *
+   * The controls belong in the one row of tools above the strip, which is the
+   * page's, while the zoom itself can only live here — it needs the window's
+   * width, the clip's length and the scroller to hold a point still. So the
+   * component keeps the doing and lends out the buttons' worth of it.
+   */
+  $effect(() => {
+    onzoom?.({
+      in: () => zoomTo(pxPerSecond * 1.5),
+      out: () => zoomTo(pxPerSecond / 1.5),
+      set: (next: number) => zoomTo(next),
+      fit: fitAll,
+      now: () => pxPerSecond,
+      min: () => minZoom,
+      max: MAX_ZOOM
+    });
+    return () => onzoom?.(null);
+  });
+
+  /** The whole clip in the window, which is where the strip opens. */
+  function fitAll() {
+    chosenZoom = Math.min(MAX_ZOOM, Math.max(minZoom, windowWidth / Math.max(visible, 0.1)));
+    requestAnimationFrame(() => scroller?.scrollTo({ left: 0 }));
   }
 
   /**
@@ -1569,7 +1711,7 @@
     // Focused as soon as it exists: making one is wanting to write in it, and
     // the alternative is drawing a box and then having to go and click it.
     focusCaption = captions.length;
-    pickedCaption = captions.length;
+    selection.select({ kind: 'caption', index: captions.length });
     oncaptions([...captions, { start: tidy(start), end: tidy(end), text: '' }]);
   }
 
@@ -1710,9 +1852,10 @@
    * where you meant it, and doesn't teach anyone to dismiss dialogs unread.
    */
   $effect(() => {
-    const chosen = selection;
-    const caption = pickedCaption;
-    if (!chosen && caption === null) return;
+    const chosen = selection.current;
+    const row = chosen?.kind === 'clip' || chosen?.kind === 'audio' ? chosen : null;
+    const caption = chosen?.kind === 'caption' ? chosen.index : null;
+    if (!row && caption === null) return;
 
     const onDelete = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -1728,9 +1871,9 @@
       if (el && /^(INPUT|TEXTAREA)$/.test(el.tagName)) return;
 
       e.preventDefault();
-      if (chosen) onremove(chosen.kind, chosen.id);
+      if (row) onremove(row.kind, row.id);
       else if (caption !== null) {
-        pickedCaption = null;
+        selection.clear();
         oncaptionremove(caption);
       }
     };
@@ -2004,12 +2147,11 @@
   /**
    * The selected caption, if any.
    *
-   * Kept here rather than handed up with the others, because a caption has
-   * nothing for the preview pane to show — selecting one means "this is what
-   * Delete would take", and nothing else. The clip and bed selections travel up
-   * because they change what is on screen; this one doesn't.
+   * A caption is selected the same way everything else is now. It used to be
+   * held here on the grounds that it changes nothing on screen, unlike a clip
+   * or a bed — true, and still the reason it doesn't travel to the preview, but
+   * not a reason for a second idea of what is selected.
    */
-  let pickedCaption = $state<number | null>(null);
 
   /** Last seen pointer position, so the edge pull works while it's held still. */
   let pointerX = 0;
@@ -2075,6 +2217,8 @@
     e.stopPropagation();
 
     const release = beginDragGesture();
+    // Set with the drag, so the band being dragged towards has a row to land in.
+    draggingKind = kind;
     drag = {
       kind,
       key,
@@ -2118,6 +2262,7 @@
 
       const settled = drag;
       drag = null;
+      draggingKind = null;
       /*
        * After `drag` is cleared, not before: an override lasts until a
        * dependency changes, and `drag` is one of them. Assigning first would
@@ -2141,12 +2286,11 @@
           if (settled.kind === 'fx') {
             opened = opened?.kind === 'fx' && opened.key === settled.key ? null : settled;
           } else if (settled.kind === 'caption') {
-            pickedCaption = pickedCaption === settled.key ? null : settled.key;
+            if (selection.has('caption', settled.key)) selection.clear();
+            else selection.select({ kind: 'caption', index: settled.key });
           } else {
-            // Only one thing chosen at a time, and a Delete with two candidates
-            // is a coin toss. Cleared here, where the choice is actually made,
-            // rather than by an effect watching the selection afterwards.
-            pickedCaption = null;
+            // One owner, so choosing a clip or a bed is what unchooses whatever
+            // was chosen before — there is nothing left to clear by hand.
             onpreview(settled.kind, settled.key, false);
           }
         }
@@ -2339,14 +2483,11 @@
   <!-- Pause when it's this one that's running. A button that only ever starts
        something means the way to stop it is to find the player it started, and
        the whole point of pressing it here was not having to look there. -->
-  {@const running = selectionPlaying && selection?.kind === kind && selection.id === id}
+  {@const running = selectionPlaying && selection.has(kind, id)}
   <button
     type="button"
     onpointerdown={pressTool}
-    onclick={() => {
-      pickedCaption = null;
-      onpreview(kind, id, true);
-    }}
+    onclick={() => onpreview(kind, id, true)}
     title={running ? `Pause ${label}` : `Play ${label} on its own`}
     aria-label={running ? `Pause ${label}` : `Play ${label} on its own`}
     class="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded bg-white/10 transition-colors hover:bg-white/25"
@@ -2375,6 +2516,23 @@
      very long bar. An overview has to be the width of the thing you are looking
      through, not the thing you are looking at. -->
 <div class="min-w-0">
+  <!-- Above the strip, not under it: under it, this scrolled out of reach the
+       moment the strip was taller than its box, and the overview is wanted most
+       exactly then. -->
+  <div style="padding-left: {GUTTER}px">
+    <TimelineMinimap
+      {canvas}
+      live={Boolean(drag) || panning}
+      {clips}
+      {captions}
+      {playhead}
+      effects={effects.map((fx) => ({ start: fx.start ?? 0, end: fx.end ?? duration }))}
+      {viewFrom}
+      {viewWidth}
+      tracks={tracks.map((t) => ({ start: t.start, end: t.end ?? duration }))}
+      onscrub={scrubTo}
+    />
+  </div>
   <!-- The gutter sits beside the scroller rather than inside it, so it stays
        put while the strip pans under it — inside, it would scroll away with
        the first block. -->
@@ -2579,8 +2737,7 @@
            beside it did not — they went on centring themselves against the full
            height and sat low against everything else on the block. -->
           {@const rail = railed(win, clip.length) ? 8 : 0}
-          {@const running =
-            selectionPlaying && selection?.kind === 'clip' && selection.id === clip.id}
+          {@const running = selectionPlaying && selection.has('clip', clip.id)}
           <!-- What is playing, which is the one thing the old contact sheet
            couldn't say — and matters most where a filmstrip is least use: the
            same shot three times over, three identical stretches of picture.
@@ -2593,7 +2750,7 @@
             class="lane-label absolute flex items-center overflow-hidden rounded border border-gray-500/70 bg-gray-700/70 text-[12px] {drag?.kind ===
               'clip' && drag.key === clip.id
               ? 'ring-2 ring-gray-300'
-              : selection?.kind === 'clip' && selection.id === clip.id
+              : selection.has('clip', clip.id)
                 ? 'ring-2 ring-violet-400'
                 : ''}"
             style="left: {percent(at.start)}; width: {percent(
@@ -2821,7 +2978,7 @@
             class="lane-label absolute flex items-center overflow-hidden rounded border border-violet-400/70 bg-violet-600/80 text-[12px] shadow {drag?.kind ===
               'caption' && drag.key === index
               ? 'ring-2 ring-violet-300'
-              : pickedCaption === index
+              : selection.has('caption', index)
                 ? 'ring-2 ring-violet-200'
                 : ''}"
             style="left: {percent(at.start)}; width: {percent(
@@ -2886,7 +3043,7 @@
                 title="{typed(caption.text) || 'Say something'} · {secs(at.start)}–{secs(at.end)}"
                 data-caption={index}
                 onpointerdown={(e) => e.stopPropagation()}
-                onfocus={() => (pickedCaption = index)}
+                onfocus={() => selection.select({ kind: 'caption', index })}
                 onkeydown={(e) => {
                   const field = e.currentTarget as HTMLInputElement;
                   // Enter is "done"; with shift it's a second line.
@@ -3045,7 +3202,7 @@
                   type="button"
                   onpointerdown={pressTool}
                   onclick={() => {
-                    pickedCaption = null;
+                    selection.clear();
                     oncaptionremove(index);
                   }}
                   title="Remove this caption"
@@ -3081,7 +3238,7 @@
             class="lane-label absolute isolate flex items-center overflow-hidden rounded border border-emerald-400/60 bg-emerald-700/75 text-[12px] {drag?.kind ===
               'audio' && drag.key === track.id
               ? 'ring-2 ring-emerald-300'
-              : selection?.kind === 'audio' && selection.id === track.id
+              : selection.has('audio', track.id)
                 ? 'ring-2 ring-emerald-200'
                 : ''}"
             style="left: {percent(at.start)}; width: {percent(
@@ -3242,22 +3399,6 @@
         ></div>
       </div>
     </div>
-  </div>
-
-  <!-- Indented to match, so the overview starts where the strip starts. -->
-  <div style="padding-left: {GUTTER}px">
-    <TimelineMinimap
-      {canvas}
-      live={Boolean(drag) || panning}
-      {clips}
-      {captions}
-      {playhead}
-      effects={effects.map((fx) => ({ start: fx.start ?? 0, end: fx.end ?? duration }))}
-      {viewFrom}
-      {viewWidth}
-      tracks={tracks.map((t) => ({ start: t.start, end: t.end ?? duration }))}
-      onscrub={scrubTo}
-    />
   </div>
 </div>
 

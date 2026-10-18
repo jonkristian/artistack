@@ -771,8 +771,9 @@
     <!-- Toasts -->
     <Toaster />
 
-    <!-- Update & Undo Buttons -->
-    <div class="flex gap-2 p-3">
+    <!-- Update & Undo Buttons. Stacked and icon-only in the slim rail: a
+         labelled button at full width overflowed it and sat out over the page. -->
+    <div class="flex gap-2 p-3 {navSlim ? 'lg:flex-col lg:p-2' : ''}">
       <button
         onclick={draft.undo}
         disabled={!isDirty || isUpdating}
@@ -791,10 +792,10 @@
       <button
         onclick={handlePublish}
         disabled={isUpdating || !isDirty}
-        class="flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-white transition-all duration-300 disabled:cursor-not-allowed {isDirty &&
-        !isUpdating
-          ? 'bg-purple-600 hover:bg-purple-700'
-          : 'bg-gray-800'}"
+        title="Update"
+        class="flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-white transition-all duration-300 disabled:cursor-not-allowed {navSlim
+          ? 'lg:flex-none lg:px-0'
+          : ''} {isDirty && !isUpdating ? 'bg-purple-600 hover:bg-purple-700' : 'bg-gray-800'}"
       >
         {#if isUpdating}
           <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -806,7 +807,7 @@
               d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
             ></path>
           </svg>
-          Updating...
+          <span class={navSlim ? 'lg:hidden' : ''}>Updating...</span>
         {:else}
           <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
@@ -816,7 +817,7 @@
               d="M5 13l4 4L19 7"
             />
           </svg>
-          Update
+          <span class={navSlim ? 'lg:hidden' : ''}>Update</span>
         {/if}
       </button>
     </div>

@@ -1,3 +1,9 @@
+# 1.8.0 (18-10-2026)
+
+- The clip editor has one set of controls above the timeline: play, the time, zoom and a fit, with the timeline itself hideable and draggable to any height
+- The timeline shows a row when something is on it — an empty clip is three rows rather than seven — and spare height goes to the picture
+- The wheel scrolls the timeline and ctrl or cmd with it zooms, rather than the wheel zooming and nothing scrolling
+
 # 1.7.0 (12-09-2026)
 
 - Captions can arrive rather than appear: fade, pop, rise or focus in, plus TV damage and ghosting. The clip sets the default and any caption can overrule it
