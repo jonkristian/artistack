@@ -36,6 +36,11 @@
 - Stats show which devices people visit on, and what's been pressed on pre-save and ticket buttons
 - A show's editor shows its page views beside its ticket clicks, and the fan list shows each subscriber's country
 - Stats reach back past thirty days: 7 days, 30, 90, 12 months, a calendar year or all time, reading the daily totals kept after ninety days alongside recent visits. A year compares with the same dates the year before, and long periods chart by week or month
+- The release queue shows each clip's time, marks the ones whose time is only an estimate, and lets the date be changed from the list
+- The admin menu narrows to its icons, giving the clip timeline the width back. The switch is in the menu's own header
+- The clip editor has a Preview button and a Render button instead of a Quick/Final switch that also decided what Render made, with a switch above the video for which one plays
+- A clip says where it has got to in plain words — "Rendered and ready to send out", or "Your changes aren't in the render yet"
+- The clip preview fits the pane, so a vertical clip no longer pushes its controls below the fold
 - Fixed: deleting a clip left its quick render behind, on disk and in the library
 - Fixed: a shot whose audio ran shorter than its picture was cut to the length of the sound, and rendering appeared to hang partway
 - Fixed: a caption's backdrop was drawn solid black whatever colour was picked, and its opacity dial did nothing
@@ -69,6 +74,8 @@
 - Fixed: download, unsubscribe and phone-upload links were counted as page views with their secret in the address. Existing rows are removed
 - Fixed: the headline views and clicks on Stats covered a slightly different thirty days than the change beside them
 - Fixed: clicks on a deleted link showed as "unknown". They say "Removed link" now
+- Fixed: the review message on Discord asked for an approval that hasn't existed for a while
+- Fixed: a clip's release time was read in the server's timezone, so a time picked as 16:00 was stored as 18:00
 - Fixed: the profile's icons picked up every social link on the page, so a YouTube video in a links block showed as a second YouTube icon
 - Fixed: a link added after another was removed could tie for last place and land in either order
 - Fixed: link clicks were kept forever. Like visits, they're reduced to daily totals after 90 days

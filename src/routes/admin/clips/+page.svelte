@@ -13,7 +13,9 @@
   import { LibraryToolbar, SelectCheckbox } from '$lib/components/ui';
   import { Selection } from '$lib/utils/selection.svelte';
   import type { PageData } from './$types';
-  import { createProject, deleteProject } from './data.remote';
+  import { QueueClipDialog } from '$lib/components/dialogs';
+  import { toLocalInput, fromLocalInput } from '$lib/utils/datetime';
+  import { createProject, deleteProject, setScheduledDate, publishNow } from './data.remote';
 
   let { data }: { data: PageData } = $props();
 
@@ -91,6 +93,70 @@
         .map(([id]) => Number(id))
     )
   );
+
+  /*
+   * The queue, as rows a sortable list can key on. Listed in the order they'll
+   * go out — a clip pinned to its own date sits at that date, so only the ones
+   * riding the drip can be dragged.
+   */
+  /*
+   * The queue as it will actually go out: a clip pinned to a date goes then,
+   * and the rest take the drip slots around it. That order is worked out from
+   * the dates, not stored, so there's nothing here to drag — a clip moves by
+   * changing its date or its gap.
+   */
+  const queueItems = $derived(
+    data.queue.map((entry) => ({
+      id: entry.project.id,
+      project: entry.project,
+      output: entry.output,
+      eta: entry.eta,
+      pinned: !!entry.project.scheduledFor
+    }))
+  );
+
+  type QueueItem = (typeof queueItems)[number];
+
+  let queueDialogFor = $state<QueueItem | null>(null);
+
+  function formatSlot(eta: Date | string | null): string {
+    if (!eta) return 'paused';
+    return new Intl.DateTimeFormat(data.settings?.locale || 'nb-NO', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      hour12: false
+    }).format(new Date(eta));
+  }
+
+  /** The same three answers the clip's own page offers, from the queue. */
+  async function handleQueueChoice(mode: 'drip' | 'date' | 'now', when: string | null) {
+    const target = queueDialogFor;
+    queueDialogFor = null;
+    if (!target) return;
+
+    try {
+      if (mode === 'now') {
+        const result = await publishNow({
+          projectId: target.id,
+          origin: window.location.origin
+        });
+        if (!result.success) {
+          toast.error(result.error ?? 'Publish failed');
+          return;
+        }
+        toast.success('Sent for publishing');
+      } else {
+        await setScheduledDate({
+          projectId: target.id,
+          when: mode === 'date' ? fromLocalInput(when) : null
+        });
+        toast.success(mode === 'date' ? 'Release date set' : 'Back on the drip');
+      }
+      await invalidateAll();
+    } catch {
+      toast.error('Could not set the release date');
+    }
+  }
 
   /**
    * Creates a clip and goes straight to it. The name is a placeholder rather
@@ -307,7 +373,7 @@
   {/if}
 
   <!-- Release queue -->
-  {#if data.queue.length > 0}
+  {#if queueItems.length > 0}
     <section class="mt-8 rounded-xl border border-gray-800 bg-gray-900 p-5">
       <div class="mb-4">
         <h2 class="text-sm font-medium tracking-wider text-gray-400 uppercase">Release queue</h2>
@@ -320,30 +386,51 @@
         </p>
       </div>
       <ol class="space-y-2">
-        {#each data.queue as entry, index (entry.project.id)}
-          <li
-            class="flex items-center gap-3 rounded-lg bg-gray-800/50 px-3 py-2 text-sm transition-colors hover:bg-gray-800"
-          >
-            <span class="w-6 text-center text-xs text-gray-600">{index + 1}</span>
-            <div class="h-10 w-7 shrink-0 overflow-hidden rounded bg-gray-800">
-              {#if entry.output?.thumbnailUrl}
-                <img src={entry.output.thumbnailUrl} alt="" class="h-full w-full object-cover" />
-              {/if}
-            </div>
-            <a
-              href="/admin/clips/{entry.project.id}"
-              class="min-w-0 flex-1 truncate text-white transition-colors hover:text-violet-400"
+        {#each queueItems as entry (entry.id)}
+          <li>
+            <div
+              class="flex items-center gap-3 rounded-lg bg-gray-800/50 px-3 py-2 text-sm transition-colors hover:bg-gray-800"
             >
-              {entry.project.name}
-            </a>
-            <span class="text-xs text-gray-500">
-              {entry.eta
-                ? new Date(entry.eta).toLocaleDateString(data.settings?.locale || 'nb-NO')
-                : 'paused'}
-            </span>
+              <a
+                href="/admin/clips/{entry.project.id}"
+                title="Open {entry.project.name}"
+                class="h-10 w-7 shrink-0 overflow-hidden rounded bg-gray-800 transition-opacity hover:opacity-80"
+              >
+                {#if entry.output?.thumbnailUrl}
+                  <img src={entry.output.thumbnailUrl} alt="" class="h-full w-full object-cover" />
+                {/if}
+              </a>
+              <span class="min-w-0 flex-1 truncate text-white">{entry.project.name}</span>
+              <!-- A clip with no date of its own rides the drip, so its time is a
+                   projection that moves whenever anything ahead of it does. The
+                   marked one is the uncertain one; a chosen date is just a date. -->
+              {#if !entry.pinned && entry.eta}
+                <span class="shrink-0 text-xs text-gray-600">Estimated</span>
+              {/if}
+              <span class="shrink-0 text-xs text-gray-500">{formatSlot(entry.eta)}</span>
+              <button
+                type="button"
+                onclick={() => (queueDialogFor = entry)}
+                class="shrink-0 text-xs whitespace-nowrap text-violet-400 transition-colors hover:text-violet-300"
+              >
+                Change
+              </button>
+            </div>
           </li>
         {/each}
       </ol>
     </section>
   {/if}
 </div>
+
+{#if queueDialogFor}
+  <QueueClipDialog
+    nextSlot={data.nextSlot ? new Date(data.nextSlot) : null}
+    scheduledFor={toLocalInput(queueDialogFor.project.scheduledFor)}
+    queued
+    locale={data.settings?.locale || 'nb-NO'}
+    publishConfigured={data.publishConfigured}
+    onchoose={handleQueueChoice}
+    onclose={() => (queueDialogFor = null)}
+  />
+{/if}

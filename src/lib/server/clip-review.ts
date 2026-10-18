@@ -155,7 +155,11 @@ export async function submitForReview(
     '',
     facts.join(' · '),
     `[Watch the preview](<${url}>) · [Open in admin](<${admin}>)`,
-    '-# Approve or reject in Artistack → Clips',
+    // Not "approve or reject": there are no such buttons, and haven't been
+    // since approving your own clip stopped recording a decision anyone could
+    // act on. Showing someone is the act; what happens next is a change or a
+    // release.
+    '-# Say what you think — changes go in Artistack → Clips',
     // Last and unbracketed: this is the one meant to become a player.
     videoUrl
   ]

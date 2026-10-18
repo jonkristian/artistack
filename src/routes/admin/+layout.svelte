@@ -129,6 +129,30 @@
    */
   let navOpen = $state(false);
 
+  /**
+   * The rail, narrowed to its icons.
+   *
+   * Width the editor can use: the clip studio's timeline measures the whole
+   * clip across the page, and 56 pixels back is a few seconds more of it. Kept
+   * in the browser because it's about the screen someone is sitting at, not
+   * about the site — the same preference on a laptop and a monitor would be
+   * the wrong one in one of the two places.
+   *
+   * Wide screens only. On a narrow one the rail is a drawer that opens over the
+   * page and shuts again, so there is no room being taken to give back.
+   */
+  const NAV_SLIM_KEY = 'artistack:nav-slim';
+  let navSlim = $state(false);
+
+  // Reads nothing reactive, so it runs once, where localStorage exists.
+  $effect(() => {
+    navSlim = localStorage.getItem(NAV_SLIM_KEY) === '1';
+  });
+
+  $effect(() => {
+    localStorage.setItem(NAV_SLIM_KEY, navSlim ? '1' : '0');
+  });
+
   const currentPath = $derived(page.url.pathname);
 
   // Navigating is the end of the drawer's job, so it closes itself rather than
@@ -453,24 +477,32 @@
 
   <!-- Sidebar -->
   <aside
-    class="fixed top-0 left-0 z-50 flex h-screen w-56 flex-col border-r border-gray-800 bg-gray-900 transition-transform duration-200 lg:translate-x-0 {navOpen
-      ? 'translate-x-0'
-      : '-translate-x-full'}"
+    class="fixed top-0 left-0 z-50 flex h-screen w-56 flex-col border-r border-gray-800 bg-gray-900 transition-all duration-200 lg:translate-x-0 {navSlim
+      ? 'lg:w-14'
+      : 'lg:w-56'} {navOpen ? 'translate-x-0' : '-translate-x-full'}"
   >
     <!-- Artist Name. The link out sits with the name because that's what it
          opens — the site this admin belongs to.
 
          Hidden below lg: the narrow-screen bar above the drawer already carries
          both, and a drawer that opens over it would say them twice. -->
-    <div class="hidden h-14 items-center gap-2 border-b border-gray-800 px-4 lg:flex">
-      <span class="min-w-0 flex-1 truncate font-semibold text-white">{artistName}</span>
+    <div
+      class="hidden h-14 items-center gap-2 border-b border-gray-800 lg:flex {navSlim
+        ? 'justify-center px-0'
+        : 'px-4'}"
+    >
+      {#if !navSlim}
+        <span class="min-w-0 flex-1 truncate font-semibold text-white">{artistName}</span>
+      {/if}
       <a
         href="/"
         target="_blank"
         rel="noreferrer"
         title="View site"
         aria-label="View site"
-        class="shrink-0 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-800 hover:text-white"
+        class="shrink-0 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-800 hover:text-white {navSlim
+          ? 'lg:hidden'
+          : ''}"
       >
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
@@ -481,6 +513,25 @@
           />
         </svg>
       </a>
+      <!-- The width switch. In the rail's own head rather than at its foot,
+           because it is about the rail and that is where the rail starts. -->
+      <button
+        type="button"
+        onclick={() => (navSlim = !navSlim)}
+        title={navSlim ? 'Widen the menu' : 'Narrow the menu'}
+        aria-label={navSlim ? 'Widen the menu' : 'Narrow the menu'}
+        aria-pressed={navSlim}
+        class="shrink-0 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-800 hover:text-white"
+      >
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="1.5"
+            d={navSlim ? 'M13 5l7 7-7 7M5 5l7 7-7 7' : 'M11 19l-7-7 7-7M19 19l-7-7 7-7'}
+          />
+        </svg>
+      </button>
     </div>
 
     <!-- Navigation.
@@ -496,9 +547,10 @@
           <li>
             <a
               href={item.href}
-              class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors {isNavActive(
-                item.href
-              )
+              title={item.label}
+              class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors {navSlim
+                ? 'lg:justify-center lg:px-0'
+                : ''} {isNavActive(item.href)
                 ? 'bg-gray-800 text-white'
                 : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'}"
             >
@@ -629,7 +681,7 @@
                   />
                 </svg>
               {/if}
-              {item.label}
+              <span class={navSlim ? 'lg:hidden' : ''}>{item.label}</span>
               {#if isNavDirty(item.href)}
                 <span class="h-2 w-2 rounded-full bg-purple-500"></span>
               {/if}
@@ -639,7 +691,7 @@
                  count is here rather than on a toolbar because a reserved
                  payment lapses if it's left, and this is the one place you see
                  it from anywhere in the admin. -->
-            {#if item.children && isNavActive(item.href)}
+            {#if item.children && isNavActive(item.href) && !navSlim}
               <!-- ml-2.5 is not arbitrary: it puts the branch's vertical
                    stroke at 22px, which is dead centre under the parent's icon.
                    A descender that starts anywhere else reads as an indent
@@ -776,8 +828,10 @@
            would say less in the same space. -->
       <a
         href="/admin/profile"
-        class="mb-1 flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-gray-800/50 {currentPath ===
-        '/admin/profile'
+        title={data.user.name ?? 'Your profile'}
+        class="mb-1 flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-gray-800/50 {navSlim
+          ? 'lg:justify-center lg:px-0'
+          : ''} {currentPath === '/admin/profile'
           ? 'bg-gray-800 text-white'
           : 'text-gray-400 hover:text-white'}"
       >
@@ -790,11 +844,14 @@
             {(data.user.name ?? '?').charAt(0).toUpperCase()}
           </span>
         {/if}
-        <span class="truncate">{data.user.name}</span>
+        <span class="truncate {navSlim ? 'lg:hidden' : ''}">{data.user.name}</span>
       </a>
       <button
         onclick={signOut}
-        class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-400 transition-colors hover:bg-gray-800/50 hover:text-white"
+        title="Sign Out"
+        class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-400 transition-colors hover:bg-gray-800/50 hover:text-white {navSlim
+          ? 'lg:justify-center lg:px-0'
+          : ''}"
       >
         <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
@@ -804,14 +861,14 @@
             d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
           />
         </svg>
-        Sign Out
+        <span class={navSlim ? 'lg:hidden' : ''}>Sign Out</span>
       </button>
     </div>
   </aside>
 
   <!-- Main Content. Padded past the top bar on narrow screens, past the rail
        on wide ones — never both, because only one exists at a time. -->
-  <main class="min-w-0 flex-1 pt-14 lg:ml-56 lg:pt-0">
+  <main class="min-w-0 flex-1 pt-14 lg:pt-0 {navSlim ? 'lg:ml-14' : 'lg:ml-56'}">
     {@render children()}
   </main>
 </div>

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { beforeNavigate, goto, invalidateAll } from '$app/navigation';
   import { toast } from '$lib/stores/toast.svelte';
+  import { toLocalInput, fromLocalInput } from '$lib/utils/datetime';
   import { keepColor } from '$lib/brand-colors.remote';
   import MediaPicker from '$lib/components/ui/MediaPicker.svelte';
   import {
@@ -98,6 +99,16 @@
    * Undefined until a render exists. There is no timeline to point at before
    * one, which is the honest state rather than a missing feature.
    */
+  /*
+   * The preview fits the column, not just its width. Sized by width alone, a
+   * vertical clip came out taller than the screen and the transport sat below
+   * the fold — play was a scroll away. The frame hugs the picture so the
+   * overlays still land exactly on it; 60vh matches the source preview above.
+   */
+  const previewFrameClass = 'relative mx-auto w-fit max-w-full overflow-hidden rounded-lg';
+  const previewMediaClass =
+    'block max-h-[60vh] w-auto max-w-full rounded-lg bg-black object-contain';
+
   let previewVideo = $state<HTMLVideoElement>();
 
   /**
@@ -589,14 +600,40 @@
   );
 
   /**
-   * One switch for both questions.
+   * Watching and making are two decisions, not one.
    *
-   * Which of the two you are watching and which of the two you are about to
-   * make are the same decision in practice — you look at a proof because you
-   * are working, and at the final because you are finishing. So the button that
-   * chooses also decides what Render does, and there is one fewer control and
-   * no way for the two to disagree.
+   * This used to be a Quick|Final switch that also decided what Render made, so
+   * the button's own label changed under you and a quality setting doubled as a
+   * view. Now there are two buttons that each say what they make, and this only
+   * answers "which one is on screen" — which is worth keeping, because a proof
+   * takes the pane the moment it finishes and the finished file is still what
+   * goes out.
    */
+  const canSwitchView = $derived(Boolean(proofMedia && outputMedia));
+
+  /**
+   * Where the clip has got to, as a sentence.
+   *
+   * `Rendered` and `edited since this render` are both true and neither says
+   * what to do about it. The states are a handful, so each gets its own
+   * wording: what has happened, and — when the finished file is behind the
+   * edit — what that means for the thing about to go out.
+   */
+  const statusLine = $derived.by(() => {
+    const where: Record<string, string> = {
+      draft: 'Not rendered yet',
+      rendered: 'Rendered and ready to send out',
+      review: 'Sent for review',
+      queued: 'Waiting to go out',
+      published: 'Published'
+    };
+    const reached = where[selected.status] ?? selected.status;
+
+    if (!finalStale) return reached;
+    return selected.status === 'rendered'
+      ? 'Your changes aren’t in the render yet'
+      : `${reached} — but the render is older than your changes`;
+  });
 
   /** Whether what's on screen is a proof, which decides whether to draw over it. */
   const showingProof = $derived(Boolean(proofMedia) && shownMedia === proofMedia);
@@ -1248,7 +1285,7 @@
 
     // Sent even when null, so switching back to the drip clears an old pin.
     const dated = await attempt('Could not set the release date', () =>
-      setScheduledDate({ projectId: selected.id, when })
+      setScheduledDate({ projectId: selected.id, when: fromLocalInput(when) })
     );
     if (dated === undefined) return;
     await invalidateAll();
@@ -1269,18 +1306,6 @@
     if (removed === undefined) return;
     await invalidateAll();
     toast.success('Removed from the queue');
-  }
-
-  /**
-   * A `datetime-local` input needs `YYYY-MM-DDTHH:mm` in local time, and
-   * toISOString would hand it UTC — an hour or two off, silently.
-   */
-  function toLocalInput(value: Date | string | null | undefined): string {
-    if (!value) return '';
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return '';
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
   async function handlePublishNow() {
@@ -2373,6 +2398,45 @@
       </div>
     {/snippet}
 
+    <!-- Above the picture, where it says what you are about to watch rather
+         than reporting on it afterwards. A proof takes the pane as soon as it
+         finishes, and the finished file is still the one that goes out, so
+         there has to be a way back to it.
+
+         A switch rather than a sentence and a link: the pair shows what you
+         are watching and what the other choice is in one reading. It looks
+         like the Quick|Final control it replaces, which is fair — the shape
+         was never the problem, the second job was. This one only decides
+         what plays. -->
+    {#if canSwitchView && !borrowed}
+      <div class="flex items-center gap-2 text-xs text-gray-500">
+        <div
+          class="flex items-stretch rounded-lg border border-gray-700 bg-gray-950/60 p-0.5"
+          role="group"
+          aria-label="Which render plays"
+        >
+          <button
+            onclick={() => (watching = 'proof')}
+            aria-pressed={showingProof}
+            class="rounded-md px-2.5 py-1 transition-colors {showingProof
+              ? 'bg-gray-700 text-white shadow-sm'
+              : 'text-gray-500 hover:text-gray-300'}"
+          >
+            Quick preview
+          </button>
+          <button
+            onclick={() => (watching = 'final')}
+            aria-pressed={!showingProof}
+            class="rounded-md px-2.5 py-1 transition-colors {!showingProof
+              ? 'bg-gray-700 text-white shadow-sm'
+              : 'text-gray-500 hover:text-gray-300'}"
+          >
+            Full render
+          </button>
+        </div>
+      </div>
+    {/if}
+
     {#if borrowed}
       <!-- One source, in the place the render usually sits.
            Keyed on the file so switching rows loads the new one, and on the
@@ -2418,7 +2482,7 @@
            than as the box being open. The overlays stay outside the transform
            on purpose: the render burns captions in after the look, so they do
            not travel with the picture there either. -->
-      <div class="relative overflow-hidden rounded-lg">
+      <div class={previewFrameClass}>
         <!-- svelte-ignore a11y_media_has_caption -->
         <!-- Whatever is newest: the proof when there is one, the render
              otherwise. It played `outputMedia` regardless, so a fresh quick
@@ -2441,7 +2505,7 @@
           onplay={() => (previewPlaying = true)}
           onpause={() => (previewPlaying = false)}
           onended={() => (previewPlaying = false)}
-          class="w-full rounded-lg bg-black"
+          class={previewMediaClass}
           style={showingProof ? lookStyle : undefined}
         ></video>
         {#if showingProof}
@@ -2474,14 +2538,14 @@
            it is, with the captions and the look drawn over it exactly as they
            are drawn over a proof. -->
       {#key standIn.item.id}
-        <div class="relative overflow-hidden rounded-lg">
+        <div class={previewFrameClass}>
           {#if standIn.item.mimeType?.startsWith('image/')}
             <!-- The same stand-in for a still: the picture, with the look and
                  the captions drawn over it exactly as they are over a proof. -->
             <img
               src={standIn.item.url}
               alt={standIn.item.alt ?? standIn.item.filename ?? ''}
-              class="w-full rounded-lg bg-black object-contain"
+              class={previewMediaClass}
               style={lookStyle}
             />
           {:else}
@@ -2497,7 +2561,7 @@
               onplay={() => (previewPlaying = true)}
               onpause={() => (previewPlaying = false)}
               onended={() => (previewPlaying = false)}
-              class="w-full rounded-lg bg-black"
+              class={previewMediaClass}
               style={lookStyle}
             ></video>
           {/if}
@@ -2597,53 +2661,32 @@
            touch. Amber on either when the clip has moved on since whatever
            you're looking at. -->
       <div class="flex gap-2">
-        <!-- The switch, and then the doing. Which kind you are looking at and
-             which kind you are about to make were two controls saying the same
-             thing; now the left one chooses and the right one acts on it. -->
-        <!-- A sunken track with a raised segment in it, rather than two
-             buttons that happen to touch: the pair read as a choice already
-             made, with no sense that pressing the other one was the gesture.
-             The inset and the lift are what say "one of these two". -->
-        <div
-          class="flex shrink-0 items-stretch rounded-lg border border-gray-700 bg-gray-950/60 p-0.5 text-xs"
-        >
-          <button
-            onclick={() => (watching = 'proof')}
-            aria-pressed={watching === 'proof'}
-            title="A rough, half-size render for judging placement — seconds rather than minutes"
-            class="flex items-center rounded-md px-2.5 transition-colors {watching === 'proof'
-              ? 'bg-gray-700 text-white shadow-sm'
-              : 'text-gray-500 hover:text-gray-300'}"
-          >
-            Quick
-          </button>
-          <button
-            onclick={() => (watching = 'final')}
-            aria-pressed={watching === 'final'}
-            title="The real one, full size — the only render anything downstream will touch"
-            class="flex items-center rounded-md px-2.5 transition-colors {watching === 'final'
-              ? 'bg-gray-700 text-white shadow-sm'
-              : 'text-gray-500 hover:text-gray-300'}"
-          >
-            Final
-          </button>
-        </div>
+        <!-- Two buttons, each named after what it makes. The rough one first
+             because it is the one pressed twenty times an afternoon; the real
+             one carries the amber dot when the file that goes out is behind
+             the edit. -->
         <button
-          onclick={() => handleRender(watching === 'proof')}
+          onclick={() => handleRender(true)}
           disabled={!data.renderingAvailable || sources.length === 0}
-          title={stale ? 'This clip has changed since it was last rendered' : undefined}
-          class="flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium whitespace-nowrap text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40 {stale
+          title="A rough, half-size render for judging placement — seconds rather than minutes. Captions, branding and the look are drawn over it here rather than burned in."
+          class="flex flex-1 items-center justify-center gap-2 rounded-lg border border-gray-700 px-4 py-2.5 text-sm font-medium whitespace-nowrap text-gray-200 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {proofMedia ? 'Preview again' : 'Preview'}
+        </button>
+        <button
+          onclick={() => handleRender(false)}
+          disabled={!data.renderingAvailable || sources.length === 0}
+          title={finalStale
+            ? 'The clip has changed since this was rendered'
+            : 'The full-size render, with everything burned in — the only one anything downstream uses'}
+          class="flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium whitespace-nowrap text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40 {finalStale
             ? 'bg-amber-700 hover:bg-amber-600'
             : 'bg-sky-700 hover:bg-sky-600'}"
         >
-          {#if stale}
+          {#if finalStale}
             <span class="h-2 w-2 shrink-0 rounded-full bg-amber-200"></span>
           {/if}
-          {#if watching === 'proof'}
-            {proofMedia ? 'Render quick again' : 'Render quick'}
-          {:else}
-            {outputMedia ? 'Render again' : 'Render clip'}
-          {/if}
+          {outputMedia ? 'Render again' : 'Render'}
         </button>
         <!-- The next thing you do to a finished clip, beside the button that
              finishes it. It had a full-width row of its own halfway down the
@@ -2718,21 +2761,23 @@
              disagreeing. What is on screen is the more useful of the two, and
              where the clip has got to is behind the same door as everything
              else about that. -->
+        <!-- The clip's own state, and whether the file that state describes is
+             still the current edit. It used to say "Quick render — rough" while
+             you watched a proof, which answered a different question than the
+             one it looked like it was answering: the status said `Rendered`
+             about a file the proof had already moved past. What you are
+             watching is said under the buttons now; this line is the clip. -->
         <span
-          class="h-2 w-2 shrink-0 rounded-full {showingProof
+          class="h-2 w-2 shrink-0 rounded-full {finalStale
             ? 'bg-amber-400'
             : CLIP_STATUS_DOTS[selected.status]}"
         ></span>
         <span
-          class="min-w-0 flex-1 truncate text-sm {showingProof
+          class="min-w-0 flex-1 truncate text-sm {finalStale
             ? 'text-amber-300/90'
             : 'text-gray-300'}"
         >
-          {#if showingProof}
-            Quick render — rough, for placing things
-          {:else}
-            {CLIP_STATUS_LABELS[selected.status] ?? selected.status}
-          {/if}
+          {statusLine}
         </span>
         <span class="shrink-0 text-xs text-gray-500">Details</span>
         <svg

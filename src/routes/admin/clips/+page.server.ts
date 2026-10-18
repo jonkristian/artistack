@@ -3,7 +3,7 @@ import { db } from '$lib/server/db';
 import { requireFeature } from '$lib/server/guards';
 import { getClipSettings, getClipPublishingSettings } from '$lib/server/settings';
 import { clipProjects, clipPosts, media, settings } from '$lib/server/schema';
-import { getQueue } from '$lib/server/clip-queue';
+import { getQueue, projectedNextSlot } from '$lib/server/clip-queue';
 import { user } from '$lib/server/auth-schema';
 import { auth } from '$lib/server/auth';
 import { desc } from 'drizzle-orm';
@@ -63,6 +63,8 @@ export const load: PageServerLoad = async ({ request }) => {
     projects,
     media: allMedia,
     queue: await getQueue(),
+    // Where a clip with no date of its own would land, for the queue dialog.
+    nextSlot: await projectedNextSlot(),
     renderingAvailable: await videoSupported(),
     publishConfigured: Boolean(publishing?.publishWebhookUrl)
   };

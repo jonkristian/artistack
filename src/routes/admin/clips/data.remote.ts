@@ -865,6 +865,8 @@ export const setScheduledDate = command(
   async ({ projectId, when }) => {
     await requireUser();
 
+    // An absolute instant — the browser converts the hour someone picked into
+    // one, because only it knows which zone they're in.
     let scheduledFor: Date | null = null;
     if (when) {
       scheduledFor = new Date(when);
