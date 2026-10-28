@@ -123,7 +123,7 @@
           <button
             type="button"
             onclick={() => removeImage(item.id)}
-            class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-gray-400 opacity-0 transition-opacity group-hover:opacity-100 hover:text-white"
+            class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-gray-400 opacity-0 transition-opacity group-hover:opacity-100 hover:text-gray-50"
             aria-label="Remove {item.alt || item.filename}"
           >
             <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -141,7 +141,7 @@
     <button
       type="button"
       onclick={() => (showPicker = true)}
-      class="rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
+      class="rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-gray-700 hover:text-gray-50"
     >
       Select images ({selectedIds.length} selected)
     </button>

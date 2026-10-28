@@ -82,31 +82,42 @@
     over = false;
     take(Array.from(e.dataTransfer?.files ?? []));
   }}
-  class="rounded-lg border border-dashed p-2 transition-colors {over
+  class="rounded-lg border border-dashed p-4 transition-colors {over
     ? 'border-violet-500 bg-violet-500/10'
     : 'border-gray-700 bg-gray-900/40'}"
 >
-  <div class="flex items-center gap-1.5">
-    {#snippet way(label: string, icon: typeof ArrowUpTray, act: () => void, lead = false)}
-      <button
-        type="button"
-        onclick={act}
-        disabled={busy}
-        title={label}
-        class="flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors disabled:opacity-40 {lead
-          ? 'bg-violet-600 text-white hover:bg-violet-500'
-          : 'bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white'}"
-      >
-        <Icon src={icon} size="14" class="shrink-0" />
-        <span class="truncate">{label}</span>
-      </button>
-    {/snippet}
+  <!-- Upload across the top, the other two under it.
 
-    {@render way('Upload', ArrowUpTray, () => field?.click(), true)}
-    {@render way('Library', RectangleStack, onbrowse)}
-    {#if onphone}
-      {@render way('Phone', DevicePhoneMobile, onphone)}
-    {/if}
+       Three across a rail this narrow left each of them about seven
+       characters, so the main one read "Uplo…". It is also the one people
+       want nine times in ten: full width says which it is without a word of
+       explanation, and the two that are occasionally what you meant share the
+       line below. -->
+  {#snippet way(label: string, icon: typeof ArrowUpTray, act: () => void, lead = false)}
+    <button
+      type="button"
+      onclick={act}
+      disabled={busy}
+      title={label}
+      class="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors disabled:opacity-40 {lead
+        ? 'bg-violet-600 text-white hover:bg-violet-500'
+        : 'bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-gray-50'}"
+    >
+      <Icon src={icon} size="16" class="shrink-0" />
+      <span class="truncate">{label}</span>
+    </button>
+  {/snippet}
+
+  <div class="flex flex-col gap-2">
+    <div class="flex">
+      {@render way('Upload', ArrowUpTray, () => field?.click(), true)}
+    </div>
+    <div class="flex items-center gap-2">
+      {@render way('Library', RectangleStack, onbrowse)}
+      {#if onphone}
+        {@render way('Phone', DevicePhoneMobile, onphone)}
+      {/if}
+    </div>
   </div>
 
   <!-- The hint doubles as the progress line: while something is uploading the
@@ -121,7 +132,7 @@
       </div>
     </div>
   {:else}
-    <p class="mt-1.5 text-center text-[11px] text-gray-500">{hint}</p>
+    <p class="mt-3 text-center text-xs text-gray-500">{hint}</p>
   {/if}
 
   <input

@@ -232,7 +232,7 @@
         draft.initialize(buildDraftFromServerData(data));
         toast.info(filled === 1 ? 'Found one service' : `Found ${filled} services`);
       } else {
-        toast.info('Nothing found yet — the stores publish on release day.');
+        toast.info('Nothing found yet. The stores publish on release day.');
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not reach the stores');

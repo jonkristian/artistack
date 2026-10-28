@@ -72,7 +72,7 @@
     <p class="text-sm text-gray-500">No releases yet.</p>
   {/if}
 
-  <a href="/admin/releases" class="inline-block text-sm text-gray-400 hover:text-white">
+  <a href="/admin/releases" class="inline-block text-sm text-gray-400 hover:text-gray-50">
     Edit releases →
   </a>
 </div>

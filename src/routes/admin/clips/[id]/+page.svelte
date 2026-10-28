@@ -1,4 +1,8 @@
 <script lang="ts">
+  import { monitor } from '$lib/clips/monitor.svelte';
+  import RenderDial from '$lib/components/clips/editor/RenderDial.svelte';
+  import SendPanel from '$lib/components/clips/editor/SendPanel.svelte';
+  import AdvancedPanel from '$lib/components/clips/editor/AdvancedPanel.svelte';
   import { beforeNavigate, goto, invalidateAll } from '$app/navigation';
   import { toast } from '$lib/stores/toast.svelte';
   import { selection } from '$lib/clips/editor.svelte';
@@ -978,6 +982,10 @@
 
     const at = clock.at;
     const running = clock.playing;
+
+    // The same room level the edit plays at, so switching between the two
+    // pictures isn't also a change in volume.
+    el.volume = monitor.level;
 
     // A quarter of a second of slack: a video seeks in whole keyframes and
     // correcting every frame would stutter more than the drift shows.
@@ -2090,69 +2098,6 @@
   Sits on the label rather than under the field so it reads as being about the
   field, not another thing to fill in.
 -->
-<!-- One render dial: its name, whether it has been moved off the default, and
-     the number itself.
-     
-     A snippet rather than markup inside the Advanced loop, because the same row
-     now appears under a branding stage — a number belongs beside the thing it
-     describes, and the two lists should not drift into two spellings of the
-     same control. -->
-{#snippet dial(field: {
-  key: keyof ClipAdvancedConfig;
-  label: string;
-  step?: number;
-  hint?: string;
-})}
-  {@const isChanged = advanced[field.key] !== DEFAULT_ADVANCED_CONFIG[field.key]}
-  <div class="flex items-center gap-3 py-2">
-    <label class="min-w-0 flex-1 text-sm text-gray-400" for="adv-{field.key}">
-      {field.label}
-      {#if isChanged}
-        <span class="text-link">•</span>
-      {/if}
-      {#if field.hint}
-        <span class="mt-0.5 block text-xs text-gray-500">{field.hint}</span>
-      {/if}
-    </label>
-    <input
-      id="adv-{field.key}"
-      type="number"
-      step={field.step ?? 1}
-      class="{numberClass} w-24 shrink-0"
-      value={savedAdvanced[field.key] as number}
-      oninput={(e) => {
-        const raw = e.currentTarget.value;
-        if (raw === '' || Number.isNaN(Number(raw))) return;
-        advancedDraft = {
-          ...advancedDraft,
-          [field.key]: Number(raw)
-        };
-      }}
-      onblur={async (e) => {
-        const el = e.currentTarget;
-        const raw = el.value;
-        if (raw === '') return;
-        const ok = await patchAdvanced({
-          [field.key]: Number(raw)
-        } as never);
-        if (!ok) return;
-        const { [field.key]: _saved, ...rest } = advancedDraft;
-        advancedDraft = rest;
-        /*
-         * The server has the last word on what this says.
-         *
-         * `value` is bound to the saved number, so a save
-         * that quietly kept the old one leaves the
-         * expression unchanged and the field goes on
-         * showing what you typed — which is how three
-         * dials missing from the save schema looked
-         * exactly like three dials that worked.
-         */
-        el.value = String(savedAdvanced[field.key]);
-      }}
-    />
-  </div>
-{/snippet}
 
 {#snippet saveAsDefault(field: 'tags' | 'description')}
   <button
@@ -2181,6 +2126,7 @@
   everything else is a name in the library. Same size, same states, so the row
   reads as one row of buttons rather than two kinds.
 -->
+
 <!-- A switch in the transport row: on or off, pressed while watching.
      Two of them because some states are a shape nobody has drawn an icon for —
      a fade is two triangles — and the rest are in the icon set. Same size,
@@ -2514,6 +2460,12 @@
                     value={selected.name}
                     onblur={(e) => patch('the name', { name: e.currentTarget.value })}
                   />
+                  <!-- Both true and both worth saying: it is how you find this
+                       clip again, and it is what the file is called when it
+                       goes out. Nobody guesses the second one. -->
+                  <p class="mt-1 text-xs text-gray-500">
+                    How you find the clip here, and what the finished file is called.
+                  </p>
                 </div>
                 <div>
                   <div class="mb-1 flex items-center justify-between gap-2">
@@ -2533,6 +2485,9 @@
                       }}
                     />
                   {/key}
+                  <p class="mt-1 text-xs text-gray-500">
+                    Go out as hashtags at the end of the caption.
+                  </p>
                 </div>
                 <div>
                   <span class={labelClass}>Description</span>
@@ -2543,20 +2498,24 @@
                        default", and the meter — which used to be three things
                        assembled here by hand. -->
                   {#key selected.id}
+                    <!-- Taller than the shared default: the caption is the
+                         longest thing anyone types in this editor and the one
+                         they rewrite most, and ten rems meant scrolling a
+                         paragraph inside a box with room for three lines. -->
                     <RichTextEditor
                       content={selected.description ?? ''}
                       marks={false}
-                      placeholder="Keywords first — this becomes the post caption."
+                      minHeight="min-h-[18rem]"
+                      placeholder="Keywords first. This becomes the post caption."
                       onUpdate={(value: string) => (captionText = value)}
                       onblur={(value: string) => patch('the description', { description: value })}
                       meter={{
                         limit: 100,
                         hard: 350,
                         split: true,
-                        hint: 'Keywords first — roughly the first 100 characters show before “more”.',
-                        softHint:
-                          "Past the fold. Keep going if it's worth it — the rest is behind “more”.",
-                        hardHint: 'Long for a caption. The platforms take it; people stop reading.'
+                        hint: 'The first 100 characters or so show before “more”.',
+                        softHint: 'Past the fold. The rest is behind “more”.',
+                        hardHint: 'Long for a caption. People stop reading.'
                       }}
                     >
                       {#snippet actions()}
@@ -2565,6 +2524,29 @@
                     </RichTextEditor>
                   {/key}
                 </div>
+
+                <!-- The way on.
+
+                     The rail is the job in order, and the first two steps are
+                     naming the clip and getting footage into it — but nothing
+                     on this panel says the second one exists. A new clip opens
+                     here, with the fields filled in and no sign that the next
+                     thing is a tab away. One button, and only while there is
+                     nothing in the pool: once there is footage, the step has
+                     been taken and the button is a leftover. -->
+                {#if sources.length === 0 && pool.length === 0}
+                  <button
+                    type="button"
+                    onclick={() => {
+                      section = 'media';
+                      panelOpen = true;
+                    }}
+                    class="flex items-center justify-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500"
+                  >
+                    Add media
+                    <span aria-hidden="true">→</span>
+                  </button>
+                {/if}
               </div>
             {/if}
 
@@ -2579,6 +2561,10 @@
            name, the tags, the caption that gets typed into TikTok — and this
            is the render. -->
 
+            <!-- Captions -->
+
+            <!-- Music -->
+            <!-- Look -->
             <!-- One card, because they are one thing: what the clip is made of.
            Two cards said footage and music were different kinds of
            material, when the only difference is which lane they land in
@@ -2606,7 +2592,7 @@
 
               {#if pool.length === 0}
                 <p class="text-sm text-gray-500">
-                  Nothing yet. Add footage, stills or music, then place it on the timeline.
+                  Nothing yet. Whatever you add lands on the timeline in order.
                 </p>
               {:else}
                 <!-- Rows, not tiles.
@@ -2669,7 +2655,7 @@
                         {#if !isAudio}
                           {@render rowButton(
                             () => turnMedia(entry.mediaId),
-                            "Turn a quarter — rewrites the footage, everywhere it's used",
+                            "Turn a quarter. Rewrites the footage, everywhere it's used",
                             'M20 12a8 8 0 1 1-2.6-5.9M20 4v4.5h-4.5',
                             'normal',
                             turningId === entry.mediaId,
@@ -2695,10 +2681,6 @@
               {/if}
             {/if}
 
-            <!-- Captions -->
-
-            <!-- Music -->
-            <!-- Look -->
             <!-- No title. Four pictures of the clip with its name under each says
            "look" more plainly than the word does, and the word cost a row. -->
             {#if section === 'look'}
@@ -3020,67 +3002,21 @@
             {/if}
 
             {#if section === 'advanced'}
-              <!-- The numbers behind everything else.
-
-                   It was a disclosure inside Customise inside Effects —
-                   three doors deep, and none of its contents are effects:
-                   branding placement, audio timings, caption maths, the
-                   encoder. A rail entry of its own, at the foot of the rail
-                   below the five steps of the job, because this is the
-                   drawer rather than a step. The dot says something in here
-                   has been moved off its default. -->
-              <!-- No inset: this used to be a card, where the padding held its
-             contents off its own edge. Inside another card it just
-             stepped the fields in from everything above them. -->
-              <div class="mt-4 space-y-6">
-                <!-- One per row. Three across a rail this narrow left each of
-                     them about eleven characters wide: "Encoder speed" wrapped
-                     onto two lines, "Font family" cut its own placeholder off
-                     mid-word, and the colour swatch was the only one that fit
-                     because it has nothing to say. -->
-                <div class="grid [grid-template-columns:minmax(0,1fr)] gap-4">
-                  <div>
-                    <label class={labelClass} for="adv-preset">Encoder speed</label>
-                    <select
-                      id="adv-preset"
-                      class={fieldClass}
-                      value={advanced.preset}
-                      onchange={(e) => patchAdvanced({ preset: e.currentTarget.value as never })}
-                    >
-                      {#each ['ultrafast', 'veryfast', 'faster', 'fast', 'medium', 'slow'] as p (p)}
-                        <option value={p}>{p}</option>
-                      {/each}
-                    </select>
-                  </div>
-                </div>
-
-                {#each ADVANCED_GROUPS as group (group.label)}
-                  <div>
-                    <h3 class={groupTitleClass}>
-                      {group.label}
-                    </h3>
-                    <!-- A settings list, not a form: the name on the left, the
-                         number on the right, one per line. Two columns of
-                         twelve rems in a rail this narrow wrapped half the
-                         labels onto three lines around a box holding "30",
-                         and reading down a column of names is how you find
-                         the one you came for. -->
-                    <div class="divide-y divide-gray-800/70 border-y border-gray-800/70">
-                      {#each group.fields as field (field.key)}
-                        {@render dial(field)}
-                      {/each}
-                    </div>
-                  </div>
-                {/each}
-
-                <button
-                  type="button"
-                  onclick={resetAdvanced}
-                  class="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700"
-                >
-                  Reset all to defaults
-                </button>
-              </div>
+              <AdvancedPanel
+                {advanced}
+                {savedAdvanced}
+                ondraft={(key, value) => (advancedDraft = { ...advancedDraft, [key]: value })}
+                onfield={async (key, value) => {
+                  const ok = await patchAdvanced({ [key]: value } as never);
+                  if (ok) {
+                    const { [key]: _saved, ...rest } = advancedDraft;
+                    advancedDraft = rest;
+                  }
+                  return Boolean(ok);
+                }}
+                onreset={resetAdvanced}
+                onpreset={(value) => patchAdvanced({ preset: value as never })}
+              />
             {/if}
 
             {#if section === 'frame'}
@@ -3102,40 +3038,68 @@
                    watch. -->
               <div class="mb-5">
                 <span class={groupTitleClass}>Branding</span>
-                <div class="flex flex-wrap items-center gap-1.5">
+                <!-- One to a row.
+
+                     Three across a rail this narrow left each thumbnail nine
+                     pixels of width, which is not a picture of anything, and
+                     the third chip wrapped anyway the moment they had a
+                     divider. Stacked, each gets a thumbnail you can recognise
+                     the mark in, and the three read as a list of decisions
+                     rather than a row of tabs. -->
+                <div class="flex flex-col gap-1.5">
                   {#each BRANDING_OPTIONS as option (option.key)}
                     {@const on = Boolean(config[option.key])}
                     {@const stage = option.key as BrandStage}
                     {@const mark = stageGraphic(stage)}
                     <div
-                      class="flex items-stretch overflow-hidden rounded-md border transition-colors {on
-                        ? 'border-violet-500 bg-violet-600/80'
+                      class="flex items-stretch overflow-hidden rounded-lg border transition-colors {on
+                        ? 'border-violet-500/60 bg-violet-600/12'
                         : 'border-gray-700'}"
                     >
-                      <!-- The thumbnail opens everything about the stage: which
+                      <!-- Two halves, and they have to look like two.
+
+                           The left one opens everything about the stage: which
                            graphic it draws, and the handful of numbers that say
-                           how. One popover per stage, the way a colour is one
-                           popover — the chip row stays three chips wide however
-                           much there is to set behind it, and a number sits
-                           with the thing it describes instead of in a panel
-                           two sections away. -->
+                           how. The right one turns the stage on and off. They
+                           were one unbroken chip, so nothing said the picture
+                           did something different from the word next to it, and
+                           the settings behind it went unfound. A rule down the
+                           middle, a caret under the thumbnail and a hover each
+                           of their own: the shape says there are two things
+                           here without a line of explanation. -->
                       <PopoverPanel
                         title={mark
-                          ? `Drawn with ${mark.filename} — press for its settings`
-                          : 'No graphic set — press to choose one'}
+                          ? `Drawn with ${mark.filename}. Press for its settings`
+                          : 'No graphic set. Press to choose one'}
                         panelClass="w-72"
-                        triggerClass="flex w-9 shrink-0 items-center justify-center bg-black/30 px-1 transition-colors hover:bg-black/50"
+                        triggerClass="flex w-24 shrink-0 items-center justify-center gap-1 border-r {on
+                          ? 'border-violet-400/50'
+                          : 'border-gray-700'} bg-black/30 px-2 py-1.5 transition-colors hover:bg-black/60"
                       >
-                        {#snippet trigger()}
+                        {#snippet trigger({ open })}
                           {#if mark}
                             <img
                               src={mark.thumbnailUrl || mark.url}
                               alt=""
-                              class="h-4 w-full object-contain"
+                              class="h-8 min-w-0 flex-1 object-contain"
                             />
                           {:else}
-                            <span class="text-[10px] text-gray-500">?</span>
+                            <span class="min-w-0 flex-1 text-center text-[10px] text-gray-500"
+                              >?</span
+                            >
                           {/if}
+                          <!-- The mark every disclosure wears, turned when it
+                               is out. -->
+                          <svg
+                            class="h-2.5 w-2.5 shrink-0 text-gray-400 transition-transform {open
+                              ? 'rotate-180'
+                              : ''}"
+                            viewBox="0 0 10 10"
+                            fill="currentColor"
+                            aria-hidden="true"
+                          >
+                            <path d="M1 3.5 5 7.5 9 3.5Z" />
+                          </svg>
                         {/snippet}
 
                         <span class={groupTitleClass}>{option.label} graphic</span>
@@ -3155,7 +3119,7 @@
                                   } as never)}
                                 class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors {chosen
                                   ? 'light:text-violet-800 bg-violet-600/20 text-violet-200'
-                                  : 'text-gray-300 hover:bg-gray-800 hover:text-white'}"
+                                  : 'text-gray-300 hover:bg-gray-800 hover:text-gray-50'}"
                               >
                                 <!-- Site default and Random have no picture of
                                      their own, so they keep the space to stay
@@ -3182,7 +3146,21 @@
                         <div class="mt-3 {on ? '' : 'opacity-50'}">
                           <div class="divide-y divide-gray-800/70 border-t border-gray-800/70">
                             {#each BRANDING_FIELDS[stage] as field (field.key)}
-                              {@render dial(field)}
+                              <RenderDial
+                                {field}
+                                saved={savedAdvanced[field.key] as number}
+                                changed={advanced[field.key] !== DEFAULT_ADVANCED_CONFIG[field.key]}
+                                oninput={(value) =>
+                                  (advancedDraft = { ...advancedDraft, [field.key]: value })}
+                                onsave={async (value) => {
+                                  const ok = await patchAdvanced({ [field.key]: value } as never);
+                                  if (ok) {
+                                    const { [field.key]: _saved, ...rest } = advancedDraft;
+                                    advancedDraft = rest;
+                                  }
+                                  return Boolean(ok);
+                                }}
+                              />
                             {/each}
 
                             {#if stage === 'watermark'}
@@ -3289,13 +3267,22 @@
                       <button
                         type="button"
                         onclick={() => patchConfig('the branding', { [option.key]: !on } as never)}
-                        title={option.hint}
+                        title="{option.hint} ({on ? 'on' : 'off'})"
                         aria-pressed={on}
-                        class="px-2.5 py-1 text-xs transition-colors {on
-                          ? 'text-gray-50'
-                          : 'text-gray-400 hover:text-gray-200'}"
+                        class="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left text-sm transition-colors {on
+                          ? 'hover:bg-raise/10 text-gray-50'
+                          : 'hover:bg-raise/5 text-gray-400 hover:text-gray-200'}"
                       >
-                        {option.label}
+                        <span class="min-w-0 flex-1 truncate">{option.label}</span>
+                        <!-- On or off said by a dot rather than by flooding the
+                             row. Three full-width bars of solid violet is a lot
+                             of colour for three switches, and the colour was
+                             doing a job a six-pixel mark does just as well. -->
+                        <span
+                          class="h-1.5 w-1.5 shrink-0 rounded-full {on
+                            ? 'bg-violet-400'
+                            : 'bg-gray-700'}"
+                        ></span>
                       </button>
                     </div>
                   {/each}
@@ -3394,250 +3381,31 @@
            far end of the column. -->
 
             {#if section === 'send'}
-              <!-- Read top to bottom, in the order the job is done: where the
-                   clip stands, what the post will look like, what it says in
-                   words, and then the two ways it leaves.
-
-                   Nothing here makes the file. Rendering is a button on the
-                   Full picture, beside the thing it makes; deleting is at the
-                   foot of the rail, nowhere near anything you reach for. What
-                   is left is sending, which is what the word says. -->
-              <div class="flex flex-1 flex-col gap-3">
-                <!-- Only a status worth hearing.
-                     "Rendered and ready to send out" was the one this line
-                     could never tell you anything by saying: there is a render
-                     in the pane and a button offering another, so it restated
-                     the room it was standing in. Sent, queued, published —
-                     those happened somewhere else and are invisible from here
-                     otherwise. -->
-                {#if outputMedia && selected.status !== 'rendered'}
-                  <div
-                    class="flex items-center gap-3 rounded-xl border border-gray-800 bg-gray-900 px-4 py-3"
-                  >
-                    <span class="h-2 w-2 shrink-0 rounded-full {CLIP_STATUS_DOTS[selected.status]}"
-                    ></span>
-                    <span class="min-w-0 flex-1 text-sm text-gray-300">{statusLine}</span>
-                  </div>
-                {/if}
-
-                <!-- What it will look like, before what it says in words.
-                     The sheet below answers "what do I paste where"; this
-                     answers the question you have before sending anything out
-                     — what will people see. Chiefly two things no list of
-                     fields can show: whether the first frame is black, since
-                     every platform takes it as the cover, and where the
-                     caption gets cut. -->
-                <PostPreview
-                  poster={outputMedia?.thumbnailUrl ?? null}
-                  aspect={config.aspect === '1:1'
-                    ? '1/1'
-                    : config.aspect === '16:9'
-                      ? '16/9'
-                      : '9/16'}
-                  name={data.profile?.name || data.settings?.title || 'Your account'}
-                  description={selected.description ?? ''}
-                  tags={tagNames}
-                />
-
-                {#if canSendForReview}
-                  <button
-                    onclick={() => (reviewConfirmOpen = true)}
-                    title={selected.status === 'review' ? 'Send it again' : 'Send it for approval'}
-                    aria-label={selected.status === 'review'
-                      ? 'Re-send for review'
-                      : 'Send for review'}
-                    class="{sendAction} light:text-teal-700 light:hover:text-white border border-teal-500/40 bg-teal-500/10 text-teal-300 transition-colors hover:border-teal-600 hover:bg-teal-600 hover:text-white"
-                  >
-                    <!-- Discord's own mark, from the set the site's links use.
-                   A tick in a circle said "approved", which is the thing this
-                   button asks for rather than the thing it does — and the word
-                   Review on its own left out where it goes. -->
-                    <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-                      <path d={socialIcons.discord} />
-                    </svg>
-                    {selected.status === 'review' ? 'Send to Discord again' : 'Send for review'}
-                  </button>
-                {/if}
-                {#if canSchedule}
-                  <button
-                    onclick={() => (queueDialogOpen = true)}
-                    class="{sendAction} bg-violet-600 text-white hover:bg-violet-500"
-                  >
-                    Schedule release
-                  </button>
-                {/if}
-                {#if job?.status === 'failed'}
-                  {@const detail = (job.error ?? '').trim()}
-                  <div class="rounded-lg border border-red-800/50 bg-red-950/40 p-3">
-                    <p class="text-sm font-medium text-red-300">Render failed</p>
-                    <!-- All of it, on sight.
-
-               It was a headline, a summary and a "show details" — three rows to
-               say one thing, and the summary was the least useful line ffmpeg
-               prints: the exit code, which is 234 for nearly everything. What you
-               want is the complaint underneath it, and this pane has the room to
-               show it. Scrolls when it runs long rather than pushing the column
-               about. -->
-                    <pre
-                      class="mt-1.5 max-h-32 overflow-auto text-[11px] leading-snug whitespace-pre-wrap text-red-200/70">{detail ||
-                        'No reason given'}</pre>
-                  </div>
-                {/if}
-                {#if outputMedia}
-                  {#if data.posts.length > 0}
-                    <ul class="mb-4 space-y-1.5">
-                      {#each data.posts as post (post.id)}
-                        <li class="flex items-center gap-2 text-xs">
-                          <span
-                            class="rounded px-1.5 py-0.5 font-medium {post.status === 'live'
-                              ? 'bg-emerald-900 text-emerald-300'
-                              : post.status === 'draft'
-                                ? 'bg-amber-900 text-amber-300'
-                                : 'bg-red-900 text-red-300'}"
-                          >
-                            {post.status === 'live'
-                              ? 'Live'
-                              : post.status === 'draft'
-                                ? 'Draft'
-                                : 'Failed'}
-                          </span>
-                          <span class="text-gray-300"
-                            >{PLATFORM_NAMES[post.platform] ?? post.platform}</span
-                          >
-                          {#if post.status === 'draft'}
-                            <span class="text-gray-500">uploaded, post it by hand</span>
-                          {/if}
-                          {#if post.url}
-                            <a
-                              href={post.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              class="text-link hover:text-link-strong truncate">View post</a
-                            >
-                          {/if}
-                          {#if post.error}
-                            <!-- Quoted, not phrased as our own verdict: the workflow owns
-                                 this string, and it sends unhelpful ones. A bare "ok" in
-                                 red beside "Failed" reads as a contradiction rather than
-                                 as the message TikTok handed back. -->
-                            <span class="truncate text-gray-500" title={post.error}>
-                              said “{post.error}”
-                            </span>
-                          {/if}
-                        </li>
-                      {/each}
-                    </ul>
-                  {/if}
-                  {#if selected.reviewNote}
-                    <p
-                      class="mb-4 rounded-lg border border-gray-800 bg-gray-950 p-3 text-sm text-gray-400"
-                    >
-                      <span class="text-gray-500">Note:</span>
-                      {selected.reviewNote}
-                    </p>
-                  {/if}
-                  {#if selected.previewToken}
-                    <div class="mt-3 flex items-center gap-1 rounded-lg bg-gray-950 py-1 pr-1 pl-3">
-                      <a
-                        href="/preview/{selected.previewToken}"
-                        target="_blank"
-                        rel="noreferrer"
-                        class="text-link hover:text-link-strong min-w-0 flex-1 truncate py-1 text-xs"
-                      >
-                        /preview/{selected.previewToken}
-                      </a>
-                      {@render linkAction(
-                        () => handlePreviewLink(false),
-                        'Copy preview link',
-                        'M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z'
-                      )}
-                      {@render linkAction(
-                        () => handlePreviewLink(true),
-                        'Invalidate this link and create a new one',
-                        'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15'
-                      )}
-                      {#if outputMedia}
-                        <a
-                          href={outputMedia.url}
-                          download
-                          title="Download video"
-                          aria-label="Download video"
-                          class="shrink-0 rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-50"
-                        >
-                          <svg
-                            class="h-4 w-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              stroke-width="2"
-                              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                            />
-                          </svg>
-                        </a>
-                      {/if}
-                    </div>
-                  {/if}
-                  {#if selected.status === 'queued'}
-                    <div class="flex flex-wrap items-end gap-3 border-t border-gray-800 pt-4">
-                      <!-- Reads as a statement, not a control. Changing it reopens the
-                             same dialog that set it, so there's one place that answers
-                             "when does this go out" rather than a field to hunt for. -->
-                      <div>
-                        <span class={labelClass}>Release</span>
-                        <p class="flex items-center gap-2 py-1.5 text-xs text-gray-300">
-                          {selected.scheduledFor
-                            ? new Intl.DateTimeFormat(data.settings?.locale ?? 'nb-NO', {
-                                dateStyle: 'medium',
-                                timeStyle: 'short',
-                                hour12: false
-                              }).format(new Date(selected.scheduledFor))
-                            : 'Next available slot'}
-                          <button
-                            onclick={() => (queueDialogOpen = true)}
-                            class="text-link hover:text-link-strong whitespace-nowrap"
-                          >
-                            Change
-                          </button>
-                        </p>
-                      </div>
-                      {#if !selected.scheduledFor}
-                        <div>
-                          <label class={labelClass} for="gap">Gap before next (days)</label>
-                          <input
-                            id="gap"
-                            type="number"
-                            min="0"
-                            step="1"
-                            class={numberClass + ' w-32'}
-                            value={selected.queueGapDays ?? ''}
-                            placeholder="default"
-                            onblur={async (e) => {
-                              const raw = e.currentTarget.value;
-                              await autosave.run('the queue gap', () =>
-                                setQueueGap({
-                                  projectId: selected.id,
-                                  days: raw === '' ? null : Number(raw)
-                                })
-                              );
-                              await invalidateAll();
-                            }}
-                          />
-                        </div>
-                      {/if}
-                      <button
-                        onclick={handleUnqueue}
-                        class="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs whitespace-nowrap text-gray-300 hover:bg-gray-700"
-                      >
-                        Remove from queue
-                      </button>
-                    </div>
-                  {/if}
-                {/if}
-              </div>
+              <SendPanel
+                {selected}
+                {config}
+                {look}
+                {outputMedia}
+                {statusLine}
+                {tagNames}
+                {job}
+                {canSendForReview}
+                {canSchedule}
+                {sendAction}
+                locale={data.settings?.locale ?? 'nb-NO'}
+                account={data.profile?.name || data.settings?.title || 'Your account'}
+                posts={data.posts}
+                onqueuegap={async (days) => {
+                  await autosave.run('the queue gap', () =>
+                    setQueueGap({ projectId: selected.id, days })
+                  );
+                  await invalidateAll();
+                }}
+                onpreviewlink={handlePreviewLink}
+                onunqueue={handleUnqueue}
+                bind:queueDialogOpen
+                bind:reviewConfirmOpen
+              />
             {/if}
           </div>
         </div>
@@ -3743,16 +3511,26 @@
           />
         </div>
       {:else}
-        <!-- Nothing on the strip, so the box says so, in the same dashed
-           treatment as the media drop zones. It no longer waits on a render:
-           the moment there is a shot, there is something to watch. -->
+        <!-- Nothing on the strip, so the box says so — in the shape the clip
+             will be, at the aspect it is set to.
+
+             It was a dashed box the size of whatever was around it, which told
+             you nothing you didn't know and, worse, didn't show the one thing
+             that is already decided about an empty clip: how tall and narrow
+             it is. The frame is the same outline the drop zones use, so it
+             reads as somewhere something goes rather than as a thing that
+             failed to load. -->
         <div
-          class="flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-gray-700 px-8 py-16"
+          class="{previewFrameClass} flex flex-col items-center justify-center gap-3 border-2 border-dashed border-gray-700 bg-transparent px-6 text-center"
+          style="aspect-ratio: {previewAspect}"
         >
           {#if isRendering}
             {@render renderProgress()}
           {:else}
-            <p class="text-sm text-gray-500">Put some footage on the strip</p>
+            <p class="text-sm text-gray-400">No media yet</p>
+            <p class="max-w-[22ch] text-xs text-gray-500">
+              Add footage in Content, and it lands on the strip below.
+            </p>
           {/if}
         </div>
       {/if}
@@ -3932,7 +3710,7 @@
                 {:else if job?.status === 'failed'}
                   <span
                     class="h-1.5 w-1.5 shrink-0 rounded-full bg-red-400"
-                    title="The last render failed — the reason is under Send"
+                    title="The last render failed. The reason is under Send"
                   ></span>
                 {:else if finalStale || !outputMedia}
                   <span
@@ -3976,7 +3754,7 @@
             {:else if renderReady}
               <button
                 onclick={() => handleRender()}
-                title="The full-size render, with everything burned in — the only one anything downstream uses"
+                title="The full-size render, with everything burned in. The only one anything downstream uses"
                 class="shrink-0 rounded-lg border border-gray-700 bg-gray-800 px-2.5 py-1.5 text-xs font-medium whitespace-nowrap text-gray-200 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-gray-50"
               >
                 {outputMedia ? 'Re-render' : 'Render'}

@@ -408,7 +408,7 @@
             class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors {editorPreview.showing ===
             pane
               ? 'bg-violet-600 text-white'
-              : 'text-gray-400 hover:text-white'}"
+              : 'text-gray-400 hover:text-gray-50'}"
           >
             {pane === 'editor' ? 'Edit' : 'Preview'}
           </button>

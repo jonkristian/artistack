@@ -57,7 +57,7 @@
     <p class="text-sm text-gray-500">Nothing in the shop yet.</p>
   {/if}
 
-  <a href="/admin/shop" class="inline-block text-sm text-gray-400 hover:text-white">
+  <a href="/admin/shop" class="inline-block text-sm text-gray-400 hover:text-gray-50">
     Edit the shop →
   </a>
 </div>

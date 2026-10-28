@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { Icon, Play, Pause, Backward } from 'svelte-hero-icons';
+  import { Icon, Play, Pause, Backward, SpeakerWave, SpeakerXMark } from 'svelte-hero-icons';
+  import { monitor } from '$lib/clips/monitor.svelte';
+  import PopoverPanel from '$lib/components/ui/PopoverPanel.svelte';
   import type { ClipPlayback } from '$lib/clips/playback.svelte';
 
   /**
@@ -75,6 +77,56 @@
   >
     <Icon src={clock.playing ? Pause : Play} size="16" solid />
   </button>
+
+  <!-- How loud this room is, which belongs to neither picture.
+
+       A press rather than a hover, and the slider stands up rather than lying
+       across the row. Hovering opened it in place, which widened the row and
+       shoved the clock and the view switch sideways every time the pointer
+       passed over — a control that rearranges the toolbar on its way past is
+       worse than one more click. Upright, it opens outside the row rather than
+       inside it, so nothing moves at all. -->
+  <PopoverPanel
+    title={monitor.muted ? 'Sound is off' : `Sound at ${Math.round(monitor.setting * 100)}%`}
+    prefer="above"
+    panelClass="w-auto px-1.5 py-2"
+    triggerClass="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-50"
+  >
+    {#snippet trigger()}
+      <Icon
+        src={monitor.muted || monitor.setting === 0 ? SpeakerXMark : SpeakerWave}
+        size="16"
+        solid
+      />
+    {/snippet}
+
+    <div class="flex flex-col items-center gap-2">
+      <!-- Upright, which is what a level is. `vertical-rl` with the direction
+           flipped puts loud at the top, where it belongs; the browser's own
+           vertical range is the same control turned the right way up. -->
+      <input
+        type="range"
+        min="0"
+        max="1"
+        step="0.01"
+        value={monitor.setting}
+        aria-label="How loud the editor plays"
+        oninput={(e) => monitor.set(Number(e.currentTarget.value))}
+        class="h-24 accent-violet-500 [direction:rtl] [writing-mode:vertical-rl]"
+      />
+      <!-- The word would be the widest thing in here, and this panel is a
+           level: as wide as the bar and no wider. -->
+      <button
+        type="button"
+        onclick={() => monitor.toggle()}
+        title={monitor.muted ? 'Unmute' : 'Mute'}
+        aria-label={monitor.muted ? 'Unmute' : 'Mute'}
+        class="flex h-5 w-5 items-center justify-center rounded text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-50"
+      >
+        <Icon src={monitor.muted ? SpeakerWave : SpeakerXMark} size="14" solid />
+      </button>
+    </div>
+  </PopoverPanel>
 
   <!-- The slash spaced on both sides, with real spaces rather than the ones
        between the tags: those collapse, and the reading came out "0:30.9/

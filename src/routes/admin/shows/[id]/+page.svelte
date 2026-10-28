@@ -330,7 +330,7 @@
             <RichTextEditor
               content={show.description ?? ''}
               onUpdate={(html: string) => (show.description = html || null)}
-              placeholder="A launch, a last night, who's opening — anything the poster doesn't say."
+              placeholder="A launch, a last night, who's opening. Anything the poster doesn't say."
             />
           </div>
         </div>

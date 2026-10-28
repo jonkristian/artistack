@@ -3,7 +3,7 @@
 - One row of controls above the timeline: play, time, zoom and fit, with the timeline hideable and resizable
 - The timeline only shows a row when something is on it, and the spare height goes to the picture
 - The wheel scrolls the timeline; ctrl or cmd with it zooms
-- The editor plays the edit itself — picture, music and dissolves — with no render needed
+- The editor plays the edit itself: picture, music and dissolves, with no render needed
 - The quick proof render is removed. Preview and Full switch between the edit and the finished file
 - The render button is above the picture instead of in the Send panel
 - Dissolves are made at the cut, so the clip stays the same length
@@ -36,6 +36,11 @@
 - The watermark sits in the left or right corner
 - The three marks fade in and out, and the watermark steps aside while another is up
 - Preview and Full share one transport, and editing anything returns to Preview
+- A volume control in the transport, covering the edit and the render alike
+- Empty effect and caption rows say they can be double-clicked
+- An empty clip shows the frame it will be, in the aspect it is set to
+- The description field is taller, and the name and tags say what they are for
+- Upload, Library and Phone are bigger, with a roomier place to drop files on
 - Fixed: changing a shot's effect now updates the preview immediately
 - Fixed: the colour wheel marker matches the selected colour
 - Fixed: the dissolve marker on a cut can be clicked
@@ -43,6 +48,11 @@
 - Fixed: the trim rail under a shot was invisible in light mode
 - Fixed: notices, toasts and warnings were unreadable in light mode
 - Fixed: the timeline no longer runs away when a block is dragged past the end
+- Fixed: music stayed where it was when an intro was given a run-up
+- Fixed: every icon beside the timeline said "Audio"
+- Fixed: the open tab in Settings had no underline in light mode
+- Fixed: links and buttons turned white on hover in light mode, which hid them
+- Fixed: calendar entries were unreadable in light mode
 
 # 1.7.0 (12-09-2026)
 

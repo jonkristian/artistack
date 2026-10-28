@@ -264,7 +264,7 @@
 
         {#if !options.length && !creatable}
           <li class="px-3 py-2 text-sm text-gray-500">
-            {suggestions.length ? 'Nothing matches.' : 'No tags yet — type one to add it.'}
+            {suggestions.length ? 'Nothing matches.' : 'No tags yet. Type one to add it.'}
           </li>
         {/if}
       </ul>

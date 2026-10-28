@@ -1,4 +1,5 @@
 <script lang="ts" module>
+  import { monitor } from '$lib/clips/monitor.svelte';
   import type { AppliedEffect, ClipFill } from '$lib/clips/types';
 
   /**
@@ -214,6 +215,9 @@
       // Both sound through a dissolve, the way both parts' audio is mixed in
       // the render. Silent otherwise, whichever slot it is.
       el.muted = shot.muted || !onScreen(slot);
+      // The room's level, which is not the clip's: nothing here reaches the
+      // file, it is only how loud the editor is while you work.
+      el.volume = monitor.level;
 
       if (!onScreen(slot)) {
         // Parked on the frame it will come in on, so the cut has something to

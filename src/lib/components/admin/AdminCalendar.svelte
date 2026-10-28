@@ -122,7 +122,7 @@
           label: 'Clips',
           dot: 'bg-sky-400',
           edge: 'border-sky-500/50',
-          chip: 'border-sky-500/40 bg-sky-500/10 text-sky-200',
+          chip: 'border-sky-500/40 bg-sky-500/10 text-sky-200 light:text-sky-800',
           enabled: !!settings?.clipsEnabled
         },
         {
@@ -130,7 +130,7 @@
           label: 'Orders',
           dot: 'bg-emerald-400',
           edge: 'border-emerald-500/50',
-          chip: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200',
+          chip: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200 light:text-emerald-800',
           enabled: !!settings?.shopEnabled
         }
       ] satisfies KindStyle[]
@@ -186,7 +186,7 @@
         kind: 'clip',
         date: new Date(clip.eta),
         title: clip.name,
-        detail: clip.dated ? 'on this date' : 'queued — date can still move',
+        detail: clip.dated ? 'on this date' : 'queued, date can still move',
         href: `/admin/clips/${clip.id}`,
         thumbnailUrl: clip.thumbnailUrl,
         // A date you chose holds; one worked out from the queue moves with it.

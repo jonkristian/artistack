@@ -50,7 +50,7 @@
     <p class="text-sm text-gray-500">No upcoming shows.</p>
   {/if}
 
-  <a href="/admin/shows" class="inline-block text-sm text-gray-400 hover:text-white">
+  <a href="/admin/shows" class="inline-block text-sm text-gray-400 hover:text-gray-50">
     Edit shows →
   </a>
 </div>

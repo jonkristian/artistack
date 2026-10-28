@@ -541,11 +541,21 @@
         count: CAPTION_ROWS
       },
       { icon: MusicalNote, label: 'Audio', from: AUDIO_AT, count: AUDIO_ROWS }
-    ].map((band) => {
-      const last = band.from + band.count - 1;
-      const top = rowTops[band.from] ?? 0;
-      return { ...band, top, height: (rowTops[last] ?? top) + laneHeight(last) - top };
-    })
+    ]
+      /*
+       * Only the bands that have a row.
+       *
+       * The music row isn't drawn until there is music, and a band of no rows
+       * came out with no top and the height of everything below it: an
+       * invisible panel over the whole column, which is why every icon in the
+       * gutter answered to "Audio".
+       */
+      .filter((band) => band.count > 0)
+      .map((band) => {
+        const last = band.from + band.count - 1;
+        const top = rowTops[band.from] ?? 0;
+        return { ...band, top, height: (rowTops[last] ?? top) + laneHeight(last) - top };
+      })
   );
 
   /** Where a lane's top edge sits, counting from the clips lane at zero. */
@@ -2533,17 +2543,33 @@
      blocks, so whatever is already in the row stays on top of it, and it hands
      both gestures back to the lane rather than swallowing them: pressing here
      still seeks, dragging still pans. -->
-{#snippet addable(first: number, last: number, what: string)}
+{#snippet addable(first: number, last: number, what: string, empty: boolean)}
   <div
     role="presentation"
     onpointerdown={startPan}
     ondblclick={addCaptionHere}
     title="Double-click to add {what}"
-    class="absolute inset-x-0 rounded-sm border border-dashed border-transparent transition-colors {panning
+    class="absolute inset-x-0 flex items-center rounded-sm border border-dashed border-transparent transition-colors {panning
       ? 'cursor-grabbing'
       : 'hover:border-raise/25 cursor-copy'}"
     style="top: {laneTop(first)}px; height: {laneTop(last) + laneHeight(last) - laneTop(first)}px"
-  ></div>
+  >
+    <!-- Said outright while the row is empty.
+
+         The cursor and the dashed edge only answer a question you already had,
+         and a row with nothing in it is the one place nobody thinks to ask. It
+         goes once there is something in the row, where it would be a label on
+         top of the work.
+
+         `sticky` so it stays at the left of the window rather than the left of
+         the strip: the strip is thousands of pixels wide, and a hint at the
+         start of it is a hint you have to scroll back to read. -->
+    {#if empty}
+      <span class="pointer-events-none sticky left-2 truncate text-[11px] text-gray-500">
+        Double-click to add {what}
+      </span>
+    {/if}
+  </div>
 {/snippet}
 
 {#snippet extent(
@@ -2764,8 +2790,8 @@
         {/each}
 
         <!-- The two rows you can make something in, saying so. -->
-        {@render addable(0, CLIPS_AT - 1, 'an effect')}
-        {@render addable(CAPTIONS_AT, AUDIO_AT - 1, 'a caption')}
+        {@render addable(0, CLIPS_AT - 1, 'an effect', effects.length === 0)}
+        {@render addable(CAPTIONS_AT, AUDIO_AT - 1, 'a caption', captions.length === 0)}
 
         <!-- Effects, in the short row above the footage.
 
@@ -2888,8 +2914,8 @@
               title={join.dissolving
                 ? `Dissolve, ${join.overlap.toFixed(1)}s — press for a straight cut`
                 : none
-                  ? 'Neither shot has footage spare — trim the end of one, or the start of the next'
-                  : 'Straight cut — press for a dissolve'}
+                  ? 'Neither shot has footage spare. Trim the end of one, or the start of the next'
+                  : 'Straight cut. Press for a dissolve'}
               class="absolute z-20 flex h-5 w-5 -translate-x-1/2 items-center justify-center rounded-full border text-[9px] transition-colors disabled:cursor-not-allowed disabled:opacity-30 {join.dissolving
                 ? 'border-violet-300/70 bg-violet-500 text-white'
                 : 'border-gray-500/70 bg-gray-800 text-gray-300 hover:bg-gray-700'}"

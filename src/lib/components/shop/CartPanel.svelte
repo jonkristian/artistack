@@ -205,7 +205,7 @@
       // Answered, so fold the inputs away again if they were open.
       manualAddress = false;
     } catch {
-      toast.error('Could not fill that address in — type it instead');
+      toast.error('Could not fill that address in. Type it instead');
     }
   }
 
@@ -566,7 +566,7 @@
                 bind:value={phone}
                 class={field}
                 style={fieldStyle}
-                placeholder="Optional — some couriers ask for one"
+                placeholder="Optional. Some couriers ask for one"
               />
             </div>
           {/if}

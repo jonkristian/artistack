@@ -17,6 +17,7 @@
 </script>
 
 <script lang="ts">
+  import { monitor } from '$lib/clips/monitor.svelte';
   import { bedLevel, placeBeds, DUCK_GLIDE, DUCK_UNDER } from '$lib/clips/audio';
   import type { ClipPlayback } from '$lib/clips/playback.svelte';
 
@@ -92,10 +93,11 @@
       const into = bed.track.seek + (at - bed.start);
       const want = Number.isFinite(length) ? into % length : into;
 
-      el.volume = Math.min(
-        1,
-        Math.max(0, bedLevel(placed, index, fadeSeconds, at) * volume * glide)
-      );
+      // Scaled by the room's level, the way the shots are: one slider for
+      // everything the editor plays.
+      el.volume =
+        monitor.level *
+        Math.min(1, Math.max(0, bedLevel(placed, index, fadeSeconds, at) * volume * glide));
 
       if (running) {
         // Looser than the picture: a frame either way is visible, a fiftieth of

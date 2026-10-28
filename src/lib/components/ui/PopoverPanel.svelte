@@ -27,6 +27,7 @@
     children,
     triggerClass = '',
     panelClass = 'w-72',
+    prefer = 'below',
     onopen
   }: {
     /** What the button is, for its tooltip and its label. */
@@ -38,6 +39,15 @@
     triggerClass?: string;
     /** The panel's own width and padding, when the default doesn't suit. */
     panelClass?: string;
+    /**
+     * Which way to open when there is room either way.
+     *
+     * Below reads as "this belongs to the thing above it" and is right for
+     * most of them. Above is for a trigger sitting over something you are
+     * looking at — a transport above a timeline, where opening downwards
+     * covers the work.
+     */
+    prefer?: 'below' | 'above';
     /** Told when it opens, for whoever needs to know which one is out. */
     onopen?: () => void;
   } = $props();
@@ -61,8 +71,16 @@
     const width = panelEl?.offsetWidth ?? 288;
     const height = panelEl?.offsetHeight ?? 320;
 
-    let top = rect.bottom + gap;
-    if (top + height > window.innerHeight - gap) top = rect.top - gap - height;
+    const below = rect.bottom + gap;
+    const above = rect.top - gap - height;
+    let top: number;
+    if (prefer === 'above') {
+      // Above unless it would run off the top, in which case below is still
+      // better than clamped against the edge of the window.
+      top = above >= gap ? above : below;
+    } else {
+      top = below + height > window.innerHeight - gap ? above : below;
+    }
     top = Math.max(gap, Math.min(top, window.innerHeight - height - gap));
 
     const left = Math.max(gap, Math.min(rect.left, window.innerWidth - width - gap));
