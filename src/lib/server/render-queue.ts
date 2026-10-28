@@ -5,6 +5,7 @@ import sharp from 'sharp';
 import { UPLOAD_DIR, THUMBNAIL_SIZE, mediaPath, removeMediaFile } from './paths';
 import { db } from './db';
 import { getSettings, getClipSettings } from './settings';
+import { shotEffects } from '$lib/clips/effects';
 import {
   renderJobs,
   clipProjects,
@@ -98,10 +99,10 @@ export async function recoverStaleJobs(): Promise<void> {
 }
 
 /** Queues a render for a project and returns the new job. */
-export async function enqueueRender(projectId: number, proof = false) {
+export async function enqueueRender(projectId: number) {
   const [job] = await db
     .insert(renderJobs)
-    .values({ projectId, status: 'queued', progress: 0, proof })
+    .values({ projectId, status: 'queued', progress: 0 })
     .returning();
 
   // Deliberately not awaited: the caller gets the job row immediately and polls.
@@ -156,14 +157,14 @@ export async function processQueue(): Promise<void> {
       }
 
       state.woken = false;
-      await runJob(job.id, job.projectId, job.proof ?? false);
+      await runJob(job.id, job.projectId);
     }
   } finally {
     state.running = false;
   }
 }
 
-async function runJob(jobId: number, projectId: number, proof = false): Promise<void> {
+async function runJob(jobId: number, projectId: number): Promise<void> {
   const controller = new AbortController();
   inFlight.set(jobId, controller);
 
@@ -176,7 +177,7 @@ async function runJob(jobId: number, projectId: number, proof = false): Promise<
   let outputPath: string | undefined;
 
   try {
-    const input = await buildRenderInput(projectId, proof);
+    const input = await buildRenderInput(projectId);
 
     // Throttle progress writes: ffmpeg reports many times a second, and every
     // write would be a needless database round trip.
@@ -211,8 +212,7 @@ async function runJob(jobId: number, projectId: number, proof = false): Promise<
       result.outputPath,
       result.coverPath,
       input.baseName,
-      input.name,
-      proof
+      input.name
     );
 
     await db
@@ -229,52 +229,31 @@ async function runJob(jobId: number, projectId: number, proof = false): Promise<
     const [current] = await db
       .select({
         status: clipProjects.status,
-        outputMediaId: clipProjects.outputMediaId,
-        proofMediaId: clipProjects.proofMediaId
+        outputMediaId: clipProjects.outputMediaId
       })
       .from(clipProjects)
       .where(eq(clipProjects.id, projectId))
       .limit(1);
 
-    if (proof) {
-      /*
-       * A proof changes nothing about where the clip stands. It isn't a render
-       * in the sense the rest of the studio means — nobody can review it, queue
-       * it or publish it — so it leaves the status, the verdict and
-       * `outputMediaId` exactly as it found them.
-       */
-      await db
-        .update(clipProjects)
-        .set({ proofMediaId: mediaId, proofFingerprint: input.fingerprint })
-        .where(eq(clipProjects.id, projectId));
+    // A fresh render invalidates any prior verdict: an approved clip drops
+    // back to `rendered` so a change can't ride out on an old approval. Clips
+    // already queued or published are left alone — re-rendering those is a
+    // deliberate act and shouldn't silently pull them out of the schedule.
+    const keepStatus = current?.status === 'queued' || current?.status === 'published';
 
-      await discardSupersededRender(current?.proofMediaId ?? null, projectId, 'proof');
-    } else {
-      // A fresh render invalidates any prior verdict: an approved clip drops
-      // back to `rendered` so a change can't ride out on an old approval. Clips
-      // already queued or published are left alone — re-rendering those is a
-      // deliberate act and shouldn't silently pull them out of the schedule.
-      const keepStatus = current?.status === 'queued' || current?.status === 'published';
+    await db
+      .update(clipProjects)
+      .set({
+        outputMediaId: mediaId,
+        renderFingerprint: input.fingerprint,
+        updatedAt: new Date(),
+        ...(keepStatus ? {} : { status: 'rendered' as const, reviewNote: null, reviewedAt: null })
+      })
+      .where(eq(clipProjects.id, projectId));
 
-      await db
-        .update(clipProjects)
-        .set({
-          outputMediaId: mediaId,
-          renderFingerprint: input.fingerprint,
-          // The real thing supersedes the proof of it, whatever order they were
-          // made in: leaving one behind would go on driving the player.
-          proofMediaId: null,
-          proofFingerprint: null,
-          updatedAt: new Date(),
-          ...(keepStatus ? {} : { status: 'rendered' as const, reviewNote: null, reviewedAt: null })
-        })
-        .where(eq(clipProjects.id, projectId));
-
-      // Only once the project points at the new render — an interruption before
-      // this leaves the old file in place, which is the safe way to fail.
-      await discardSupersededRender(current?.outputMediaId ?? null, projectId);
-      await discardSupersededRender(current?.proofMediaId ?? null, projectId, 'proof');
-    }
+    // Only once the project points at the new render — an interruption before
+    // this leaves the old file in place, which is the safe way to fail.
+    await discardSupersededRender(current?.outputMediaId ?? null, projectId);
   } catch (e) {
     // A cancelled render leaves a partial file behind; don't keep it.
     if (outputPath) await unlink(outputPath).catch(() => {});
@@ -321,7 +300,7 @@ function resolveGraphic(
 }
 
 /** Loads a project and resolves it into renderer input. */
-async function buildRenderInput(projectId: number, proof = false) {
+async function buildRenderInput(projectId: number) {
   const [project] = await db
     .select()
     .from(clipProjects)
@@ -381,7 +360,8 @@ async function buildRenderInput(projectId: number, proof = false) {
       still: isImage(item),
       fit: (row.fit as ClipSourceInput['fit']) ?? null,
       zoom: row.zoom ?? 1,
-      pan: row.pan ?? false
+      pan: row.pan ?? false,
+      effects: shotEffects(row.effects)
     };
   });
 
@@ -449,7 +429,7 @@ async function buildRenderInput(projectId: number, proof = false) {
     ];
   });
 
-  const baseName = `clip-${proof ? 'proof-' : ''}${Date.now()}`;
+  const baseName = `clip-${Date.now()}`;
   const outputPath = join(UPLOAD_DIR, `${baseName}.mp4`);
 
   // Record which graphic this render used, so a random pick is inspectable
@@ -511,7 +491,6 @@ async function buildRenderInput(projectId: number, proof = false) {
       watermarkPath: stagePaths.watermark,
       outroPath: stagePaths.outro,
       audio,
-      proof,
       outputPath
     }
   };
@@ -527,8 +506,7 @@ async function registerOutput(
   outputPath: string,
   coverPath: string | undefined,
   baseName: string,
-  projectName: string,
-  proof = false
+  projectName: string
 ): Promise<number> {
   const metadata = await probeVideo(outputPath);
   const size = (await stat(outputPath)).size;
@@ -567,13 +545,9 @@ async function registerOutput(
       durationMs: Math.round(metadata.duration * 1000),
       size,
       originalSize: size,
-      /*
-       * A role of its own. The sweep that discards a superseded render only
-       * touches rows marked `render`, and a proof must never be mistaken for
-       * the finished thing by that or by anything else that goes looking for
-       * one — the media library included.
-       */
-      role: proof ? 'proof' : 'render',
+      // A role of its own, so the sweep that discards a superseded render can
+      // tell our own output from a hand-picked asset.
+      role: 'render',
       alt: projectName
     })
     .returning();
@@ -591,23 +565,19 @@ async function registerOutput(
  */
 async function discardSupersededRender(
   previousMediaId: number | null,
-  projectId: number,
-  kind: 'render' | 'proof' = 'render'
+  projectId: number
 ): Promise<void> {
   if (!previousMediaId) return;
 
   try {
     const [prev] = await db.select().from(media).where(eq(media.id, previousMediaId)).limit(1);
-    // Only ever sweep our own output, and only of the kind being replaced; a
-    // hand-picked asset must survive, and so must a finished render when it's
-    // a proof being thrown away.
-    if (!prev || prev.role !== kind) return;
+    // Only ever sweep our own output: a hand-picked asset must survive.
+    if (!prev || prev.role !== 'render') return;
 
-    const column = kind === 'proof' ? clipProjects.proofMediaId : clipProjects.outputMediaId;
     const others = await db
       .select({ id: clipProjects.id })
       .from(clipProjects)
-      .where(and(eq(column, previousMediaId), ne(clipProjects.id, projectId)));
+      .where(and(eq(clipProjects.outputMediaId, previousMediaId), ne(clipProjects.id, projectId)));
     if (others.length) return;
 
     await db.delete(media).where(eq(media.id, previousMediaId));

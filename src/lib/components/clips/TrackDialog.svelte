@@ -35,7 +35,13 @@
     onfit?: (fit: 'crop' | 'black' | 'blur' | null) => void;
     onframing?: (patch: { zoom?: number; pan?: boolean }) => void;
     onaudio?: (patch: { fadeIn?: boolean; fadeOut?: boolean; duck?: boolean }) => void;
+    /** A shot's own fades. A bed's go through `onaudio` with the rest of its sound. */
+    onfade?: (patch: { fadeIn?: boolean; fadeOut?: boolean }) => void;
     onremove: () => void;
+    /** Shown in the selection panel rather than over the page. */
+    inline?: boolean;
+    /** Anything else about this block — a shot's own look, say — after the switches. */
+    extra?: import('svelte').Snippet;
     onclose: () => void;
   }
 
@@ -54,8 +60,11 @@
     onfit,
     onframing,
     onaudio,
+    onfade,
     onremove,
-    onclose
+    onclose,
+    inline = false,
+    extra
   }: Props = $props();
 
   /**
@@ -106,7 +115,31 @@
                   on: !muted,
                   set: (next: boolean) => onmute?.(!next)
                 }
-              ])
+              ]),
+          /*
+           * A shot's own fades, which were verbs above the strip and nowhere
+           * else. Over the black canvas a fade reads as a fade from black;
+           * over another shot it dissolves into it — which is what the mark on
+           * a join sets for you.
+           */
+          ...(onfade
+            ? [
+                {
+                  key: 'fadeIn',
+                  label: 'Fade up at its start',
+                  hint: 'Out of black, or out of whatever it overlaps.',
+                  on: fadeIn,
+                  set: (next: boolean) => onfade?.({ fadeIn: next })
+                },
+                {
+                  key: 'fadeOut',
+                  label: 'Fade away at its end',
+                  hint: 'Into black, or into whatever is under it.',
+                  on: fadeOut,
+                  set: (next: boolean) => onfade?.({ fadeOut: next })
+                }
+              ]
+            : [])
         ]
       : [
           {
@@ -134,7 +167,7 @@
   );
 </script>
 
-<BlockDialog title={label} removeLabel="Take off timeline" {onremove} {onclose}>
+<BlockDialog title={label} removeLabel="Take off timeline" {inline} {extra} {onremove} {onclose}>
   <div class="space-y-1">
     {#if rows.length === 0 && still}
       <p class="px-2 py-2 text-xs text-gray-400">
@@ -147,7 +180,7 @@
            is also what makes room for a drift on a picture that already fits. -->
       <div class="flex items-center gap-3 px-2 py-2">
         <span class="min-w-0 flex-1">
-          <span class="block text-sm font-medium text-white">How far in</span>
+          <span class="block text-sm font-medium text-gray-50">How far in</span>
           <span class="block text-xs text-gray-400">
             Above 1 the frame shows less of it, and there is more to drift through.
           </span>
@@ -159,7 +192,7 @@
           max="3"
           step="0.05"
           onchange={(e) => onframing?.({ zoom: Number(e.currentTarget.value) })}
-          class="w-20 shrink-0 rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm text-white"
+          class="w-20 shrink-0 rounded border border-gray-600 bg-gray-800 px-2 py-1 text-sm text-gray-50"
         />
       </div>
     {/if}
@@ -174,7 +207,7 @@
           class="mt-0.5 rounded border-gray-600 bg-gray-700 text-violet-500"
         />
         <span>
-          <span class="block text-sm font-medium text-white">{row.label}</span>
+          <span class="block text-sm font-medium text-gray-50">{row.label}</span>
           <span class="block text-xs text-gray-400">{row.hint}</span>
         </span>
       </label>

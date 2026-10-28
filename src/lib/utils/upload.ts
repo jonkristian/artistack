@@ -6,6 +6,8 @@
  * know which endpoint to hit. This picks based on the file type and returns the
  * same shape either way.
  */
+import { invalidateAll } from '$app/navigation';
+import { addMedia } from '../../routes/admin/media/data.remote';
 
 export interface UploadResult {
   url: string;
@@ -241,4 +243,40 @@ export async function uploadFile(
   const res = await fetch('/api/upload', { method: 'POST', body: formData });
   if (!res.ok) throw await uploadError(res);
   return res.json();
+}
+
+/**
+ * Uploads a file and records it in the media library.
+ *
+ * The step after `uploadFile`, and the one every caller needs: a file on disk
+ * that no row points at is a file nothing can find. Written once because the
+ * picker and the clip editor's own add control both do it, and a second copy
+ * would be a second place to forget a column when the media table grows.
+ *
+ * Throws rather than toasting. Who says so, and in what words, belongs to
+ * whoever asked for the upload.
+ */
+export async function addToLibrary(
+  file: File,
+  onProgress?: (fraction: number) => void,
+  extra?: { role?: 'crop'; sourceMediaId?: number; cropShape?: unknown }
+): Promise<{ url: string; id: number }> {
+  const result = await uploadFile(file, 'media', onProgress);
+  const added = await addMedia({
+    role: extra?.role,
+    sourceMediaId: extra?.sourceMediaId,
+    cropShape: extra?.cropShape as never,
+    filename: file.name,
+    url: result.url,
+    originalUrl: result.originalUrl,
+    thumbnailUrl: result.thumbnailUrl,
+    mimeType: result.mimeType,
+    width: result.width,
+    height: result.height,
+    size: result.size,
+    originalSize: result.originalSize,
+    durationMs: result.durationMs
+  });
+  await invalidateAll();
+  return { url: result.url, id: added.media.id };
 }

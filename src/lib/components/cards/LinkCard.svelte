@@ -74,7 +74,7 @@
         type="text"
         bind:value={editLabel}
         onkeydown={handleKeydown}
-        class="w-full rounded border border-gray-600 bg-transparent p-2 text-white focus:border-[var(--theme-primary)] focus:outline-none"
+        class="w-full rounded border border-gray-600 bg-transparent p-2 text-gray-50 focus:border-[var(--theme-primary)] focus:outline-none"
         placeholder="Display label"
       />
     </div>
@@ -85,14 +85,14 @@
         type="url"
         bind:value={editUrl}
         onkeydown={handleKeydown}
-        class="w-full rounded border border-gray-600 bg-transparent p-2 text-white focus:border-[var(--theme-primary)] focus:outline-none"
+        class="w-full rounded border border-gray-600 bg-transparent p-2 text-gray-50 focus:border-[var(--theme-primary)] focus:outline-none"
         placeholder="https://..."
       />
     </div>
     <div class="flex gap-2">
       <button
         onclick={save}
-        class="rounded px-4 py-2 text-sm text-white"
+        class="rounded px-4 py-2 text-sm text-gray-50"
         style="background-color: var(--theme-primary)"
       >
         Save
@@ -103,7 +103,7 @@
           editLabel = link.label ?? '';
           isEditing = false;
         }}
-        class="rounded bg-gray-600 px-4 py-2 text-sm text-white"
+        class="rounded bg-gray-600 px-4 py-2 text-sm text-gray-50"
       >
         Cancel
       </button>
@@ -126,7 +126,7 @@
       class="h-16 w-16 flex-shrink-0 rounded-lg object-cover"
     />
     <div class="min-w-0 flex-1">
-      <p class="truncate font-medium text-white">{displayLabel}</p>
+      <p class="truncate font-medium text-gray-50">{displayLabel}</p>
       <div class="flex items-center gap-2 text-sm text-gray-400">
         {#if icon}
           <svg viewBox="0 0 24 24" class="h-4 w-4" style="fill: {color}">
@@ -172,13 +172,13 @@
       </svg>
     {:else}
       <div
-        class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-xs font-bold text-white"
+        class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-xs font-bold text-gray-50"
         style="background-color: {color}"
       >
         {link.platform.charAt(0).toUpperCase()}
       </div>
     {/if}
-    <span class="flex-1 font-medium text-white capitalize">{displayLabel}</span>
+    <span class="flex-1 font-medium text-gray-50 capitalize">{displayLabel}</span>
     {#if isAdmin}
       <span class="text-sm text-gray-400 opacity-0 transition-opacity group-hover:opacity-100">
         Edit

@@ -300,7 +300,9 @@
             </div>
 
             <div class="p-3">
-              <p class="truncate text-sm text-white group-hover:text-violet-300">{project.name}</p>
+              <p class="group-hover:text-link-strong truncate text-sm text-gray-50">
+                {project.name}
+              </p>
               <!-- Wraps, because this row grew. It held one status chip and a
                    source count and was sized for that; a clip on three
                    platforms now adds three more, and they were running off the
@@ -400,18 +402,18 @@
                   <img src={entry.output.thumbnailUrl} alt="" class="h-full w-full object-cover" />
                 {/if}
               </a>
-              <span class="min-w-0 flex-1 truncate text-white">{entry.project.name}</span>
+              <span class="min-w-0 flex-1 truncate text-gray-50">{entry.project.name}</span>
               <!-- A clip with no date of its own rides the drip, so its time is a
                    projection that moves whenever anything ahead of it does. The
                    marked one is the uncertain one; a chosen date is just a date. -->
               {#if !entry.pinned && entry.eta}
-                <span class="shrink-0 text-xs text-gray-600">Estimated</span>
+                <span class="shrink-0 text-xs text-gray-500">Estimated</span>
               {/if}
               <span class="shrink-0 text-xs text-gray-500">{formatSlot(entry.eta)}</span>
               <button
                 type="button"
                 onclick={() => (queueDialogFor = entry)}
-                class="shrink-0 text-xs whitespace-nowrap text-violet-400 transition-colors hover:text-violet-300"
+                class="text-link hover:text-link-strong shrink-0 text-xs whitespace-nowrap transition-colors"
               >
                 Change
               </button>

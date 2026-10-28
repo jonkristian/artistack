@@ -145,9 +145,9 @@
   // inline-flex so the icon and the label sit on one baseline; the anchors and
   // the button share the class and would otherwise align differently.
   const stat =
-    'flex items-baseline justify-between gap-3 py-2.5 transition-colors hover:text-white';
+    'flex items-baseline justify-between gap-3 py-2.5 transition-colors hover:text-gray-50';
   const action =
-    'inline-flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-700 hover:text-white disabled:opacity-50';
+    'inline-flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-700 hover:text-gray-50 disabled:opacity-50';
 </script>
 
 {#snippet releaseIcon()}
@@ -220,7 +220,7 @@
             -->
             <a
               href="/admin/stats"
-              class="rounded-lg border border-gray-800 px-2.5 py-1 text-xs whitespace-nowrap text-gray-400 transition-colors hover:border-gray-700 hover:text-white"
+              class="rounded-lg border border-gray-800 px-2.5 py-1 text-xs whitespace-nowrap text-gray-400 transition-colors hover:border-gray-700 hover:text-gray-50"
             >
               All stats
             </a>
@@ -244,18 +244,20 @@
             <a href="/admin/stats" class={stat}>
               <span class="text-xs text-gray-500">Views today</span>
               <span class="flex items-baseline gap-2">
-                <span class="font-semibold text-white tabular-nums">{data.overview.todayViews}</span
+                <span class="font-semibold text-gray-50 tabular-nums"
+                  >{data.overview.todayViews}</span
                 >
-                <span class="text-xs text-gray-600">{data.overview.weekViews} this week</span>
+                <span class="text-xs text-gray-500">{data.overview.weekViews} this week</span>
               </span>
             </a>
 
             <a href="/admin/stats" class={stat}>
               <span class="text-xs text-gray-500">Clicks this week</span>
               <span class="flex items-baseline gap-2">
-                <span class="font-semibold text-white tabular-nums">{data.overview.weekClicks}</span
+                <span class="font-semibold text-gray-50 tabular-nums"
+                  >{data.overview.weekClicks}</span
                 >
-                <span class="text-xs text-gray-600">{data.overview.monthClicks} this month</span>
+                <span class="text-xs text-gray-500">{data.overview.monthClicks} this month</span>
               </span>
             </a>
 
@@ -263,15 +265,16 @@
               <a href="/admin/subscribers" class={stat}>
                 <span class="text-xs text-gray-500">Fan list</span>
                 <span class="flex items-baseline gap-2">
-                  <span class="font-semibold text-white tabular-nums">{data.audience.active}</span>
-                  <span class="text-xs text-gray-600">+{data.audience.recent} in 30 days</span>
+                  <span class="font-semibold text-gray-50 tabular-nums">{data.audience.active}</span
+                  >
+                  <span class="text-xs text-gray-500">+{data.audience.recent} in 30 days</span>
                 </span>
               </a>
             {/if}
 
             <a href="/admin/stats" class={stat}>
               <span class="shrink-0 text-xs text-gray-500">Most clicked</span>
-              <span class="ml-3 min-w-0 truncate text-sm font-semibold text-white">
+              <span class="ml-3 min-w-0 truncate text-sm font-semibold text-gray-50">
                 {data.overview.topLink?.label ?? data.overview.topLink?.platform ?? '—'}
               </span>
             </a>

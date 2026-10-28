@@ -20,8 +20,21 @@
    * them. Ratios survive the difference between a 1080-wide render and a
    * 340-wide element; pixels would not.
    */
-  import { captionBackdrop, captionColor, captionY } from '$lib/clips/types';
+  import {
+    captionBackdrop,
+    captionBorder,
+    captionBorderWidth,
+    CAPTION_SIZE_DIVISOR,
+    captionBackdropOpacity,
+    captionFontId,
+    captionColor,
+    captionX,
+    captionY
+  } from '$lib/clips/types';
+  import { untrack } from 'svelte';
+  import { fontStack } from '$lib/fonts';
   import { captionEffectOf, captionSeed } from '$lib/clips/effects';
+  import { captionIsEmpty, normaliseCaptionHtml } from '$lib/clips/caption-html';
   import type { ClipRenderConfig, ClipAdvancedConfig, TimedCaption } from '$lib/clips/types';
 
   let {
@@ -42,7 +55,8 @@
     watermarkGraphic = null,
     /** How long the intro logo stays up. Zero when there is no intro. */
     introSeconds = 0,
-    accent = '#8b5cf6'
+    accent = '#8b5cf6',
+    rehearse = null
   }: {
     captions: TimedCaption[];
     config: ClipRenderConfig;
@@ -52,9 +66,80 @@
     watermarkGraphic?: string | null;
     introSeconds?: number;
     accent?: string;
+    /**
+     * Run one caption's entrance here, without moving the clip.
+     *
+     * An entrance only exists in motion, and parked after it every one of them
+     * looks the same — the caption, arrived. Choosing one is asking what it
+     * does, and the cheapest honest answer is to run that caption's own clock
+     * for as long as the entrance lasts. The playhead stays where it is and
+     * nothing plays: the question was about the words, not the shot.
+     *
+     * `token` changes to ask again, so pressing the same effect twice shows it
+     * twice.
+     */
+    rehearse?: { index: number; token: number } | null;
   } = $props();
 
-  const showing = $derived(captions.filter((c) => c.text?.trim() && at >= c.start && at < c.end));
+  /** How far into its own entrance the rehearsed caption is, while it runs. */
+  let rehearsedAt = $state<number | null>(null);
+
+  $effect(() => {
+    const asked = rehearse;
+    if (!asked) return;
+    // Read, so asking again with the same index starts it over.
+    void asked.token;
+
+    /*
+     * Looked up without being watched.
+     *
+     * Every save hands down a fresh `captions`, and a save happens whenever
+     * anything on the clip changes — a shot's look included. Reading the array
+     * here made all of that re-enter this effect, so picking a look for a video
+     * replayed a caption's entrance instead.
+     */
+    const line = untrack(() => captions[asked.index]);
+    if (captionIsEmpty(line?.text)) return;
+
+    // Long enough for the slowest entrance to land, and to hold a beat after.
+    const span = Math.min(1.2, Math.max(0.05, line.end - line.start));
+    const from = performance.now();
+    let frame = 0;
+
+    const step = () => {
+      const elapsed = (performance.now() - from) / 1000;
+      if (elapsed >= span) {
+        rehearsedAt = null;
+        return;
+      }
+      rehearsedAt = elapsed;
+      frame = requestAnimationFrame(step);
+    };
+    step();
+
+    return () => {
+      cancelAnimationFrame(frame);
+      rehearsedAt = null;
+    };
+  });
+
+  /** The caption being rehearsed, while it is being rehearsed. */
+  const rehearsing = $derived(
+    rehearse && rehearsedAt != null ? (captions[rehearse.index] ?? null) : null
+  );
+
+  /*
+   * What is on screen: whatever the playhead is inside, plus the one being
+   * rehearsed — which may be nowhere near the playhead, and is the whole point
+   * of being asked about.
+   */
+  const showing = $derived(
+    captions.filter(
+      (c) =>
+        !captionIsEmpty(c.text) &&
+        ((at >= c.start && at < c.end) || (rehearsing != null && c === rehearsing))
+    )
+  );
 
   /*
    * `capSize` is the render's width over a divisor, and the width of a 9:16
@@ -62,9 +147,77 @@
    * (9/16)/divisor. Expressed against height because that is what `cqh` gives
    * us, and what stays true whatever size the element is drawn at.
    */
+  /**
+   * A caption's markup, with its sizes read against the frame.
+   *
+   * A size is stored in the frame's own pixels — the same number libass is
+   * given — so here it becomes a share of the frame's height, which is what
+   * `cqh` already measures everything else in. The pane can then be any width
+   * at all and the words keep the proportions the file will have.
+   */
+  function inFrame(html: string): string {
+    return normaliseCaptionHtml(html).replace(
+      /font-size:\s*(\d+(?:\.\d+)?)px/g,
+      (_, px) => `font-size: ${((Number(px) / frame.h) * 100).toFixed(3)}cqh`
+    );
+  }
+  /**
+   * The ring around the letters, as a shadow.
+   *
+   * The render draws a real outline; a stack of shadows is the browser's
+   * nearest honest likeness, and it has been drawing one in black all along.
+   * All that changes here is that the colour is asked for rather than assumed.
+   *
+   * Never on a panel — there the box is the outline — and never on a copy: a
+   * colour split is three copies a few pixels apart, and ringing each of them
+   * turns the split into a smudge.
+   */
+  function ring(caption: TimedCaption, copy: boolean): string {
+    // A panel no longer rules an outline out: the render stacks a panelled
+    // line under a plain one to get both, and CSS draws them on one element.
+    if (copy) return '';
+    const colour = captionBorder(caption, config);
+    if (!colour) return '';
+
+    /*
+     * A stroke, not a glow.
+     *
+     * This was a stack of blurred shadows scaled by the weight, which at four
+     * pixels passes for an outline and at twelve is plainly a halo — the
+     * render draws `\bord`, a hard line round the glyph, and the preview was
+     * drawing something else entirely.
+     *
+     * Doubled, because the two draw it differently: libass puts its outline
+     * *outside* the glyph, while `-webkit-text-stroke` straddles the edge and
+     * the fill covers the inner half. Twice the width leaves the asked-for
+     * amount showing, which is what both then look like.
+     *
+     * In `cqh`, like everything else here, so a weight stated in the frame's
+     * pixels is the same share of the picture at any size the pane happens to
+     * be.
+     */
+    const width = (captionBorderWidth(caption, config) * 2 * 100) / frame.h;
+    return `-webkit-text-stroke: ${width.toFixed(3)}cqh ${colour}; paint-order: stroke fill;`;
+  }
+
   const aspect = $derived(config.aspect === '1:1' ? 1 : config.aspect === '16:9' ? 16 / 9 : 9 / 16);
-  const capSize = $derived((aspect / adv.captionSizeDivisor) * 100);
-  const headSize = $derived((aspect / adv.headlineSizeDivisor) * 100);
+  const capSize = $derived((aspect / CAPTION_SIZE_DIVISOR) * 100);
+
+  /*
+   * The face the render will burn in, drawn here too.
+   *
+   * The same file either way — the browser loads the woff2, the renderer
+   * unpacks the same font to TrueType for libass — so this is a likeness in
+   * the one respect the overlay could never manage before. Per caption,
+   * because a caption can ask for its own the way it asks for its own colour.
+   * Nothing chosen at either level leaves it to the page's own font, which is
+   * the honest picture of "whatever the server finds": not the font, but not a
+   * promise either.
+   */
+  function captionFamily(caption: TimedCaption): string {
+    const id = captionFontId(caption, config);
+    return id ? fontStack(id) : 'inherit';
+  }
 
   /*
    * The frame the renderer measures in, so pixel dials can be read as shares.
@@ -90,7 +243,15 @@
    * be three sets of numbers measured from three different edges, and a caption
    * could sit somewhere here that it did not sit in the render.
    */
-  const placeCaption = (caption: TimedCaption) => `bottom: ${captionY(caption, adv) * 100}%`;
+  /*
+   * Where it sits: up from the bottom, and off centre by the same share of the
+   * width the render shifts its margins by. Moving both insets by the offset
+   * moves the centre and leaves the width — and so the wrapping — alone.
+   */
+  const placeCaption = (caption: TimedCaption) => {
+    const dx = captionX(caption) * 100;
+    return `bottom: ${captionY(caption, adv) * 100}%; left: ${dx}cqw; right: ${-dx}cqw`;
+  };
 
   /**
    * What the caption's effect wants done to it at this instant.
@@ -111,7 +272,9 @@
     const { effect, params } = captionEffectOf(caption, config);
     const drawn = effect.css({
       params,
-      elapsed: at - caption.start,
+      // A rehearsed caption runs on its own clock; everything else on the
+      // clip's.
+      elapsed: caption === rehearsing && rehearsedAt != null ? rehearsedAt : at - caption.start,
       duration: Math.max(0, caption.end - caption.start),
       // The nominal frame, so a dial in render pixels means the same share of
       // the picture here as it does in the file.
@@ -139,11 +302,11 @@
    * with an alpha pair appended is the one spelling browsers and libass agree
    * to disagree about.
    */
-  function panel(backdrop: string | null): string {
+  function panel(caption: TimedCaption, backdrop: string | null): string {
     if (!backdrop) return '';
     const hex = backdrop.replace('#', '');
     const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
-    return `background-color: rgb(${r} ${g} ${b} / ${adv.captionBackdropPercent}%)`;
+    return `background-color: rgb(${r} ${g} ${b} / ${captionBackdropOpacity(caption)}%)`;
   }
 
   /** The same band the render puts the big logo in, kept clear of the caption. */
@@ -168,22 +331,26 @@
          the way `assText` turns the same newline into libass's `\N`. -->
     <div
       class="absolute right-0 left-0 text-center leading-tight font-bold whitespace-pre-line"
-      style="{placeCaption(caption)}; padding-inline: {(adv.captionMarginX / frame.w) *
-        100}cqw; font-size: {caption.headline ? headSize : capSize}cqh; color: {captionColor(
+      style="{placeCaption(caption)}; font-family: {captionFamily(
+        caption
+      )}; padding-inline: {(adv.captionMarginX / frame.w) *
+        100}cqw; font-size: {capSize}cqh; color: {captionColor(caption, config, accent)}; {ring(
         caption,
-        config,
-        accent
-      )}; {captionBackdrop(caption, config) || copy
-        ? ''
-        : 'text-shadow: 0 0 0.18em #000, 0 0 0.06em #000, 0.02em 0.03em 0.05em #000;'} {extra}"
+        copy
+      )} {extra}"
     >
       <span
         class={captionBackdrop(caption, config) && !copy
           ? 'box-decoration-clone px-[0.35em] py-[0.12em]'
           : ''}
-        style={copy ? '' : panel(captionBackdrop(caption, config))}
+        style={copy ? '' : panel(caption, captionBackdrop(caption, config))}
       >
-        {caption.text}
+        <!-- The caption's own markup — `<b>`, `<i>`, `<s>` and nothing else,
+             because `normaliseCaptionHtml` is the only way text gets in here
+             and it keeps nothing else. Rendered rather than printed so a mark
+             is a mark, the way the render draws it. -->
+        <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+        {@html inFrame(caption.text ?? '')}
       </span>
     </div>
   {/snippet}

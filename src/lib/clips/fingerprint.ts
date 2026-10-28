@@ -87,12 +87,15 @@ export function renderFingerprint(state: RenderState): string {
       c.start,
       c.end,
       c.text,
-      Boolean(c.headline),
       c.color ?? null,
       c.background ?? null,
       c.anchor ?? null,
       c.y ?? null,
-      c.effect ?? null
+      c.effect ?? null,
+      // A face changes what comes out, so it has to change the mark that says
+      // the render is behind the edit.
+      c.font ?? null,
+      c.backgroundOpacity ?? null
     ]);
 
   return JSON.stringify({

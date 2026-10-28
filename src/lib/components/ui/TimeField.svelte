@@ -88,7 +88,7 @@
     title={media ? `${label}: set to where the player is now` : unavailable}
     aria-label={media ? `${label}: set to where the player is now` : unavailable}
     class="mr-1 shrink-0 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-700
-           hover:text-white disabled:cursor-not-allowed disabled:opacity-30
+           hover:text-gray-50 disabled:cursor-not-allowed disabled:opacity-30
            disabled:hover:bg-transparent disabled:hover:text-gray-500"
   >
     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

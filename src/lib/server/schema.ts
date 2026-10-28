@@ -351,7 +351,13 @@ export type MediaRole =
   | 'source'
   | 'music'
   | 'render'
-  /** A quick, disposable render for judging placement. Never publishable. */
+  /**
+   * A quick, disposable render for judging placement.
+   *
+   * No longer produced — the editor plays the edit live, so there is nothing
+   * for one to answer. Kept as a role so the rows and files the old path left
+   * behind are still recognised as ours and swept.
+   */
   | 'proof'
   | 'document'
   | 'crop';
@@ -481,15 +487,6 @@ export const clipProjects = sqliteTable('clip_projects', {
    * timestamp, which moves for edits that change nothing visible.
    */
   renderFingerprint: text('render_fingerprint'),
-  /**
-   * A quick proof render, for judging placement while you work.
-   *
-   * Drives the editor's player and its contact sheet, and nothing else — it is
-   * half size with the expensive filters off, and must never be the thing that
-   * reaches a platform. That is why it isn't `outputMediaId`.
-   */
-  proofMediaId: integer('proof_media_id'),
-  proofFingerprint: text('proof_fingerprint'),
   /**
    * The graphic the last render actually used. Written by the renderer, so a
    * randomised pick is visible after the fact rather than a guess.
@@ -648,7 +645,26 @@ export const clipSources = sqliteTable(
     // Degrees clockwise, for footage stored sideways with nothing in the file
     // saying so. The container's own rotation flag is honoured already; this is
     // the override for when there isn't one.
-    rotation: integer('rotation').default(0)
+    rotation: integer('rotation').default(0),
+    /**
+     * What this shot's head paid for the dissolve at its start, in seconds.
+     *
+     * Null at a plain cut. A dissolve is made from the handles either side —
+     * half from each where both have some, all from one where only one does —
+     * so the split has to be written down for taking it off again to put back
+     * what each side gave.
+     */
+    dissolveHead: real('dissolve_head'),
+    /**
+     * This shot's own effects, as JSON, overriding the clip's look.
+     *
+     * The same shape the clip's list holds, minus the window: a shot *is* the
+     * window. The clip's own entry stays what it is — a look over everything,
+     * or an event placed at a moment — and this answers the question it can't,
+     * which is "this shot and no other". Null inherits, exactly as `fit` and
+     * `watermark` do above.
+     */
+    effects: text('effects')
   },
   (table) => [index('clip_sources_project_id_idx').on(table.projectId)]
 );
@@ -697,8 +713,6 @@ export const renderJobs = sqliteTable(
     error: text('error'),
     log: text('log'), // tail of ffmpeg stderr, for debugging a failed render
     mediaId: integer('media_id'), // FK to media, on success
-    /** A quick proof rather than the real thing. Decides where the result lands. */
-    proof: integer('proof', { mode: 'boolean' }).default(false),
     startedAt: integer('started_at', { mode: 'timestamp' }),
     finishedAt: integer('finished_at', { mode: 'timestamp' }),
     createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())

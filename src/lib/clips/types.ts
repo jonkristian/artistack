@@ -135,11 +135,25 @@ export function captionAnchorOf(caption: {
 
 /** Where a caption actually sits, as a fraction of the height up from the bottom. */
 export function captionY(
-  caption: { anchor?: CaptionAnchorId; y?: number },
+  caption: { anchor?: CaptionAnchorId; y?: number; offsetY?: number },
   adv: Parameters<typeof captionAnchors>[0]
 ): number {
   const id = captionAnchorOf(caption);
-  return captionAnchors(adv).find((a) => a.id === id)?.y ?? 0.18;
+  const anchored = captionAnchors(adv).find((a) => a.id === id)?.y ?? 0.18;
+  // Never off the frame: a caption nudged past an edge is one nobody can read,
+  // and the render would clamp it anyway.
+  return Math.min(0.95, Math.max(0.02, anchored + (caption.offsetY ?? 0)));
+}
+
+/**
+ * How far off centre a caption sits, as a share of the frame's width.
+ *
+ * Zero is centred, which is where captions are unless asked otherwise — the
+ * same arrangement the heights have. Bounded well inside the frame, since the
+ * words still have to fit beside wherever they have been moved to.
+ */
+export function captionX(caption: { offsetX?: number }): number {
+  return Math.min(0.35, Math.max(-0.35, caption.offsetX ?? 0));
 }
 
 /**
@@ -190,8 +204,6 @@ export interface TimedCaption {
   start: number;
   end: number;
   text: string;
-  /** Big and centred instead of lower-third — the `!` prefix in a caption. */
-  headline?: boolean;
   /**
    * Its own colour, when it wants one.
    *
@@ -214,6 +226,38 @@ export interface TimedCaption {
    */
   background?: string | null;
   /**
+   * The ring around the letters: a colour, `'none'`, or nothing said.
+   *
+   * There has always been one — a black outline is what makes white words
+   * legible over a bright shot — and it was simply not something anyone could
+   * change. A colour here says what it is drawn in; `'none'` says a caption
+   * wants none even though the clip draws one, which matters over a dark shot
+   * where the ring is the only thing you can see.
+   *
+   * Absent leaves it to the clip.
+   */
+  border?: string | null;
+  /** How heavy that ring is, in render pixels. Absent takes the clip's. */
+  borderWidth?: number;
+  /**
+   * How solid the panel behind it is, 0–100. Absent takes the clip's.
+   *
+   * Beside the colour because it is half of it: a white panel at fifty per
+   * cent is grey, and choosing white and getting grey — with the only
+   * explanation three panels away under Advanced — is the colour not being the
+   * colour.
+   */
+  backgroundOpacity?: number;
+  /**
+   * The face it is set in, by id from the font list.
+   *
+   * Absent takes the clip's, which is the ordinary case: a clip has a voice
+   * and its captions are in it. One line in a different face is the exception
+   * worth having — a title card, a lyric, a name — and it is the same kind of
+   * exception as its colour or its size, so it lives in the same place.
+   */
+  font?: string | null;
+  /**
    * Which of the three heights it sits at.
    *
    * The name of a height rather than the height itself, so that moving `Caption
@@ -222,6 +266,19 @@ export interface TimedCaption {
    * the moment you cycled it, and turning the dial afterwards did nothing.
    */
   anchor?: CaptionAnchorId;
+  /**
+   * A nudge from the anchor, as a share of the frame. Up and right are positive.
+   *
+   * An offset rather than a position, so the anchor keeps its meaning: a
+   * caption on `bottom` still moves when the clip's bottom dial does, and this
+   * only says how far clear of it this one sits. Storing where it ended up
+   * instead would pin it to whatever the dial happened to be that day — the
+   * mistake `anchor` was introduced to undo.
+   *
+   * Absent is the ordinary case: exactly where the clip puts them.
+   */
+  offsetY?: number;
+  offsetX?: number;
   /**
    * The older form of the above: the height itself, as a fraction up from the
    * bottom.
@@ -397,14 +454,8 @@ export interface ClipAdvancedConfig {
   watermarkY: number;
 
   // --- Captions ---
-  /** Caption font size = frame width / this. */
-  captionSizeDivisor: number;
-  /** Headline font size = frame width / this. */
-  headlineSizeDivisor: number;
   /** Left/right caption margin in pixels. */
   captionMarginX: number;
-  /** How solid the panel behind a caption is, 0–100. */
-  captionBackdropPercent: number;
   /** Where each caption anchor sits, as a percentage up from the bottom. */
   captionTopPercent: number;
   captionMiddlePercent: number;
@@ -475,14 +526,6 @@ export const DEFAULT_ADVANCED_CONFIG: ClipAdvancedConfig = {
   watermarkX: 32,
   watermarkY: 40,
 
-  captionSizeDivisor: 18,
-  captionBackdropPercent: 50,
-  /*
-   * A headline was 64px against a caption's 60 — six per cent, which nobody can
-   * see and which made the aA switch look broken. Half as big again is the
-   * smallest difference that reads as a decision rather than a rounding error.
-   */
-  headlineSizeDivisor: 12,
   captionMarginX: 80,
   captionTopPercent: 72,
   captionMiddlePercent: 38.2,
@@ -584,6 +627,19 @@ export const ADVANCED_GROUPS: {
         hint: 'Either end of a shot that has one'
       },
       {
+        /*
+         * Named for what it is now. It was "Clip crossfade", under Effects,
+         * from when a crossfade was a clip-wide switch that put one between
+         * every pair of shots. That switch is gone: a dissolve is made at the
+         * cut you press, from the handles either side, and this is how long
+         * one comes out.
+         */
+        key: 'xfadeSeconds',
+        label: 'Dissolve (s)',
+        step: 0.1,
+        hint: 'How long a dissolve made at a cut runs for'
+      },
+      {
         key: 'videoFadeInSeconds',
         label: 'Picture fade in (s)',
         step: 0.1,
@@ -600,21 +656,6 @@ export const ADVANCED_GROUPS: {
   {
     label: 'Captions',
     fields: [
-      {
-        key: 'captionSizeDivisor',
-        label: 'Caption size divisor',
-        step: 1,
-        hint: 'Font size = frame width / this, so lower is bigger'
-      },
-      {
-        // The other half of the pair. Only the first was ever on this panel, so
-        // the two could drift to within six per cent of each other and the aA
-        // switch looked broken with no dial to explain it.
-        key: 'headlineSizeDivisor',
-        label: 'Big caption size divisor',
-        step: 1,
-        hint: 'The aA switch. Lower than the one beside it, or big is not big'
-      },
       {
         key: 'captionTopPercent',
         label: 'Caption top (% up)',
@@ -633,12 +674,6 @@ export const ADVANCED_GROUPS: {
         label: 'Caption side margin (px)',
         step: 4,
         hint: 'Where lines wrap, measured in the finished frame'
-      },
-      {
-        key: 'captionBackdropPercent',
-        label: 'Caption backdrop (% solid)',
-        step: 5,
-        hint: 'How much of the picture the panel behind a caption covers up'
       }
     ]
   },
@@ -646,8 +681,7 @@ export const ADVANCED_GROUPS: {
     label: 'Effects',
     fields: [
       { key: 'blurStrength', label: 'Background blur', step: 1 },
-      { key: 'grainStrength', label: 'Grain amount', step: 1 },
-      { key: 'xfadeSeconds', label: 'Clip crossfade (s)', step: 0.1 }
+      { key: 'grainStrength', label: 'Grain amount', step: 1 }
     ]
   }
 ];
@@ -672,12 +706,32 @@ export interface ClipRenderConfig {
    */
   captionBackdropColor?: string | null;
   /**
+   * The ring every caption gets, unless one says otherwise.
+   *
+   * Absent means black, which is what was drawn before this existed and what
+   * makes words readable over most things. The clip's choice in the same sense
+   * as the colour and the panel above.
+   */
+  captionBorderColor?: string | null;
+  /** How heavy the ring is, in render pixels, unless a caption says otherwise. */
+  captionBorderWidth?: number;
+  /**
    * How captions arrive, unless one of them says otherwise.
    *
    * The clip's choice, in the same sense as the two above: it sets the house
    * style and a single caption can still differ. Unset is the plain fade.
    */
   captionEffect?: AppliedEffect | null;
+  /**
+   * The face captions are set in, unless one of them says otherwise.
+   *
+   * The clip's voice, beside the colour, the panel and the entrance — not an
+   * engine dial, which is where it started. Empty means "whatever the server
+   * can find", the way this worked before there was a list to choose from: a
+   * search for a family fontconfig admits to having, which differs by machine.
+   * A chosen face ships as a file and comes out the same everywhere.
+   */
+  captionFont?: string;
 
   // Footage look
   /**
@@ -707,7 +761,6 @@ export interface ClipRenderConfig {
   grain: boolean;
   vignette: boolean;
   zoom: boolean; // slow Ken Burns push-in
-  xfade: boolean; // crossfade between sources
   speed: number; // 0.5–2
 
   /*
@@ -778,7 +831,6 @@ export const DEFAULT_CLIP_CONFIG: ClipRenderConfig = {
   grain: false,
   vignette: false,
   zoom: false,
-  xfade: false,
   speed: 1,
   videoFadeIn: false,
   videoFadeOut: false,
@@ -844,7 +896,6 @@ export const CLIP_PRESETS: ClipPreset[] = [
       zoom: false,
       videoFadeIn: false,
       videoFadeOut: false,
-      xfade: false,
       captionBackground: false,
       colorizeCaption: false
     }
@@ -860,7 +911,6 @@ export const CLIP_PRESETS: ClipPreset[] = [
       vignette: false,
       zoom: true,
       videoFadeOut: false,
-      xfade: true,
       captionBackground: false,
       colorizeCaption: true
     }
@@ -868,7 +918,7 @@ export const CLIP_PRESETS: ClipPreset[] = [
   {
     id: 'cinematic',
     label: 'Cinematic',
-    description: 'The Super 8 look — graded, grainy, vignetted — with dissolves and a fade out.',
+    description: 'The Super 8 look — graded, grainy, vignetted — with a fade out.',
     config: {
       effects: [{ id: 'super8' }],
       tone: 'none',
@@ -876,7 +926,6 @@ export const CLIP_PRESETS: ClipPreset[] = [
       vignette: false,
       zoom: true,
       videoFadeOut: true,
-      xfade: true,
       captionBackground: false,
       colorizeCaption: false
     }
@@ -892,7 +941,6 @@ export const CLIP_PRESETS: ClipPreset[] = [
       vignette: false,
       zoom: false,
       videoFadeOut: true,
-      xfade: false,
       captionBackground: true,
       colorizeCaption: false
     }
@@ -946,6 +994,48 @@ export function captionColor(
   return caption.color || (config.colorizeCaption ? accent : '#ffffff');
 }
 
+/**
+ * The frame width a caption's text is sized against: width / this.
+ *
+ * A constant rather than a dial. It decides one thing — what "Normal" means in
+ * a caption's own size menu — and a caption that wants any other size says so
+ * in its own markup, which is a better place to say it than a divisor three
+ * panels away in a panel about the encoder.
+ */
+export const CAPTION_SIZE_DIVISOR = 18;
+
+/**
+ * How solid a panel is when the caption hasn't said: solid.
+ *
+ * Also a constant now. Transparency is a thing to ask for, on the backdrop's
+ * own wheel where the colour is chosen, rather than a clip-wide dial that
+ * quietly turned every white panel grey.
+ */
+export const CAPTION_BACKDROP_PERCENT = 100;
+
+/**
+ * How solid the panel behind a caption is: its own, or solid.
+ *
+ * One answer for the overlay and the render, like the colour it applies to.
+ */
+export function captionBackdropOpacity(caption: { backgroundOpacity?: number }): number {
+  return Math.min(100, Math.max(0, caption.backgroundOpacity ?? CAPTION_BACKDROP_PERCENT));
+}
+
+/**
+ * Which face a caption is set in: its own, the clip's, or none chosen.
+ *
+ * Empty at both levels means the renderer searches the machine and the overlay
+ * draws in whatever the page is set in — honest about being a guess rather
+ * than pretending to a face it can't promise.
+ */
+export function captionFontId(
+  caption: { font?: string | null },
+  config: { captionFont?: string }
+): string {
+  return caption.font || config.captionFont || '';
+}
+
 /** A caption asking for no panel at all, as against not having been asked. */
 export const NO_BACKDROP = 'none';
 
@@ -965,4 +1055,46 @@ export function captionBackdrop(
   if (own === NO_BACKDROP) return null;
   if (own) return own;
   return config.captionBackground ? (config.captionBackdropColor ?? '#000000') : null;
+}
+
+/** A caption asking for no ring at all, as against not having been asked. */
+export const NO_BORDER = 'none';
+
+/**
+ * What colour the ring around a caption's letters is, or `null` for none.
+ *
+ * Black unless something says otherwise, which is what has always been drawn
+ * and what keeps white words readable over a bright shot. One answer for the
+ * overlay and the render, like the panel above it.
+ *
+ * A panel has its own ring in the render — the box *is* the outline there — so
+ * a caption on one is left alone and this is only ever asked about the plain
+ * kind.
+ */
+export function captionBorder(
+  caption: { border?: string | null },
+  config: { captionBorderColor?: string | null }
+): string | null {
+  const own = caption.border;
+  if (own === NO_BORDER) return null;
+  if (own) return own;
+  return config.captionBorderColor ?? '#000000';
+}
+
+/**
+ * The ring's weight in render pixels.
+ *
+ * Four is what the plain caption style has always carried, so a clip that has
+ * never been asked looks exactly as it did. Asked for per caption because the
+ * answer depends on what it is over: a thin ring disappears on a busy shot and
+ * a heavy one closes up the counters of small text.
+ */
+export const DEFAULT_BORDER_WIDTH = 4;
+
+export function captionBorderWidth(
+  caption: { borderWidth?: number },
+  config: { captionBorderWidth?: number }
+): number {
+  const own = caption.borderWidth ?? config.captionBorderWidth ?? DEFAULT_BORDER_WIDTH;
+  return Math.min(16, Math.max(0, own));
 }

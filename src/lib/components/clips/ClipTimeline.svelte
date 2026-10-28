@@ -28,29 +28,24 @@
   import { selection } from '$lib/clips/editor.svelte';
   import { captionAnchorOf, NO_BACKDROP } from '$lib/clips/types';
   import { PICTURE_EFFECTS, pictureEffectById } from '$lib/clips/effects';
-  import CaptionDialog from './CaptionDialog.svelte';
-  import FxDialog from './FxDialog.svelte';
-  import TrackDialog from './TrackDialog.svelte';
   import {
     Icon,
-    Play,
-    Pause,
     SpeakerWave,
     SpeakerXMark,
     MusicalNote,
-    Cog6Tooth,
-    AdjustmentsHorizontal,
     Swatch,
     XMark,
     Sparkles,
     Film,
     ChatBubbleBottomCenterText
   } from 'svelte-hero-icons';
-  import { insertAtCursor } from '$lib/utils/text';
   import { ColorWheel } from '$lib/components/ui';
   import type { AppliedEffect, CaptionAnchorId, PlacedEffect } from '$lib/clips/types';
   import type { ClipAudioTrack, TimedCaption } from '$lib/clips/types';
   import type { LayoutBlock } from '$lib/clips/layout';
+  import type { ClipPlayback } from '$lib/clips/playback.svelte';
+  import { joinsOf, type Join } from '$lib/clips/joins';
+  import { captionText } from '$lib/clips/caption-html';
 
   /**
    * A bed plus the name to write on it.
@@ -75,6 +70,8 @@
      */
     headroom: number;
     tailroom: number;
+    /** What this shot's head paid for the dissolve at its start; null at a cut. */
+    dissolveHead: number | null;
     /** Where in the file it starts and stops, in source seconds. */
     from: number;
     to: number;
@@ -114,6 +111,8 @@
     waveform: string | null;
   };
 
+  /** Opens a block's dialog from outside the strip. */
+
   /**
    * The zoom, as much of it as a toolbar needs.
    *
@@ -143,18 +142,6 @@
      * where a caption will actually land rather than where it would by default.
      */
     anchors: { id: CaptionAnchorId; label: string; y: number }[];
-    /** The colours kept in Appearance, offered on the caption picker. */
-    swatches?: string[];
-    /** Puts a colour on that shelf, or takes it off. */
-    onkeepcolor?: (color: string) => void;
-    /** What a caption is drawn in when it hasn't picked a colour of its own. */
-    inheritedColor?: string;
-    /** The panel colour a caption gets when it hasn't picked one; null for none. */
-    inheritedBackdrop?: string | null;
-    /** How the clip says captions arrive, when one hasn't chosen for itself. */
-    inheritedEffect?: AppliedEffect | null;
-    /** Passed to the effect dialog, so its picker can show real swatches. */
-    clipId?: number | null;
     /**
      * The look the whole clip is in, if it is in one.
      *
@@ -206,16 +193,20 @@
      * render the whole edit or open the row's own little player. The big pane
      * is already the place where a moving picture goes.
      */
-    onpreview: (kind: 'clip' | 'audio', id: number, play: boolean) => void;
+    onpreview: (kind: 'clip' | 'audio', id: number) => void;
     /** Which source the pane is showing, so its block can say so. */
-    /** Whether that one is running, so its button can offer to stop it. */
-    selectionPlaying?: boolean;
     onclip: (
       id: number,
       changes: { head?: number; tail?: number; start?: number; lane?: number; slip?: number }
     ) => void;
-    /** The preview player, kept in step with the playhead both ways. */
-    video?: HTMLMediaElement;
+    /**
+     * The clip's clock, which is where the playhead comes from and goes to.
+     *
+     * It used to be the pane's `<video>`, polled every frame for a time that
+     * was only ever a render's. Pressing the strip now moves the clip, and
+     * whatever is on screen is what follows.
+     */
+    clock: ClipPlayback;
     /**
      * How tall the strip has been dragged to, or null for "as tall as its rows".
      *
@@ -226,15 +217,17 @@
     height?: number | null;
     /** Hands the zoom out to the toolbar, which is drawn a floor above. */
     onzoom?: (tools: ZoomTools | null) => void;
+    /** Whether to draw the overview bar above the strip. */
+    overview?: boolean;
     /**
-     * While an edge is dragged, the moment in that block's own file under it.
+     * Turn a cut into a dissolve, or a dissolve back into a cut.
      *
-     * The render's playhead can't answer "what frame am I cutting on" for a
-     * block that's showing on its own in the pane: the two run on different
-     * clocks. This reports the source time so whoever is showing that file can
-     * park on the frame the edge is currently at.
+     * The marker sits on the join rather than in a menu because that is where
+     * the decision is: this cut, not "the clip's transitions".
      */
-    onscrubsource?: (kind: 'clip' | 'audio', id: number, seconds: number) => void;
+    ondissolve?: (join: Join, on: boolean) => void;
+    /** How long a dissolve runs, so the marker can say what it would make. */
+    dissolveSeconds?: number;
     /** Silences a clip's own audio, so a bed can play over it clean. */
     onmute: (id: number, muted: boolean) => void;
     /** How one shot fills the frame; null gives the decision back to the clip. */
@@ -247,6 +240,8 @@
     onremove: (kind: 'clip' | 'audio', id: number) => void;
     /** Takes a caption off, by its place in the list. Undoable the same way. */
     oncaptionremove: (index: number) => void;
+    /** Takes a placed effect off, by its place in the list. Undoable the same way. */
+    onfxremove: (index: number) => void;
     /**
      * Everything starting at or after `from` moved by `shift` seconds.
      *
@@ -262,14 +257,8 @@
     clips,
     captions,
     anchors,
-    swatches = [],
-    onkeepcolor,
-    inheritedColor = '#ffffff',
-    inheritedBackdrop = null,
-    inheritedEffect = null,
     effects = [],
     oneffects,
-    clipId = null,
     wideEffect = null,
     oncaptions,
     tracks,
@@ -282,12 +271,14 @@
     onfade,
     onremove,
     oncaptionremove,
+    onfxremove,
     onripple,
-    selectionPlaying = false,
-    video,
+    clock,
     height = null,
     onzoom,
-    onscrubsource
+    overview = true,
+    ondissolve,
+    dissolveSeconds = 0.5
   }: Props = $props();
 
   /** Shortest anything may be dragged down to, so it can't vanish. */
@@ -344,6 +335,15 @@
   const LANE_GAP = 5;
   /** Above the first lane and below the last, so nothing sits on the edge. */
   const LANE_INSET = 6;
+  /**
+   * The band of numbers along the top.
+   *
+   * The marks were there all along, as faint lines every few seconds, which
+   * says where the beats of the clip are but never which second you are
+   * looking at. Fourteen pixels buys the numbers, once, above every lane
+   * rather than inside any of them.
+   */
+  const RULER_PX = 14;
 
   /**
    * The clips lane, then the captions, then one per bed — and never fewer than
@@ -474,7 +474,9 @@
   const rowTops = $derived(
     rows.reduce<number[]>((tops, kind, index) => {
       tops.push(
-        index === 0 ? LANE_INSET : tops[index - 1] + (laneHeights[index - 1] ?? 0) + LANE_GAP
+        index === 0
+          ? LANE_INSET + RULER_PX
+          : tops[index - 1] + (laneHeights[index - 1] ?? 0) + LANE_GAP
       );
       return tops;
     }, [])
@@ -489,14 +491,17 @@
    * above the effects. It is meant to be the margin that stops a block touching
    * the edge, and nothing else should be in it.
    */
-  const lanesTop = LANE_INSET;
+  const lanesTop = LANE_INSET + RULER_PX;
 
   const stripHeight = $derived(
-    laneHeights.reduce((total, tall) => total + tall + LANE_GAP, LANE_INSET * 2 - LANE_GAP)
+    laneHeights.reduce(
+      (total, tall) => total + tall + LANE_GAP,
+      LANE_INSET * 2 + RULER_PX - LANE_GAP
+    )
   );
 
   /** How tall the lanes are between them, for anything drawn across all of them. */
-  const lanesHeight = $derived(stripHeight - LANE_INSET * 2);
+  const lanesHeight = $derived(stripHeight - LANE_INSET * 2 - RULER_PX);
 
   /** Where each group of rows begins. */
   const CLIPS_AT = $derived(FX_ROWS);
@@ -929,9 +934,10 @@
    * undraggable — the same trap the beds are in `contentEnd` to avoid. So it
    * lands here instead, where the strip is measured rather than the clip.
    */
-  let visible = $derived(
-    Math.max(contentEnd, ...effects.map((fx) => fx.end ?? 0), drag ? drag.now.end : 0)
-  );
+  /** The clip as it stands, with nothing in mid-gesture counted. */
+  const settled = $derived(Math.max(contentEnd, ...effects.map((fx) => fx.end ?? 0)));
+
+  let visible = $derived(Math.max(settled, drag ? drag.now.end : 0));
 
   let windowWidth = $state(0);
 
@@ -943,8 +949,16 @@
    * emptiest part of the strip permanently on screen — the clip could never
    * fill the frame, however far you wound the wheel back.
    */
+  /*
+   * Measured against the clip as it stands, not against the strip mid-drag.
+   *
+   * `visible` follows a block being dragged past the end, and a floor that
+   * followed it with it re-fitted the whole strip as you dragged: every other
+   * block crept sideways while you held one, and sprang back when you let go.
+   * How far out you may zoom is a fact about the clip, not about the gesture.
+   */
   const minZoom = $derived(
-    windowWidth > 0 ? Math.min(20, windowWidth / Math.max(visible, 0.1)) : 20
+    windowWidth > 0 ? Math.min(20, windowWidth / Math.max(settled, 0.1)) : 20
   );
 
   /** The zoom actually used: yours, or enough to fill the window, whichever
@@ -981,17 +995,38 @@
   const reach = $derived(visible + 80 / pxPerSecond);
 
   /*
-   * The room appears when you take hold, not once you have already moved.
+   * The room appears once the drag is under way — after three pixels, not on
+   * taking hold.
    *
-   * Waiting for movement was a deadlock: `secondsAt` clamps the pointer to the
-   * strip, the strip ended at the content, and at a zoom that fits the clip
-   * there is no screen to the right of it either — so the pointer could not
-   * name a time past the end, the block could not move, and the room that would
-   * have let it never arrived. Eighty pixels at the moment of grabbing costs a
-   * small shift on a block already at the end, and is the only thing that
-   * breaks the circle.
+   * It has to appear before the pointer can name a time past the end:
+   * `secondsAt` clamps to the strip, the strip ends at the content, and at a
+   * zoom that fits the clip there is no screen to the right of it either. That
+   * was read as "open it on pointer-down", which charged every *press* eighty
+   * pixels of extra canvas — and since blocks are placed as a share of it,
+   * everything on the strip slid sideways and slid back on release. Selecting
+   * a block made the whole timeline flinch.
+   *
+   * Three raw pixels of pointer movement don't go through `secondsAt`, so
+   * waiting for them breaks no circle: the gesture is recognised, the room
+   * arrives, and only then does the block need somewhere past the end to go.
    */
-  const canvas = $derived(drag ? Math.max(visible, drag.ceiling) : visible);
+  const canvas = $derived.by(() => {
+    if (!drag || !draggingKind) return visible;
+
+    /*
+     * And only when the thing in hand is actually up against the end.
+     *
+     * The room used to be opened by the gesture rather than by the need for
+     * it — `drag.ceiling` is the end plus eighty pixels, fixed at pointer-down
+     * — so dragging a caption about in the middle of a clip widened the strip
+     * exactly as much as dragging the last block off the end of it. Nothing
+     * out there was wanted, and everything measured against the strip moved
+     * because of it.
+     */
+    const room = 80 / pxPerSecond;
+    if (drag.now.end <= settled - room) return visible;
+    return Math.max(visible, drag.now.end + room);
+  });
 
   const stripWidth = $derived(canvas * pxPerSecond);
 
@@ -1092,7 +1127,50 @@
     return shift ? { ...span, start: span.start + shift, end: span.end + shift } : span;
   }
 
-  const percent = (seconds: number) => `${(seconds / canvas) * 100}%`;
+  /**
+   * A moment, as a distance along the strip.
+   *
+   * Pixels rather than a share of the canvas, which is the whole reason the
+   * strip used to shift under the pointer. A share is a share *of something* —
+   * and the canvas grows while you drag, so every block's percentage meant a
+   * slightly different place from one frame to the next. Everything slid
+   * sideways as the strip stretched and slid back when it stopped: a rubber
+   * band, on every press and all through every drag.
+   *
+   * A pixel is the same pixel whatever the strip is doing. The container is
+   * already `canvas * pxPerSecond` wide, so the two agree at any single
+   * moment; only one of them survives the canvas changing size.
+   */
+  const px = (seconds: number) => `${seconds * pxPerSecond}px`;
+
+  /**
+   * Where one shot gives way to the next.
+   *
+   * Only while nothing is being dragged: a join is a fact about where two
+   * blocks have come to rest, and drawing one that follows a block around
+   * under the pointer would be marking a decision nobody has made yet.
+   */
+  const joins = $derived(
+    draggingKind !== null
+      ? []
+      : joinsOf(
+          clips.map((clip) => ({
+            id: clip.id,
+            start: clip.start,
+            end: clip.end,
+            from: clip.from,
+            to: clip.to,
+            speed: clip.speed,
+            headroom: clip.headroom,
+            tailroom: clip.tailroom,
+            still: clip.still,
+            fadeIn: clip.fadeIn,
+            dissolveHead: clip.dissolveHead,
+            lane: clip.lane
+          })),
+          dissolveSeconds
+        )
+  );
 
   /**
    * The narrowest a block may be drawn, in pixels.
@@ -1103,24 +1181,6 @@
    * pixel wound out that far. Enough here for two edges and something to press
    * between them, so every block stays a thing you can hit.
    */
-  /**
-   * Pressing a control on a block, without the block's row losing its keys.
-   *
-   * `stopPropagation` keeps the press off the strip, which would otherwise
-   * start a pan. `preventDefault` keeps the focus off the button, and that is
-   * the part that matters: focus landing on a tool and staying there meant
-   * Space activated that tool instead of playing — press Remove and then Space
-   * and the undo in the toast fired, putting the block back — while Delete and
-   * the transport keys stepped aside because the focused element was a button.
-   *
-   * The click still fires; only the focus is suppressed. A keyboard user tabs
-   * to the button and presses it as normal, because none of this runs unless
-   * there is a pointer.
-   */
-  function pressTool(e: PointerEvent) {
-    e.stopPropagation();
-    e.preventDefault();
-  }
 
   /*
    * Not for anything you type in.
@@ -1200,7 +1260,8 @@
   const STROKE = 1.5;
 
   const BREAK = '|';
-  const typed = (text: string) => text.replace(/\n/g, BREAK);
+  /** The words as one line, markup aside: a block has room for words only. */
+  const typed = (text: string) => captionText(text ?? '').replace(/\n/g, BREAK);
   const written = (text: string) => text.replace(/\|/g, '\n');
 
   /**
@@ -1278,76 +1339,16 @@
    */
   const TIME = 'shrink-0 tabular-nums opacity-85';
   /** And the rarer question beside it — which part of the file this is. */
-  const RANGE = 'shrink-0 tabular-nums opacity-60';
-
-  const TOOL_PX = 32;
-  const TRIMS_PX = 16;
-  const CHROME_PX = {
-    // Five: fade in, fade out, mute, remove, and the button that opened it.
-    clip: TRIMS_PX + 48 + 5 * TOOL_PX,
-    /*
-     * Five: height, size, effect, remove, and the button that opened the
-     * drawer.
-     *
-     * Colour and backdrop used to be in here as well and have gone to the
-     * dialog, where they were all along. What a drawer is for is the thing you
-     * reach for while arranging — where a caption sits and how big it is, which
-     * you judge against the picture and change again immediately. A colour is a
-     * decision you make once and leave, and it was costing two of the seven
-     * slots and a fifth of the width a block needed before its tools would
-     * open at all.
-     */
-    caption: TRIMS_PX + 5 * TOOL_PX,
-    audio: TRIMS_PX + 6 * TOOL_PX
-  } as const;
-
-  /** Room for the tools and for enough of the block's name to know what it is. */
-  const roomForTools = (kind: keyof typeof CHROME_PX, span: Span) =>
-    (span.end - span.start) * pxPerSecond >= CHROME_PX[kind] + 60;
-
-  /**
-   * Which block has its tools out, if any.
+  /*
+   * Dimmer than the length, but still readable.
    *
-   * One at a time, deliberately. The strip's job is to show a whole edit at
-   * once, and five blocks with their settings open is the crowded row this was
-   * meant to get rid of. Opening one puts the last one away.
+   * It was 60% white over a block, which measures 3.0:1 on the violet of a
+   * caption and 3.0 on a bed's emerald — under the 4.5 that counts as
+   * readable, and this is ten-pixel type. 80% is 4.2 and 4.1, close enough
+   * with the label's own dark shadow underneath it, and still visibly the
+   * quieter of the two numbers.
    */
-  let tools = $state<{ kind: 'clip' | 'caption' | 'audio'; key: number } | null>(null);
-
-  /**
-   * Whether this block's tools are out — and still fit.
-   *
-   * The room was checked when the drawer was opened and then never again, so
-   * dragging a block narrower while its tools were out left five buttons
-   * hanging past the end of a block ten pixels wide, over whatever happened to
-   * be next to it. Asking again on every draw means the drawer puts itself away
-   * when the block can no longer hold it, and comes back if you drag it wide
-   * again — which is what you would expect of a thing that is only ever shown
-   * because there was space for it.
-   *
-   * The span is the one being drawn rather than the one stored, so it follows a
-   * drag in progress instead of waiting for the drop.
-   */
-  const toolsOut = (kind: 'clip' | 'caption' | 'audio', key: number, span?: Span) =>
-    tools?.kind === kind && tools.key === key && (!span || roomForTools(kind, span));
-
-  /**
-   * The button every block ends with.
-   *
-   * Slides the tools out where there is room for them, and opens the dialog
-   * where there isn't — the same gesture either way, so nobody has to know
-   * which of the two they are about to get.
-   */
-  function toggleTools(kind: 'clip' | 'caption' | 'audio', key: number, span: Span) {
-    if (!roomForTools(kind, span)) {
-      opened = { kind, key };
-      return;
-    }
-    tools = toolsOut(kind, key) ? null : { kind, key };
-  }
-
-  /** The block whose dialog is open, when the block itself had no room. */
-  let opened = $state<{ kind: 'clip' | 'caption' | 'audio' | 'fx'; key: number } | null>(null);
+  const RANGE = 'shrink-0 tabular-nums opacity-80';
 
   /** Where a pointer is on the strip, in seconds. */
   function secondsAt(clientX: number): number {
@@ -1418,6 +1419,21 @@
     return out;
   });
 
+  /**
+   * A tick's number, in the shape the step makes sense in.
+   *
+   * Under a second apart, seconds with a decimal — 2.5 reads as a time, 0:02.5
+   * reads as a mistake. At a second or more, minutes and seconds, which is how
+   * anybody says where they are in a clip.
+   */
+  function timecode(second: number): string {
+    if (second < 1) return `${secs(second)}s`;
+    const whole = Math.floor(second);
+    const rest = second - whole;
+    const mmss = `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
+    return rest > 0.01 ? `${mmss}.${Math.round(rest * 10)}` : mmss;
+  }
+
   /** Where a snap landed, so the strip can show what it lined up with. */
   let snapLine = $state<number | null>(null);
 
@@ -1448,57 +1464,16 @@
   // --- playhead ----------------------------------------------------------
 
   /*
-   * Followed with rAF rather than `timeupdate`, which fires about four times a
-   * second — enough to know the time, far too few to draw a playhead moving
-   * along a strip without it stepping.
-   */
-  let playhead = $state(0);
-  /** Whether the clip is actually running, as opposed to parked somewhere. */
-  let playing = $state(false);
-
-  /**
-   * The last time we saw the player report, so the loop can tell its own motion
-   * from ours.
+   * The playhead is the clock, read straight.
    *
-   * The timeline can be longer than the video that is standing in for it — a
-   * bed running past the last shot, or an edit changed since the render — and a
-   * `<video>` clamps any seek to its own length. Assigning the player's time
-   * every frame meant a scrub past the end of the render was overwritten by the
-   * clamp before it could be drawn: the playhead stopped at the end of a *file*
-   * while the strip carried on. Now the player only moves the playhead when the
-   * player is the thing that moved.
+   * This was an rAF loop polling a video element and a pile of guards for the
+   * ways that lied — a file shorter than the clip clamping a scrub, a render
+   * that didn't match the edit, a seek the player quietly refused. None of it
+   * survives the clip owning its own time: there is one number, it is already
+   * updated every frame, and both of us read it.
    */
-  let lastFromPlayer = -1;
-
-  $effect(() => {
-    const player = video;
-    if (!player) return;
-
-    let frame = 0;
-    const follow = () => {
-      const at = player.currentTime;
-      if (at !== lastFromPlayer) {
-        lastFromPlayer = at;
-        playhead = at;
-      }
-      frame = requestAnimationFrame(follow);
-    };
-    frame = requestAnimationFrame(follow);
-
-    const started = () => (playing = true);
-    const stopped = () => (playing = false);
-    player.addEventListener('play', started);
-    player.addEventListener('pause', stopped);
-    player.addEventListener('ended', stopped);
-    playing = !player.paused;
-
-    return () => {
-      cancelAnimationFrame(frame);
-      player.removeEventListener('play', started);
-      player.removeEventListener('pause', stopped);
-      player.removeEventListener('ended', stopped);
-    };
-  });
+  const playhead = $derived(clock.at);
+  const playing = $derived(clock.playing);
 
   /*
    * Follow the playhead when it leaves the window, so a long clip doesn't play
@@ -1552,12 +1527,7 @@
    * four-minute clip's overview to look at a place they don't then want to be.
    */
   function scrubTo(at: number) {
-    playhead = at;
-    if (video) {
-      // Only as far as the file goes; the playhead itself is free to go further.
-      video.currentTime = Math.min(at, video.duration || at);
-      lastFromPlayer = video.currentTime;
-    }
+    clock.seek(at);
 
     const strip = scroller;
     if (strip) strip.scrollLeft = Math.max(0, at * pxPerSecond - strip.clientWidth / 2);
@@ -1679,7 +1649,7 @@
     const start = snap(secondsAt(e.clientX));
     const end = Math.min(canvas, start + fxLength(first));
     if (end <= start) return;
-    opened = { kind: 'fx', key: effects.length };
+    selection.select({ kind: 'fx', index: effects.length });
     // The row you double-clicked in, so a block lands where you asked for it.
     const lane = Math.min(FX_ROWS - 1, Math.max(0, rowAt(e.clientY)));
     oneffects?.([...effects, { id: first.id, start: tidy(start), end: tidy(end), lane }]);
@@ -1708,33 +1678,11 @@
     const end = snap(Math.min(canvas, start + newCaptionLength()));
     if (end - start < MIN_SPAN) return;
 
-    // Focused as soon as it exists: making one is wanting to write in it, and
-    // the alternative is drawing a box and then having to go and click it.
-    focusCaption = captions.length;
+    // Selected as soon as it exists: making one is wanting to write in it, and
+    // the panel beside the strip is where that happens now.
     selection.select({ kind: 'caption', index: captions.length });
     oncaptions([...captions, { start: tidy(start), end: tidy(end), text: '' }]);
   }
-
-  /**
-   * The caption whose field should take the cursor once it arrives.
-   *
-   * A round trip away: the new caption is saved by the page and comes back as a
-   * prop, so there is nothing to focus at the moment it's asked for. The effect
-   * below runs again when the list changes and catches it then.
-   */
-  let focusCaption = $state<number | null>(null);
-
-  $effect(() => {
-    const want = focusCaption;
-    // Read, so this runs again when the new caption lands.
-    captions.length;
-    if (want === null) return;
-
-    const field = lane?.querySelector<HTMLInputElement>(`[data-caption="${want}"]`);
-    if (!field) return;
-    field.focus();
-    focusCaption = null;
-  });
 
   function startPan(e: PointerEvent) {
     if (drag || e.button !== 0 || !lane) return;
@@ -1774,7 +1722,7 @@
       target.removeEventListener('pointerup', finish);
       target.removeEventListener('pointercancel', finish);
 
-      if (!moved && video) video.currentTime = at;
+      if (!moved) clock.seek(at);
     };
 
     target.addEventListener('pointermove', move);
@@ -1796,25 +1744,32 @@
    * shortcut.
    */
   $effect(() => {
-    const player = video;
-    if (!player) return;
-
     const step = (by: number) => {
-      player.currentTime = Math.min(visible, Math.max(0, player.currentTime + by));
+      clock.seek(Math.min(visible, Math.max(0, clock.at + by)));
       followPlayhead();
     };
 
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
+      // Somewhere you can type owns every key it is given.
       const el = e.target as HTMLElement | null;
       if (el?.isContentEditable) return;
-      if (el && /^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(el.tagName)) return;
+      if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
+
+      /*
+       * A focused button owns Space and Enter, and nothing else.
+       *
+       * It used to own the lot, which made the transport unusable the moment
+       * you touched it: click play, press space to pause — the button is still
+       * focused, so Home, End and the arrows all went to it and did nothing.
+       * The one key worth protecting is the one that presses it.
+       */
+      if (el && /^(BUTTON|A)$/.test(el.tagName) && (e.key === ' ' || e.key === 'Enter')) return;
 
       if (e.key === ' ') {
         e.preventDefault();
-        if (player.paused) void player.play().catch(() => {});
-        else player.pause();
+        clock.toggle();
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault();
         step(e.shiftKey ? -1 : -0.1);
@@ -1825,11 +1780,11 @@
         // Backspace means back. It used to remove the selected block, which is
         // a lot to ask of a key people hit to undo a character.
         e.preventDefault();
-        player.currentTime = 0;
+        clock.seek(0);
         followPlayhead();
       } else if (e.key === 'End') {
         e.preventDefault();
-        player.currentTime = visible;
+        clock.seek(visible);
         followPlayhead();
       }
     };
@@ -1841,11 +1796,9 @@
   /**
    * Delete takes the selected block off the strip.
    *
-   * Its own listener rather than a branch in the one above, because that one
-   * only exists while there's a render to drive and this has nothing to do with
-   * playback: a clip with nothing rendered yet still has blocks worth removing.
-   * And when a clip is selected the pane is showing its source, so there is no
-   * render player at all and that effect isn't running.
+   * Its own listener rather than a branch in the one above, because the two
+   * have nothing to do with each other: one is about where the playhead is,
+   * this is about what the strip holds.
    *
    * No confirmation. It is undone from the toast it raises — which is how
    * everything else here is taken back, is quicker than a dialog for the case
@@ -1855,7 +1808,8 @@
     const chosen = selection.current;
     const row = chosen?.kind === 'clip' || chosen?.kind === 'audio' ? chosen : null;
     const caption = chosen?.kind === 'caption' ? chosen.index : null;
-    if (!row && caption === null) return;
+    const fx = chosen?.kind === 'fx' ? chosen.index : null;
+    if (!row && caption === null && fx === null) return;
 
     const onDelete = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -1875,6 +1829,9 @@
       else if (caption !== null) {
         selection.clear();
         oncaptionremove(caption);
+      } else if (fx !== null) {
+        selection.clear();
+        onfxremove(fx);
       }
     };
 
@@ -1992,38 +1949,12 @@
      * it is the one worth showing: the far edge when stretching the end, the
      * near one otherwise.
      */
-    if (video) video.currentTime = drag.grip === 'end' ? now.end : now.start;
+    clock.seek(drag.grip === 'end' ? now.end : now.start);
 
     /*
-     * The same decision, told in the file's own seconds.
-     *
-     * Timeline seconds and source seconds only agree for an untrimmed clip at
-     * 1×, which is the one case nobody is dragging an edge in.
+     * Nothing to tell a bed about: it follows the same clock, so moving the
+     * playhead to the edge has already moved the music with it.
      */
-    if (onscrubsource && drag.grip !== 'move') {
-      if (drag.kind === 'clip') {
-        const clip = clips.find((c) => c.id === drag!.key);
-        if (clip) {
-          onscrubsource(
-            'clip',
-            clip.id,
-            drag.grip === 'end'
-              ? clip.to + (now.end - clip.end) * clip.speed
-              : clip.from + (now.start - clip.start) * clip.speed
-          );
-        }
-      } else if (drag.kind === 'audio') {
-        const track = tracks.find((t) => t.id === drag!.key);
-        if (track) {
-          const head = track.seek + (now.start - track.start);
-          onscrubsource(
-            'audio',
-            track.id,
-            drag.grip === 'end' ? head + (now.end - now.start) : head
-          );
-        }
-      }
-    }
   }
 
   /**
@@ -2091,8 +2022,6 @@
       // The window can't leave the file at either end.
       const shift = Math.max(-slip.from, Math.min(total - slip.to, wanted));
       slip = { ...slip, shift };
-      // Park whatever is showing this file on the frame the window now opens on.
-      onscrubsource?.(kind, key, slip.from + shift);
     };
 
     const finish = () => {
@@ -2104,10 +2033,6 @@
       const settled = slip;
       slip = null;
       if (!settled || settled.shift === 0) return;
-
-      // Where the window now opens, so pressing play plays the new part of the
-      // file rather than resuming inside the old one.
-      onscrubsource?.(kind, key, settled.from + settled.shift);
 
       if (settled.kind === 'clip') onclip(settled.key, { slip: tidy(settled.shift) });
       else onaudio(settled.key, { seekBy: tidy(settled.shift) });
@@ -2217,8 +2142,6 @@
     e.stopPropagation();
 
     const release = beginDragGesture();
-    // Set with the drag, so the band being dragged towards has a row to land in.
-    draggingKind = kind;
     drag = {
       kind,
       key,
@@ -2243,11 +2166,31 @@
     pointerX = e.clientX;
     dragMoved = false;
     const pressedAt = e.clientX;
+    const pressedY = e.clientY;
     edgeFrame = requestAnimationFrame(edgePull);
 
     const move = (ev: PointerEvent) => {
       // A few pixels, so a press that wobbles isn't read as a drag.
       if (Math.abs(ev.clientX - pressedAt) > 3) dragMoved = true;
+
+      /*
+       * The spare row appears once a drag is actually under way.
+       *
+       * It exists so the band being dragged towards has somewhere to land, and
+       * it was opened on pointer-down — so every press on a block, including
+       * the ones that only meant "select this", grew the strip by a row and
+       * shrank it again on release. Which reads as the timeline flinching
+       * every time you touch it.
+       *
+       * Both axes, because dropping a block into the row above is a drag that
+       * need not move sideways at all.
+       */
+      if (
+        !draggingKind &&
+        (Math.abs(ev.clientX - pressedAt) > 3 || Math.abs(ev.clientY - pressedY) > 3)
+      ) {
+        draggingKind = kind;
+      }
       pointerX = ev.clientX;
       pointerY = ev.clientY;
       updateDrag(ev.clientX, ev.clientY);
@@ -2284,14 +2227,15 @@
          */
         if (settled.grip === 'move') {
           if (settled.kind === 'fx') {
-            opened = opened?.kind === 'fx' && opened.key === settled.key ? null : settled;
+            if (selection.has('fx', settled.key)) selection.clear();
+            else selection.select({ kind: 'fx', index: settled.key });
           } else if (settled.kind === 'caption') {
             if (selection.has('caption', settled.key)) selection.clear();
             else selection.select({ kind: 'caption', index: settled.key });
           } else {
             // One owner, so choosing a clip or a bed is what unchooses whatever
             // was chosen before — there is nothing left to clear by hand.
-            onpreview(settled.kind, settled.key, false);
+            onpreview(settled.kind, settled.key);
           }
         }
         return;
@@ -2306,25 +2250,6 @@
         const shift = tidy(now.start - before.start);
         if (shift !== 0) onripple(before.start, shift);
         return;
-      }
-
-      /*
-       * Park the block's own player on where it now begins.
-       *
-       * Letting go of a block you have just retimed and pressing play should
-       * play the shot, not resume from wherever it happened to be paused
-       * before you moved it. The paused position belonged to the old edit; the
-       * edit has changed underneath it.
-       */
-      if (onscrubsource) {
-        const head = settled.grip === 'start' ? now.start - before.start : 0;
-        if (settled.kind === 'clip') {
-          const clip = clips.find((c) => c.id === settled.key);
-          if (clip) onscrubsource('clip', clip.id, clip.from + head * clip.speed);
-        } else if (settled.kind === 'audio') {
-          const track = tracks.find((t) => t.id === settled.key);
-          if (track) onscrubsource('audio', track.id, track.seek + head);
-        }
       }
 
       if (settled.kind === 'clip') {
@@ -2479,23 +2404,6 @@
   {/if}
 {/snippet}
 
-{#snippet playButton(kind: 'clip' | 'audio', id: number, label: string)}
-  <!-- Pause when it's this one that's running. A button that only ever starts
-       something means the way to stop it is to find the player it started, and
-       the whole point of pressing it here was not having to look there. -->
-  {@const running = selectionPlaying && selection.has(kind, id)}
-  <button
-    type="button"
-    onpointerdown={pressTool}
-    onclick={() => onpreview(kind, id, true)}
-    title={running ? `Pause ${label}` : `Play ${label} on its own`}
-    aria-label={running ? `Pause ${label}` : `Play ${label} on its own`}
-    class="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded bg-white/10 transition-colors hover:bg-white/25"
-  >
-    <Icon src={running ? Pause : Play} size={`${ICON}`} />
-  </button>
-{/snippet}
-
 <!-- The strip, the captions over it, and the music under them: one stack, one
      time axis, so what lines up on screen lines up in the render.
 
@@ -2518,21 +2426,23 @@
 <div class="min-w-0">
   <!-- Above the strip, not under it: under it, this scrolled out of reach the
        moment the strip was taller than its box, and the overview is wanted most
-       exactly then. -->
-  <div style="padding-left: {GUTTER}px">
-    <TimelineMinimap
-      {canvas}
-      live={Boolean(drag) || panning}
-      {clips}
-      {captions}
-      {playhead}
-      effects={effects.map((fx) => ({ start: fx.start ?? 0, end: fx.end ?? duration }))}
-      {viewFrom}
-      {viewWidth}
-      tracks={tracks.map((t) => ({ start: t.start, end: t.end ?? duration }))}
-      onscrub={scrubTo}
-    />
-  </div>
+       exactly then. Put away when the zoom shows everything anyway. -->
+  {#if overview}
+    <div style="padding-left: {GUTTER}px">
+      <TimelineMinimap
+        {canvas}
+        live={Boolean(drag) || panning}
+        {clips}
+        {captions}
+        {playhead}
+        effects={effects.map((fx) => ({ start: fx.start ?? 0, end: fx.end ?? duration }))}
+        {viewFrom}
+        {viewWidth}
+        tracks={tracks.map((t) => ({ start: t.start, end: t.end ?? duration }))}
+        onscrub={scrubTo}
+      />
+    </div>
+  {/if}
   <!-- The gutter sits beside the scroller rather than inside it, so it stays
        put while the strip pans under it — inside, it would scroll away with
        the first block. -->
@@ -2544,11 +2454,11 @@
     >
       {#each laneBands as band, index (band.label)}
         <div
-          class="absolute right-0 left-0 flex items-center justify-center text-gray-600"
+          class="absolute right-0 left-0 flex items-center justify-center text-gray-500"
           style="top: {band.top}px; height: {band.height}px"
           title={band.label}
         >
-          <Icon src={band.icon} size="14" />
+          <Icon src={band.icon} size="14" solid />
         </div>
         <!-- A rule where the lanes divide, so the icons read as four groups
              rather than four marks at four heights. Drawn down the middle of
@@ -2557,7 +2467,7 @@
              by the same edge rather than by two that nearly agree. -->
         {#if index < laneBands.length - 1}
           <div
-            class="absolute right-1 left-1 h-px bg-white/[0.08]"
+            class="bg-raise/[0.08] absolute right-1 left-1 h-px"
             style="top: {Math.round(band.top + band.height + LANE_GAP / 2)}px"
           ></div>
         {/if}
@@ -2594,9 +2504,18 @@
          counting. Kept faint: it's a ruler, not content. -->
         {#each ticks as second (second)}
           <div
-            class="pointer-events-none absolute w-px bg-white/5"
-            style="left: {percent(second)}; top: {lanesTop}px; height: {lanesHeight}px"
+            class="bg-raise/5 pointer-events-none absolute w-px"
+            style="left: {px(second)}; top: {lanesTop}px; height: {lanesHeight}px"
           ></div>
+          <!-- Left of its own mark rather than centred on it: a number centred
+               on zero hangs off the start of the strip, and one centred on the
+               last mark hangs off the end. -->
+          <span
+            class="pointer-events-none absolute pl-1 font-mono text-[10px] leading-none text-gray-500 tabular-nums"
+            style="left: {px(second)}; top: {LANE_INSET - 2}px"
+          >
+            {timecode(second)}
+          </span>
         {/each}
 
         <!-- Which row is for what, said in colour rather than in a column of words
@@ -2616,7 +2535,7 @@
         {#if visible > duration + 0.05}
           <div
             class="pointer-events-none absolute inset-y-0 bg-gray-950/60"
-            style="left: {percent(duration)}; right: 0"
+            style="left: {px(duration)}; right: 0"
           ></div>
         {/if}
 
@@ -2625,7 +2544,7 @@
             class="pointer-events-none absolute inset-x-0 rounded-sm {row < CLIPS_AT
               ? 'bg-black/25'
               : row < CAPTIONS_AT
-                ? 'bg-white/[0.03]'
+                ? 'bg-raise/[0.03]'
                 : row < AUDIO_AT
                   ? 'bg-violet-500/[0.07]'
                   : 'bg-emerald-500/[0.07]'}"
@@ -2655,7 +2574,7 @@
             <!-- Behind both rows: it is under everything in the lane rather
                  than beside it. -->
             <div
-              class="pointer-events-none absolute inset-x-0 flex items-center rounded-sm border border-white/10 bg-black/40 px-1.5 text-[10px] tracking-wide text-gray-400 uppercase"
+              class="pointer-events-none absolute inset-x-0 flex items-center rounded-sm border border-white/10 bg-black/40 px-1.5 text-[10px] tracking-wide text-white/70 uppercase"
               style="top: {laneTop(0)}px; height: {laneTop(FX_ROWS - 1) +
                 LANE_HEIGHTS.fx -
                 laneTop(0)}px"
@@ -2681,11 +2600,11 @@
             data-block
             class="lane-label absolute flex items-center overflow-hidden rounded border border-white/20 bg-black/75 text-[11px] {drag?.kind ===
               'fx' && drag.key === index
-              ? 'ring-2 ring-white/50'
-              : opened?.kind === 'fx' && opened.key === index
-                ? 'ring-2 ring-white/35'
+              ? 'ring-raise ring-2'
+              : selection.has('fx', index)
+                ? 'ring-raise/80 ring-2'
                 : ''}"
-            style="left: {percent(at.start)}; width: {percent(at.end - at.start)}; min-width: {burst
+            style="left: {px(at.start)}; width: {px(at.end - at.start)}; min-width: {burst
               ? MIN_BURST_PX
               : MIN_BLOCK_PX}px; top: {laneTop(
               drag?.kind === 'fx' && drag.key === index ? drag.lane : (fx.lane ?? 0)
@@ -2709,7 +2628,7 @@
               type="button"
               aria-label="Move {effect?.label ?? fx.id}"
               onpointerdown={(e) => startDrag(e, 'fx', index, 'move', fxSpan(fx), fx.lane ?? 0)}
-              class="flex h-full min-w-0 flex-1 cursor-grab items-center gap-1 px-1.5 text-left text-white active:cursor-grabbing"
+              class="flex h-full min-w-0 flex-1 cursor-grab items-center gap-1 px-1.5 text-left text-gray-50 active:cursor-grabbing"
             >
               <span class="truncate">{effect?.label ?? fx.id}</span>
             </button>
@@ -2724,6 +2643,61 @@
           </div>
         {/each}
 
+        <!-- The joins, drawn on the cut they belong to.
+             A dissolve is made of the frames either side — the tail the first
+             shot was trimmed off and the head the second one was — so the clip
+             is exactly as long with one as without. That is why this is a mark
+             on the cut and not a block taking up room of its own. -->
+        {#if ondissolve}
+          {#each joins as join (`${join.from.id}-${join.to.id}`)}
+            {@const none = join.room === 0}
+            <!-- Named for the cut, because that is what the mark is on.
+                 "Dissolve into the next shot" read as a question — next
+                 relative to what? The mark sits between two blocks and belongs
+                 to neither, so both states describe the join itself and mirror
+                 each other. -->
+            <button
+              type="button"
+              onpointerdown={(e) => {
+                /*
+                 * Kept from the lane underneath.
+                 *
+                 * The lane takes pointer capture to pan the strip, and a
+                 * captured pointer has its `click` fired at the capturing
+                 * element rather than at what was pressed — so this button's
+                 * own `onclick` never ran, and pressing the mark did nothing
+                 * at all. Everything else on the strip handles `pointerdown`
+                 * itself and so never reaches the lane; this is the one
+                 * control that didn't.
+                 */
+                e.stopPropagation();
+              }}
+              onclick={() => ondissolve?.(join, !join.dissolving)}
+              disabled={none && !join.dissolving}
+              aria-pressed={join.dissolving}
+              title={join.dissolving
+                ? `Dissolve, ${join.overlap.toFixed(1)}s — press for a straight cut`
+                : none
+                  ? 'Neither shot has footage spare — trim the end of one, or the start of the next'
+                  : 'Straight cut — press for a dissolve'}
+              class="absolute z-20 flex h-5 w-5 -translate-x-1/2 items-center justify-center rounded-full border text-[9px] transition-colors disabled:cursor-not-allowed disabled:opacity-30 {join.dissolving
+                ? 'border-violet-300/70 bg-violet-500 text-white'
+                : 'border-gray-500/70 bg-gray-800 text-gray-300 hover:bg-gray-700'}"
+              style="left: {px(join.at)}; top: {laneTop(
+                CLIPS_AT + Math.max(join.from.lane, join.to.lane)
+              ) +
+                LANE_HEIGHTS.clip -
+                10}px"
+            >
+              <!-- Two triangles meeting: the shape of the thing it makes. -->
+              <svg viewBox="0 0 12 12" class="h-3 w-3" aria-hidden="true">
+                <path d="M1 10 L6 2 L6 10 Z" fill="currentColor" opacity="0.9" />
+                <path d="M11 10 L6 2 L6 10 Z" fill="currentColor" opacity="0.5" />
+              </svg>
+            </button>
+          {/each}
+        {/if}
+
         {#each clips as clip (clip.id)}
           {@const at = shown('clip', clip.id, clipSpan(clip))}
           {@const win = clipWindow(clip, at)}
@@ -2737,7 +2711,6 @@
            beside it did not — they went on centring themselves against the full
            height and sat low against everything else on the block. -->
           {@const rail = railed(win, clip.length) ? 8 : 0}
-          {@const running = selectionPlaying && selection.has('clip', clip.id)}
           <!-- What is playing, which is the one thing the old contact sheet
            couldn't say — and matters most where a filmstrip is least use: the
            same shot three times over, three identical stretches of picture.
@@ -2747,13 +2720,13 @@
            what a sequence means and what the render does. -->
           <div
             data-block
-            class="lane-label absolute flex items-center overflow-hidden rounded border border-gray-500/70 bg-gray-700/70 text-[12px] {drag?.kind ===
+            class="lane-label bg-block/85 absolute flex items-center overflow-hidden rounded border border-white/20 text-[12px] {drag?.kind ===
               'clip' && drag.key === clip.id
-              ? 'ring-2 ring-gray-300'
+              ? 'ring-raise ring-2'
               : selection.has('clip', clip.id)
-                ? 'ring-2 ring-violet-400'
+                ? 'ring-raise/80 ring-2'
                 : ''}"
-            style="left: {percent(at.start)}; width: {percent(
+            style="left: {px(at.start)}; width: {px(
               at.end - at.start
             )}; min-width: {MIN_BLOCK_PX}px; top: {laneTop(
               CLIPS_AT + (drag?.kind === 'clip' && drag.key === clip.id ? drag.lane : clip.lane)
@@ -2783,23 +2756,6 @@
               {:else}
                 <div class="h-full w-full rounded bg-white/10"></div>
               {/if}
-              <button
-                type="button"
-                onpointerdown={pressTool}
-                onclick={() => onpreview('clip', clip.id, true)}
-                title={running ? `Pause ${clip.label}` : `Play ${clip.label} on its own`}
-                aria-label={running ? `Pause ${clip.label}` : `Play ${clip.label} on its own`}
-                class="absolute inset-0 flex items-center justify-center rounded bg-black/25 transition-colors hover:bg-black/50"
-              >
-                <!-- A disc behind the glyph rather than a scrim over the whole
-                 frame: the picture is the reason the thumbnail got bigger, and
-                 dimming all of it to label a corner of it undoes that. -->
-                <span
-                  class="flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white"
-                >
-                  <Icon src={running ? Pause : Play} size="12" />
-                </span>
-              </button>
             </div>
 
             <button
@@ -2828,129 +2784,6 @@
                They used to sit on every block at every width, which is five
                things to look past on a strip you are reading, and a row of
                them on a short block that hung off its own end. -->
-            {#if toolsOut('clip', clip.id, at)}
-              <div class="flex items-center" transition:slide={SLIDE}>
-                <!-- Said outright, the way a caption says its own.
-
-               A single menu was fewer pixels and one more press for everything
-               behind it, while a caption right underneath showed its whole set
-               as icons. Two rows of blocks answering the same question two
-               different ways is worse than either answer. -->
-                <!-- Fades on the shot, beside its mute, because a bed has had
-                     exactly these two all along and a shot is the same kind of
-                     thing: a piece of material with two ends.
-
-                     They fade opacity rather than brightness, so what they look
-                     like depends on what is underneath. Over nothing they are a
-                     fade from and to black; over another shot they dissolve —
-                     which makes a crossfade two blocks overlapping, rather than
-                     a third thing to go and find. -->
-                {#if onfade}
-                  <button
-                    type="button"
-                    onpointerdown={pressTool}
-                    onclick={() => onfade(clip.id, { fadeIn: !clip.fadeIn })}
-                    title={clip.fadeIn ? 'Fades up at the start' : 'Starts on a cut'}
-                    aria-label="Fade {clip.label} in"
-                    aria-pressed={clip.fadeIn}
-                    class="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors {clip.fadeIn
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'bg-black/40 text-white/55 hover:bg-black/60 hover:text-white'}"
-                  >
-                    <!-- A wedge opening to the right: nothing, then picture. -->
-                    <svg width={ICON} height={ICON} viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M4 19 L20 5 L20 19 Z" fill="currentColor" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    onpointerdown={pressTool}
-                    onclick={() => onfade(clip.id, { fadeOut: !clip.fadeOut })}
-                    title={clip.fadeOut ? 'Fades away at the end' : 'Ends on a cut'}
-                    aria-label="Fade {clip.label} out"
-                    aria-pressed={clip.fadeOut}
-                    class="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors {clip.fadeOut
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'bg-black/40 text-white/55 hover:bg-black/60 hover:text-white'}"
-                  >
-                    <!-- And the same wedge the other way round. -->
-                    <svg width={ICON} height={ICON} viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M20 19 L4 5 L4 19 Z" fill="currentColor" />
-                    </svg>
-                  </button>
-                {/if}
-                <!-- Framing: how it sits in the frame, how far in, and
-                     whether it drifts. A door rather than a switch, because a
-                     zoom is a number and the tool row is for things that are on
-                     or off — and because the row itself only appears on a block
-                     wide enough for it. Same reason a caption's effect has its
-                     own button: the widest block must not be the one whose
-                     settings cannot be reached. -->
-                <button
-                  type="button"
-                  onpointerdown={pressTool}
-                  onclick={() => (opened = { kind: 'clip', key: clip.id })}
-                  title="How it sits in the frame"
-                  aria-label="Framing for {clip.label}"
-                  class="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors {clip.fit ===
-                    'crop' ||
-                  clip.pan ||
-                  (clip.zoom ?? 1) > 1
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'bg-black/40 text-white/55 hover:bg-black/60 hover:text-white'}"
-                >
-                  <!-- A frame, with the picture running past its edges. -->
-                  <svg width={ICON} height={ICON} viewBox="0 0 24 24" aria-hidden="true">
-                    <rect
-                      x="4"
-                      y="6"
-                      width="16"
-                      height="12"
-                      rx="1.5"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="1.8"
-                    />
-                    <path
-                      d="M2 12h4M18 12h4"
-                      stroke="currentColor"
-                      stroke-width="1.8"
-                      stroke-linecap="round"
-                    />
-                  </svg>
-                </button>
-                <!-- A still has no sound to silence, so it isn't offered the
-                     switch. Muting is about a shot's own recorded audio, and
-                     a picture never had any — the renderer gives it silence
-                     whatever this said. -->
-                {#if !clip.still}
-                  <button
-                    type="button"
-                    onpointerdown={pressTool}
-                    onclick={() => onmute(clip.id, !clip.muted)}
-                    title={clip.muted ? 'Its own sound is off' : 'Its own sound is on'}
-                    aria-label="{clip.muted ? 'Unmute' : 'Mute'} {clip.label}"
-                    aria-pressed={clip.muted}
-                    class="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors {clip.muted
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'bg-black/40 text-white/55 hover:bg-black/60 hover:text-white'}"
-                  >
-                    <Icon src={clip.muted ? SpeakerXMark : SpeakerWave} size={`${ICON}`} />
-                  </button>
-                {/if}
-                <button
-                  type="button"
-                  onpointerdown={pressTool}
-                  onclick={() => onremove('clip', clip.id)}
-                  title="Take it off the timeline"
-                  aria-label="Remove {clip.label}"
-                  class="mr-1 ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded bg-black/35 text-white transition-colors hover:bg-red-500/60"
-                >
-                  <Icon src={XMark} size={`${ICON}`} />
-                </button>
-              </div>
-            {/if}
-            {@render toolsButton('clip', clip.id, clipSpan(clip), clip.label)}
             <!-- Outside the drawer, like every other block's.
 
                It was in there with the mute and the remove, which is where a
@@ -2977,11 +2810,11 @@
             data-block
             class="lane-label absolute flex items-center overflow-hidden rounded border border-violet-400/70 bg-violet-600/80 text-[12px] shadow {drag?.kind ===
               'caption' && drag.key === index
-              ? 'ring-2 ring-violet-300'
+              ? 'ring-raise ring-2'
               : selection.has('caption', index)
-                ? 'ring-2 ring-violet-200'
+                ? 'ring-raise/80 ring-2'
                 : ''}"
-            style="left: {percent(at.start)}; width: {percent(
+            style="left: {px(at.start)}; width: {px(
               at.end - at.start
             )}; min-width: {MIN_CAPTION_PX}px; top: {laneTop(
               CAPTIONS_AT +
@@ -3008,62 +2841,27 @@
                sentence, so it falls back to saying when it is — which is the
                part a narrow block can still be useful about. -->
             {#if roomToType(at)}
-              <!-- A handle of its own, because the body is now a text field and a
-                 field can't also be something you drag: pressing into words to
-                 move a block would select them instead. -->
+              <!-- The words, read rather than typed, and the block's own handle.
+                   They were an input, so pressing a caption put a cursor in it
+                   instead of selecting it — and a press on a block means "this
+                   one" everywhere else on the strip. Which also retires the
+                   little grip beside them: the body could not be dragged while
+                   it was a field, and now it can. A caption is written in the
+                   panel, where there is room for two lines and everything else
+                   it can be told. -->
               <button
                 type="button"
-                aria-label="Move caption {index + 1}"
+                data-caption={index}
+                aria-label="Caption {index + 1}: {typed(caption.text) || 'empty'}"
+                title="{typed(caption.text) || 'Say something'} · {secs(at.start)}–{secs(at.end)}"
                 onpointerdown={(e) =>
                   startDrag(e, 'caption', index, 'move', captionSpan(caption), caption.lane ?? 0)}
-                class="ml-1 flex h-7 w-7 shrink-0 cursor-grab items-center justify-center rounded bg-black/20 transition-colors hover:bg-black/40 active:cursor-grabbing"
+                class="h-full min-w-0 flex-1 cursor-grab truncate px-1 text-left text-[12px] active:cursor-grabbing {caption.text
+                  ? 'text-gray-50'
+                  : 'text-gray-50/40'}"
               >
-                <!-- Six dots, drawn here because no icon set has a grip and the
-                   nearest thing in this one — two stacked lines — reads as an
-                   equals sign. Filled dots on the same 24 box as everything
-                   else, at a size that leaves the handle some air: it is the
-                   quietest thing on the block and should look it. -->
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  class="text-white/60"
-                  aria-hidden="true"
-                >
-                  <circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" />
-                  <circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" />
-                  <circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" />
-                </svg>
+                {typed(caption.text) || 'Say something'}
               </button>
-              <input
-                value={typed(caption.text)}
-                placeholder="Say something"
-                aria-label="Caption {index + 1} text"
-                title="{typed(caption.text) || 'Say something'} · {secs(at.start)}–{secs(at.end)}"
-                data-caption={index}
-                onpointerdown={(e) => e.stopPropagation()}
-                onfocus={() => selection.select({ kind: 'caption', index })}
-                onkeydown={(e) => {
-                  const field = e.currentTarget as HTMLInputElement;
-                  // Enter is "done"; with shift it's a second line.
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    if (e.shiftKey) insertAtCursor(field, BREAK);
-                    else field.blur();
-                  }
-                  e.stopPropagation();
-                }}
-                onchange={(e) =>
-                  oncaptions(
-                    captions.map((c, i) =>
-                      i === index
-                        ? { ...c, text: written((e.currentTarget as HTMLInputElement).value) }
-                        : c
-                    )
-                  )}
-                class="h-full min-w-0 flex-1 bg-transparent px-1 text-[12px] text-white placeholder:text-white/40 focus:outline-none"
-              />
               {#if (at.end - at.start) * pxPerSecond >= 260}
                 <span class="{TIME} px-1">
                   {secs(at.start)}–{secs(at.end)}
@@ -3086,134 +2884,6 @@
                third of the strip's height to say it. The icon is the frame with
                the line drawn where the caption will be, so it reports as well
                as sets. -->
-            {#if toolsOut('caption', index, at)}
-              <div class="flex items-center" transition:slide={SLIDE}>
-                <button
-                  type="button"
-                  onpointerdown={pressTool}
-                  onclick={() => cycleAnchor(index)}
-                  title="Caption sits at the {anchor.label.toLowerCase()} — click to move it"
-                  aria-label="Caption {index + 1} sits at the {anchor.label.toLowerCase()}"
-                  class="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded bg-black/40 text-white transition-colors hover:bg-black/60"
-                >
-                  <!-- Drawn here rather than taken from the set, because none of
-                   them is this: a frame with the caption's line in it, where the
-                   caption's line will be. Lucide's align icons say "aligned to
-                   the top" in the abstract; this says where the words go, which
-                   is the question being asked. On the library's grid all the
-                   same — 24, stroke 2, round ends — so it sits in the row
-                   without announcing itself. -->
-                  <svg
-                    width={ICON}
-                    height={ICON}
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width={STROKE}
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <rect x="2.75" y="2.75" width="18.5" height="18.5" rx="2.5" />
-                    <line
-                      x1="7"
-                      x2="17"
-                      y1={anchor.id === 'top' ? 7.5 : anchor.id === 'middle' ? 12 : 16.5}
-                      y2={anchor.id === 'top' ? 7.5 : anchor.id === 'middle' ? 12 : 16.5}
-                    />
-                  </svg>
-                </button>
-                <!-- What colour it's in.
-
-             The swatch shows the colour the caption is actually drawn in, its
-             own or the clip's, so a row of blocks reads as the row of captions
-             does. Auto in the picker gives the clip its say back — without it,
-             touching the colour once would cut that caption off from the brand
-             for good.
-
-             `stopPropagation` on the way in because the picker sits inside a
-             block you can drag: without it, reaching for the wheel would pick
-             the caption up and slide it. -->
-
-                <!-- And the panel behind it, which is a colour with the same three
-               ways out: this one, the clip's, or none at all.
-
-               A second wheel rather than a switch because the two are read
-               together — a caption is legible or not by what its text and its
-               panel do to each other, and picking one while the other is a
-               toggle somewhere else is how you end up with yellow on yellow. -->
-
-                <!-- Small or big, next to where it sits: the two things about a caption
-             that are decided by looking at the picture rather than by reading
-             the words. Lit when it's the big one. -->
-                <button
-                  type="button"
-                  onpointerdown={pressTool}
-                  onclick={() =>
-                    oncaptions(
-                      captions.map((c, i) => (i === index ? { ...c, headline: !c.headline } : c))
-                    )}
-                  title={caption.headline
-                    ? 'Big — click for normal size'
-                    : 'Normal — click for big'}
-                  aria-label="Caption {index + 1} size"
-                  aria-pressed={Boolean(caption.headline)}
-                  class="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors {caption.headline
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'bg-black/40 text-white/55 hover:bg-black/60 hover:text-white'}"
-                >
-                  <!-- No icon set draws "Aa" — heroicons included — and a letter
-                   saying its own size is clearer than anything that would stand
-                   in for it. Sized off ICON so it grows with the row. -->
-                  <span
-                    class="leading-none font-semibold tracking-tight"
-                    style="font-size: {ICON}px"
-                  >
-                    <span class="text-[0.6em]">a</span><span>A</span>
-                  </span>
-                </button>
-                <!-- Removing it, said outright.
-
-             Delete on the keyboard only reaches a caption that isn't being
-             typed in, and clicking one puts the cursor in it — so the obvious
-             gesture and the obvious key pointed at each other. A button on the
-             block has neither problem, and is the same answer the rows in Media
-             give. -->
-                <!-- The way to the effect picker, which is too big to live in
-                     a drawer.
-
-                     The drawer and the dialog were two routes to the same
-                     settings, so the tools button could send you down whichever
-                     one fitted and nobody had to know which they were getting.
-                     Effects broke that: they only exist in the dialog, and the
-                     dialog only opens when a block is too narrow for the
-                     drawer — so a caption wide enough to work with comfortably
-                     was the one caption whose effect you could not reach. -->
-                <button
-                  type="button"
-                  onpointerdown={pressTool}
-                  onclick={() => (opened = { kind: 'caption', key: index })}
-                  title="Entrance and damage"
-                  aria-label="Caption {index + 1} effect"
-                  class="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-black/35 text-white transition-colors hover:bg-black/60"
-                >
-                  <Icon src={Sparkles} size={`${ICON}`} />
-                </button>
-                <button
-                  type="button"
-                  onpointerdown={pressTool}
-                  onclick={() => {
-                    selection.clear();
-                    oncaptionremove(index);
-                  }}
-                  title="Remove this caption"
-                  aria-label="Remove caption {index + 1}"
-                  class="mr-1 ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded bg-black/35 text-white transition-colors hover:bg-red-500/60"
-                >
-                  <Icon src={XMark} size={`${ICON}`} />
-                </button>
-              </div>
-            {/if}
-            {@render toolsButton('caption', index, captionSpan(caption), `caption ${index + 1}`)}
             <button
               type="button"
               aria-label="Caption {index + 1} end"
@@ -3237,11 +2907,11 @@
             data-block
             class="lane-label absolute isolate flex items-center overflow-hidden rounded border border-emerald-400/60 bg-emerald-700/75 text-[12px] {drag?.kind ===
               'audio' && drag.key === track.id
-              ? 'ring-2 ring-emerald-300'
+              ? 'ring-raise ring-2'
               : selection.has('audio', track.id)
-                ? 'ring-2 ring-emerald-200'
+                ? 'ring-raise/80 ring-2'
                 : ''}"
-            style="left: {percent(at.start)}; width: {percent(
+            style="left: {px(at.start)}; width: {px(
               at.end - at.start
             )}; min-width: {MIN_BLOCK_PX}px; top: {laneTop(
               AUDIO_AT +
@@ -3282,7 +2952,6 @@
                 startDrag(e, 'audio', track.id, 'start', trackSpan(track), track.lane ?? 0)}
               class="h-full w-2 shrink-0 cursor-ew-resize rounded-l bg-emerald-300/80 hover:bg-emerald-200"
             ></button>
-            {@render playButton('audio', track.id, track.label)}
             <button
               type="button"
               aria-label="Move {track.label}"
@@ -3295,68 +2964,6 @@
             >
               {@render blockText(track.label, at)}
             </button>
-            {#if toolsOut('audio', track.id, at)}
-              <div class="flex items-center" transition:slide={SLIDE}>
-                <!-- Fades, ducking and removal, said the way a caption and a clip say
-               theirs. A bed has more to say than either, which is exactly why it
-               had a menu — but a menu is a place things go to be forgotten, and
-               these three are the whole of what a bed does. -->
-                {#each [{ key: 'fadeIn' as const, on: track.fadeIn, label: 'Fade in', d: 'M4 18h16V8z' }, { key: 'fadeOut' as const, on: track.fadeOut, label: 'Fade out', d: 'M4 18h16L4 8z' }] as f, i (f.key)}
-                  <button
-                    type="button"
-                    onpointerdown={pressTool}
-                    onclick={() => onaudio(track.id, { [f.key]: !f.on })}
-                    title="{f.label} — {f.on ? 'on' : 'off'}"
-                    aria-label="{f.label} for {track.label}"
-                    aria-pressed={f.on}
-                    class="{i === 0
-                      ? 'ml-2'
-                      : 'ml-1'} flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors {f.on
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'bg-black/40 text-white/55 hover:bg-black/60 hover:text-white'}"
-                  >
-                    <!-- Kept hand-drawn, like the placement icon: a ramp is what a
-                   fade looks like, and no icon set draws one. Filled rather
-                   than stroked, but on the same box as the rest so the row
-                   stays a row. -->
-                    <svg
-                      width={ICON}
-                      height={ICON}
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      aria-hidden="true"
-                    >
-                      <path d={f.d} />
-                    </svg>
-                  </button>
-                {/each}
-                <button
-                  type="button"
-                  onpointerdown={pressTool}
-                  onclick={() => onaudio(track.id, { duck: !track.duck })}
-                  title="Duck under speech — {track.duck ? 'on' : 'off'}"
-                  aria-label="Duck {track.label} under speech"
-                  aria-pressed={track.duck}
-                  class="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors {track.duck
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'bg-black/40 text-white/55 hover:bg-black/60 hover:text-white'}"
-                >
-                  <!-- A level that dips and comes back, which is what ducking is. -->
-                  <Icon src={MusicalNote} size={`${ICON}`} />
-                </button>
-                <button
-                  type="button"
-                  onpointerdown={pressTool}
-                  onclick={() => onremove('audio', track.id)}
-                  title="Take it off the timeline"
-                  aria-label="Remove {track.label}"
-                  class="mr-1 ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded bg-black/35 text-white transition-colors hover:bg-red-500/60"
-                >
-                  <Icon src={XMark} size={`${ICON}`} />
-                </button>
-              </div>
-            {/if}
-            {@render toolsButton('audio', track.id, trackSpan(track), track.label)}
             <button
               type="button"
               aria-label="{track.label} end"
@@ -3373,7 +2980,7 @@
            pulling it is explained rather than mysterious. -->
           <div
             class="pointer-events-none absolute inset-y-0 w-px bg-amber-300/80"
-            style="left: {percent(snapLine)}"
+            style="left: {px(snapLine)}"
           ></div>
         {/if}
 
@@ -3388,93 +2995,19 @@
            as the clip is room you'd think was part of it. -->
           <div
             class="pointer-events-none absolute inset-y-0 border-l border-dashed border-white/20 bg-black/40"
-            style="left: {percent(duration)}; right: 0"
+            style="left: {px(duration)}; right: 0"
           ></div>
         {/if}
 
         <!-- Drawn last so it rides over everything it's measuring. -->
         <div
-          class="pointer-events-none absolute inset-y-0 w-px bg-white shadow-[0_0_4px_rgba(0,0,0,0.9)]"
-          style="left: {percent(Math.min(playhead, visible))}"
+          class="pointer-events-none absolute inset-y-0 w-px bg-gray-50 shadow-[0_0_4px_rgba(0,0,0,0.9)]"
+          style="left: {px(Math.min(playhead, visible))}"
         ></div>
       </div>
     </div>
   </div>
 </div>
-
-<!-- Outside the strip, so a modal isn't a child of something that pans. -->
-{#if opened?.kind === 'fx' && effects[opened.key]}
-  {@const index = opened.key}
-  <FxDialog
-    effect={effects[index]}
-    {index}
-    {clipId}
-    {swatches}
-    onchange={(patch) =>
-      oneffects?.(effects.map((fx, i) => (i === index ? { ...fx, ...patch } : fx)))}
-    onremove={() => {
-      oneffects?.(effects.filter((_, i) => i !== index));
-      opened = null;
-    }}
-    onclose={() => (opened = null)}
-  />
-{/if}
-
-{#if opened?.kind === 'caption' && captions[opened.key]}
-  {@const caption = captions[opened.key]}
-  {@const index = opened.key}
-  <CaptionDialog
-    {caption}
-    {index}
-    {anchors}
-    anchor={anchors[anchorOf(caption)].id}
-    {swatches}
-    {inheritedColor}
-    {inheritedBackdrop}
-    {inheritedEffect}
-    {onkeepcolor}
-    onchange={(patch) => oncaptions(captions.map((c, i) => (i === index ? { ...c, ...patch } : c)))}
-    onremove={() => oncaptionremove(index)}
-    onclose={() => (opened = null)}
-  />
-{/if}
-
-<!-- A shot or a bed, same shell, when their blocks were too small as well. -->
-{#if opened?.kind === 'clip'}
-  {@const clip = clips.find((c) => c.id === opened?.key)}
-  {#if clip}
-    <TrackDialog
-      kind="clip"
-      label={clip.label}
-      muted={clip.muted}
-      still={clip.still}
-      fit={clip.fit}
-      zoom={clip.zoom}
-      pan={clip.pan}
-      onfit={(fit: 'crop' | 'black' | 'blur' | null) => onfit(clip.id, fit)}
-      onframing={(patch: { zoom?: number; pan?: boolean }) => onframing(clip.id, patch)}
-      onmute={(muted) => onmute(clip.id, muted)}
-      onremove={() => onremove('clip', clip.id)}
-      onclose={() => (opened = null)}
-    />
-  {/if}
-{/if}
-
-{#if opened?.kind === 'audio'}
-  {@const track = tracks.find((t) => t.id === opened?.key)}
-  {#if track}
-    <TrackDialog
-      kind="audio"
-      label={track.label}
-      fadeIn={track.fadeIn}
-      fadeOut={track.fadeOut}
-      duck={track.duck}
-      onaudio={(patch) => onaudio(track.id, patch)}
-      onremove={() => onremove('audio', track.id)}
-      onclose={() => (opened = null)}
-    />
-  {/if}
-{/if}
 
 <!-- Two buttons that say what they open, in the same white as the rest of the
      row.
@@ -3488,26 +3021,6 @@
      Where there is room it slides the tools out beside the label; where there
      isn't, the same press opens the dialog. Lit while its tools are showing,
      because a row of blocks should say which one you are working on. -->
-{#snippet toolsButton(kind: 'clip' | 'caption' | 'audio', key: number, span: Span, what: string)}
-  <button
-    type="button"
-    onpointerdown={pressTool}
-    onclick={() => toggleTools(kind, key, span)}
-    title={roomForTools(kind, span) ? 'Settings' : 'Settings — opens in a window'}
-    aria-label="Settings for {what}"
-    aria-expanded={toolsOut(kind, key, span)}
-    class="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors {toolsOut(
-      kind,
-      key,
-      span
-    )
-      ? 'bg-white text-gray-900 shadow-sm'
-      : 'bg-black/40 text-white hover:bg-black/60'}"
-  >
-    <Icon src={roomForTools(kind, span) ? AdjustmentsHorizontal : Cog6Tooth} size={`${ICON}`} />
-  </button>
-{/snippet}
-
 {#snippet textColour()}
   <svg
     width={ICON}

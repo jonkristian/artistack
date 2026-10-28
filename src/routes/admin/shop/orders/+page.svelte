@@ -49,7 +49,7 @@
   {#if data.orders.length === 0}
     <div class="rounded-xl border border-dashed border-gray-800 p-10 text-center">
       <p class="text-sm text-gray-400">Nothing sold yet.</p>
-      <p class="mt-1 text-xs text-gray-600">Orders show up here the moment someone pays.</p>
+      <p class="mt-1 text-xs text-gray-500">Orders show up here the moment someone pays.</p>
     </div>
   {:else}
     <div class="overflow-hidden rounded-xl border border-gray-800">
@@ -59,7 +59,7 @@
           class="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-gray-800 bg-gray-900 p-4 transition-colors last:border-b-0 hover:bg-gray-800/60"
         >
           <div class="min-w-0 flex-1">
-            <p class="truncate text-sm font-medium text-white">{order.buyerName}</p>
+            <p class="truncate text-sm font-medium text-gray-50">{order.buyerName}</p>
             <p class="truncate text-xs text-gray-500">
               {order.reference}{#if order.createdAt}{' · '}{formatDate.format(
                   new Date(order.createdAt)

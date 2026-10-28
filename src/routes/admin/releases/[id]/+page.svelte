@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { fieldClass, labelClass } from '$lib/utils/classes';
+  import { fieldClass, labelClass, dangerButtonClass } from '$lib/utils/classes';
   import {
     ToggleSwitch,
     SortableList,
@@ -395,7 +395,7 @@
           {#snippet actions()}
             <button
               type="button"
-              class="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-200 transition hover:border-gray-600 hover:text-white disabled:opacity-50"
+              class="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-200 transition hover:border-gray-600 hover:text-gray-50 disabled:opacity-50"
               onclick={findLinks}
               disabled={finding || (!release?.isrc && !release?.upc)}
               title={!release?.isrc && !release?.upc
@@ -415,7 +415,7 @@
           <form class="flex gap-2" onsubmit={addLink}>
             <select
               aria-label="Platform"
-              class="shrink-0 rounded-lg border border-gray-700 bg-gray-800 px-2 py-2 text-sm text-white focus:border-gray-600 focus:outline-none"
+              class="shrink-0 rounded-lg border border-gray-700 bg-gray-800 px-2 py-2 text-sm text-gray-50 focus:border-gray-600 focus:outline-none"
               bind:value={newPlatform}
             >
               {#each platformOptions as platform (platform)}
@@ -425,14 +425,14 @@
             <input
               type="url"
               aria-label="Link URL"
-              class="min-w-0 flex-1 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-gray-600 focus:outline-none"
+              class="min-w-0 flex-1 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-50 placeholder-gray-500 focus:border-gray-600 focus:outline-none"
               bind:value={newUrl}
               oninput={detectPlatform}
               placeholder="Paste URL..."
             />
             <button
               type="submit"
-              class="rounded-lg bg-white/10 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20 disabled:opacity-50"
+              class="rounded-lg bg-gray-800 px-3 py-2 text-sm font-medium text-gray-50 transition-colors hover:bg-gray-700 disabled:opacity-50"
               disabled={!newUrl.trim()}
             >
               Add
@@ -496,7 +496,7 @@
                   <dt class="text-xs tracking-wider text-gray-500 uppercase" title={figure.hint}>
                     {figure.label}
                   </dt>
-                  <dd class="mt-1 text-2xl font-semibold text-white tabular-nums">
+                  <dd class="mt-1 text-2xl font-semibold text-gray-50 tabular-nums">
                     {figure.value}
                   </dd>
                 </div>
@@ -563,11 +563,7 @@
       <!-- Last thing in the column, so it can't be hit on the way to anything
            else. Full width to read as the end of the page rather than an
            action competing with the ones in the cards above. -->
-      <button
-        type="button"
-        onclick={removeRelease}
-        class="mt-6 w-full rounded-xl border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-400 transition-colors hover:border-red-600 hover:bg-red-600 hover:text-white"
-      >
+      <button type="button" onclick={removeRelease} class="mt-6 {dangerButtonClass}">
         Delete release
       </button>
     {/snippet}
@@ -584,7 +580,7 @@
           rel="noopener"
           title="Open /{data.page.slug} in a new tab"
           aria-label="Open the live page in a new tab"
-          class="absolute top-3 right-3 z-10 rounded-lg border border-white/15 bg-black/50 p-2 text-white/70 backdrop-blur-sm transition hover:border-white/30 hover:text-white"
+          class="border-raise/15 hover:border-raise/30 absolute top-3 right-3 z-10 rounded-lg border bg-black/50 p-2 text-white/70 backdrop-blur-sm transition hover:text-white"
         >
           <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path

@@ -77,14 +77,14 @@
       <span class="text-gray-500">Saving…</span>
     {:else if showSaved}
       <svg
-        class="h-3.5 w-3.5 shrink-0 text-gray-600"
+        class="h-3.5 w-3.5 shrink-0 text-gray-500"
         fill="none"
         stroke="currentColor"
         viewBox="0 0 24 24"
       >
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
       </svg>
-      <span class="text-gray-600">Saved</span>
+      <span class="text-gray-500">Saved</span>
     {/if}
   </div>
 {/if}

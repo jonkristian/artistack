@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { fieldClass, labelClass } from '$lib/utils/classes';
+  import { fieldClass, labelClass, dangerButtonClass } from '$lib/utils/classes';
   import {
     ToggleSwitch,
     SortableList,
@@ -359,7 +359,7 @@
               <div
                 class="flex items-center gap-3 rounded-lg border border-gray-800 bg-gray-950 px-3 py-2"
               >
-                <div data-drag-handle class="cursor-grab text-gray-600 hover:text-gray-400">
+                <div data-drag-handle class="cursor-grab text-gray-500 hover:text-gray-400">
                   <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path
                       stroke-linecap="round"
@@ -383,7 +383,7 @@
                     {/if}
                   </span>
 
-                  <span class="min-w-0 flex-1 truncate text-sm text-white">
+                  <span class="min-w-0 flex-1 truncate text-sm text-gray-50">
                     {act?.name ?? 'Choose an act…'}
                   </span>
 
@@ -395,7 +395,7 @@
                 <button
                   type="button"
                   onclick={() => removeRow(row.id)}
-                  class="shrink-0 text-gray-600 transition-colors hover:text-red-400"
+                  class="shrink-0 text-gray-500 transition-colors hover:text-red-400"
                   aria-label="Remove from this show"
                   title="Remove from this show"
                 >
@@ -416,7 +416,7 @@
         <button
           type="button"
           onclick={addRow}
-          class="mt-3 text-sm text-gray-400 transition-colors hover:text-white"
+          class="mt-3 text-sm text-gray-400 transition-colors hover:text-gray-50"
         >
           + Add act
         </button>
@@ -468,7 +468,7 @@
 
           <div class="flex items-center justify-between">
             <div>
-              <span class="text-sm text-white">Sold out</span>
+              <span class="text-sm text-gray-50">Sold out</span>
               <p class="text-xs text-gray-500">Shown on the listing instead of a ticket link</p>
             </div>
             <ToggleSwitch
@@ -485,13 +485,7 @@
       <!-- Last thing in the column, so it can't be hit on the way to anything
          else. Full width to read as the end of the page rather than an action
          competing with the ones in the cards above. -->
-      <button
-        type="button"
-        onclick={remove}
-        class="mt-6 w-full rounded-xl border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-400 transition-colors hover:border-red-600 hover:bg-red-600 hover:text-white"
-      >
-        Delete show
-      </button>
+      <button type="button" onclick={remove} class="mt-6 {dangerButtonClass}"> Delete show </button>
     </div>
   {/if}
 {/snippet}
@@ -525,7 +519,7 @@
             rel="noopener"
             title="Open /{showPage.slug} in a new tab"
             aria-label="Open the live page in a new tab"
-            class="absolute top-3 right-3 z-10 rounded-lg border border-white/15 bg-black/50 p-2 text-white/70 backdrop-blur-sm transition hover:border-white/30 hover:text-white"
+            class="border-raise/15 hover:border-raise/30 absolute top-3 right-3 z-10 rounded-lg border bg-black/50 p-2 text-white/70 backdrop-blur-sm transition hover:text-white"
           >
             <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path

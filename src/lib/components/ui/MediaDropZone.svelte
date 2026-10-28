@@ -59,7 +59,7 @@
         {@render icon()}
       {/if}
       <div class="min-w-0">
-        <h2 class="font-semibold text-white">{title}</h2>
+        <h2 class="font-semibold text-gray-50">{title}</h2>
         <p class="text-xs text-gray-500">{description}</p>
       </div>
     </div>
@@ -104,7 +104,7 @@
                 <!-- Nothing to show a thumbnail of, so show what it is. -->
                 <div class="flex h-full w-full flex-col items-center justify-center gap-1 px-1">
                   <svg
-                    class="h-7 w-7 text-violet-400"
+                    class="text-link h-7 w-7"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"

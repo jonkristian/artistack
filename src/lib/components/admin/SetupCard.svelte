@@ -55,7 +55,7 @@
   class="mb-6 overflow-hidden rounded-xl border border-violet-500/30 bg-gradient-to-br from-violet-950/50 to-gray-900"
 >
   <div class="border-b border-violet-500/20 bg-violet-500/10 px-6 py-4">
-    <h2 class="text-lg font-semibold text-white">Welcome to Artistack</h2>
+    <h2 class="text-lg font-semibold text-gray-50">Welcome to Artistack</h2>
     <p class="text-sm text-gray-400">Let's set up your page</p>
   </div>
 
@@ -70,7 +70,7 @@
         type="text"
         bind:value={siteTitle}
         placeholder="Your name or brand"
-        class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 focus:outline-none"
+        class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-50 placeholder-gray-500 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 focus:outline-none"
       />
       <p class="mt-1 text-xs text-gray-500">Shown in browser tab and search results</p>
     </div>
@@ -81,7 +81,7 @@
       <select
         id="setup-locale"
         bind:value={locale}
-        class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-violet-500 focus:ring-1 focus:ring-violet-500 focus:outline-none"
+        class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-50 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 focus:outline-none"
       >
         {#each locales as loc}
           <option value={loc.code}>{loc.name}</option>

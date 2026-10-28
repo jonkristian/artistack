@@ -2,6 +2,7 @@
   import '../app.css';
   import { TrackingPixels } from '$lib/components/ui';
   import { ShopOverlay } from '$lib/components/shop';
+  import { fontStack } from '$lib/fonts';
   import { readableOn } from '$lib/utils/color';
   import { isTrackedPath } from '$lib/utils/tracked-paths';
   import { afterNavigate } from '$app/navigation';
@@ -28,6 +29,9 @@
 
   /** Defaults here so every page gets a complete palette, set up or not. */
   const settings = $derived({
+    fontBody: fontStack(data.settings?.fontBody),
+    /** Headings follow the body unless they've been given a face of their own. */
+    fontHeading: fontStack(data.settings?.fontHeading || data.settings?.fontBody),
     colorBg: data.settings?.colorBg ?? '#0c0a14',
     colorCard: data.settings?.colorCard ?? '#14101f',
     colorAccent: data.settings?.colorAccent ?? '#8b5cf6',
@@ -70,7 +74,10 @@
   yellow — and the accent is something anyone can change in Appearance.
 -->
 <div
+  class="site-type"
   style="
+		--site-font: {settings.fontBody};
+		--site-font-heading: {settings.fontHeading};
 		--color-bg: {settings.colorBg};
 		--color-card: {settings.colorCard};
 		--color-accent: {settings.colorAccent};

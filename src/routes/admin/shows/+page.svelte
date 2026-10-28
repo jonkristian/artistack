@@ -224,7 +224,7 @@
             <button
               type="button"
               onclick={reset}
-              class="rounded-lg px-4 py-2 text-sm text-gray-400 transition hover:text-white"
+              class="rounded-lg px-4 py-2 text-sm text-gray-400 transition hover:text-gray-50"
             >
               Cancel
             </button>
@@ -237,7 +237,7 @@
   {#if allShows.length === 0 && !creating}
     <div class="rounded-xl border border-dashed border-gray-800 p-10 text-center">
       <p class="text-sm text-gray-400">No shows yet.</p>
-      <p class="mt-1 text-xs text-gray-600">
+      <p class="mt-1 text-xs text-gray-500">
         Add one, then put a Shows block on any page to list them.
       </p>
     </div>
@@ -292,7 +292,7 @@
 
             {#if isPast}
               <span
-                class="absolute top-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-gray-400 uppercase"
+                class="absolute top-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-white/70 uppercase"
               >
                 Past
               </span>
@@ -305,13 +305,13 @@
             {/if}
 
             <div class="p-3 {isPast ? 'opacity-60' : ''}">
-              <h2 class="truncate text-sm font-medium text-white">{show.venue.name}</h2>
+              <h2 class="truncate text-sm font-medium text-gray-50">{show.venue.name}</h2>
               <p class="mt-0.5 truncate text-xs text-gray-500">
                 {formatDate.format(new Date(show.date))}{#if show.venue.city}{' · '}{show.venue
                     .city}{/if}
               </p>
               {#if lineupOf(show).length > 0}
-                <p class="mt-0.5 truncate text-[11px] text-gray-600">
+                <p class="mt-0.5 truncate text-[11px] text-gray-500">
                   {lineupOf(show).join(' · ')}
                 </p>
               {/if}

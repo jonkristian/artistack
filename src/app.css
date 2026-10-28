@@ -1,7 +1,254 @@
 @import 'tailwindcss';
 
+/*
+ * The faces this site can be set in — the same files the renderer burns into
+ * captions. See `src/lib/fonts.ts`, which is the list these must match.
+ *
+ * Latin only, and only the weights a page actually asks for: @fontsource ships
+ * every subset and every weight as its own file, and importing a family's
+ * index pulls the lot. Self-hosted rather than fetched from Google, because a
+ * font the server cannot open is a font a caption cannot be drawn in.
+ */
+@import '@fontsource/inter/latin-300.css';
+@import '@fontsource/inter/latin-400.css';
+@import '@fontsource/inter/latin-500.css';
+@import '@fontsource/inter/latin-600.css';
+@import '@fontsource/inter/latin-700.css';
+@import '@fontsource/space-grotesk/latin-400.css';
+@import '@fontsource/space-grotesk/latin-500.css';
+@import '@fontsource/space-grotesk/latin-700.css';
+@import '@fontsource/oswald/latin-400.css';
+@import '@fontsource/oswald/latin-500.css';
+@import '@fontsource/oswald/latin-700.css';
+@import '@fontsource/space-mono/latin-400.css';
+@import '@fontsource/space-mono/latin-700.css';
+@import '@fontsource/anton/latin-400.css';
+@import '@fontsource/bebas-neue/latin-400.css';
+@import '@fontsource/playfair-display/latin-400.css';
+@import '@fontsource/playfair-display/latin-500.css';
+@import '@fontsource/playfair-display/latin-700.css';
+@import '@fontsource/italiana/latin-400.css';
+
+/*
+ * What the site is set in, as one variable.
+ *
+ * Set from the saved setting on the server so the first paint is already the
+ * right face; the default here is what an unconfigured site gets.
+ */
+/*
+ * The admin's own greys, a step off the floor.
+ *
+ * Tailwind's `gray-950` is very nearly black, and a tool made of it reads as a
+ * hole with controls in it — there is no room underneath to put anything, so
+ * every surface has to climb. Lifting the bottom two by a few per cent gives
+ * the stack somewhere to stand and costs nothing at the top: `gray-800` and
+ * up are untouched, so borders and inputs keep their contrast against it.
+ *
+ * Redefined here rather than swapped class by class. Forty-nine places use
+ * `bg-gray-950` and eighty-four use `bg-gray-900`; this moves all of them at
+ * once, and moves them back by deleting four lines.
+ *
+ * Only the admin is affected in practice — the public site paints itself from
+ * its own palette and never names a Tailwind grey.
+ */
+/*
+ * Light mode, as a variant you can write against.
+ *
+ * `light:` rather than Tailwind's own `dark:` because this admin is dark by
+ * default and always has been — the exception is the light one, and a variant
+ * that names the exception keeps 1,700 existing utilities untouched.
+ */
+@custom-variant light ([data-theme='light'] &);
+
+/*
+ * A button looks like a button under the pointer.
+ *
+ * Tailwind v4 stopped setting `cursor: pointer` on buttons — it leans on the
+ * browser default, which is an arrow. Every button in this admin is a real
+ * `<button>`, so one rule here is the whole fix; disabled ones keep the arrow,
+ * because they are not going to do anything.
+ */
+@layer base {
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  summary {
+    cursor: pointer;
+  }
+}
+
+@theme {
+  /*
+   * A lightening overlay, as a colour of its own.
+   *
+   * `bg-white/10` is a hover state on a dark surface; on a light one it has to
+   * darken instead, and `white` can't follow a theme because the white on an
+   * accent button must stay white. So the overlay gets its own token and
+   * flips, while white stays white.
+   */
+  --color-raise: #ffffff;
+
+  /*
+   * The surface a timeline block draws on.
+   *
+   * Outside the themed ramp on purpose. A block is a piece of media — frames,
+   * a poster, a waveform — and `lane-label` writes over it in white with a
+   * dark shadow because that is the one pair that survives a bright frame and
+   * a dark one. Let the block follow the theme and the light mode puts white
+   * words on a near-white tile. The lane behind it is interface and does
+   * follow; the block is not.
+   */
+  --color-block: #374151;
+
+  /*
+   * The surface you type on.
+   *
+   * A field is a well in a dark theme — a step down from the card it sits in —
+   * and a sheet in a light one. Mirroring the ramp gave it the well in both,
+   * so writing happened on grey; paper is white, and that is most of what a
+   * text field is imitating.
+   */
+  --color-field: oklch(0.25 0.028 262);
+
+  /*
+   * The three surfaces a clip is edited on, named rather than numbered.
+   *
+   * The rail, the panel beside it and the column that appears for whatever is
+   * selected were all picking a grey step, which meant two of them picked the
+   * same one and the stack had no depth. Named, they are one decision per
+   * theme instead of three scattered class names, and the order means
+   * something: the rail recedes furthest, the panel is the surface being
+   * worked on, and the selection column is raised above both because it comes
+   * and goes.
+   */
+  --color-rail: oklch(0.145 0.024 262);
+  --color-panel: oklch(0.165 0.026 262);
+  --color-stage: oklch(0.125 0.022 262);
+  --color-aside: oklch(0.225 0.03 263);
+
+  /*
+   * The accent, as text.
+   *
+   * A link or a hovered title can't be one violet in both themes: `violet-300`
+   * is 8.7:1 on a dark card and 1.7:1 on a light one — the same colour,
+   * legible and then invisible. So the accent *text* is a token that moves to
+   * the other end of the violet scale, while `bg-violet-600` buttons stay
+   * exactly as they are: a solid accent fill works on any surface because it
+   * brings its own.
+   */
+  --color-link: oklch(0.72 0.17 295);
+  --color-link-strong: oklch(0.81 0.12 295);
+
+  /*
+   * Lighter, and the same blue. Tailwind's greys are not neutral — they sit
+   * at a chroma of about 0.03 around hue 262, which is what gives this admin
+   * its cool cast. Keeping the lightness change and dropping the chroma made
+   * the whole thing read as flat charcoal, so both are held and only L moves:
+   * 0.130 → 0.175 and 0.210 → 0.250, each about a third of the way to the
+   * step above it.
+   */
+  --color-gray-950: oklch(0.175 0.028 262);
+  --color-gray-900: oklch(0.25 0.032 264);
+
+  /*
+   * And the muted text comes up with it.
+   *
+   * Raising the floor without raising what sits on it just narrows the gap:
+   * `gray-500` is the most-used text colour in this admin — two hundred and
+   * sixty-four places, every label and hint — and against the lifted
+   * background it measured 3.3:1, under the 4.5:1 that counts as readable.
+   * Lifted to 4.6:1. `gray-600`, which is the faintest hint text and never
+   * carries meaning on its own, goes to 3.1:1.
+   *
+   * Lightness only again, so both keep the same blue as the greys they sit on.
+   */
+  --color-gray-500: oklch(0.631 0.0234 264);
+  --color-gray-600: oklch(0.534 0.0263 257);
+}
+
+/*
+ * The same ramp, upside down.
+ *
+ * Every surface in this admin is a high grey and every piece of text is a low
+ * one — `bg-gray-950` is the page, `text-gray-50` is the heading on it. That
+ * consistency is what makes light mode a list of values rather than a rewrite:
+ * swap each step for the one it would be in a light theme and all seventeen
+ * hundred utilities follow, because each compiles to `var(--color-gray-N)`.
+ *
+ * Lightness mirrored around the middle of the scale, hue and chroma kept, so
+ * the light theme is the same blue-grey family seen from the other end rather
+ * than a different palette wearing the same class names.
+ */
+[data-theme='light'] {
+  --color-raise: #000000;
+
+  /*
+   * Not a mirror, and not white.
+   *
+   * Mirroring the dark ramp exactly made the page the lightest thing on it, so
+   * cards sat *darker* than the surface they were raised off — depth upside
+   * down — and everything landed within a few per cent of white, which reads
+   * as sterile rather than light. Two changes: the page is a soft grey and
+   * cards come up to near-white above it, and the whole ramp carries three or
+   * four times the chroma the first attempt had, so it is the same blue-grey
+   * family as the dark theme rather than a wash.
+   *
+   * Text measured against both surfaces: `gray-500` — the most-used label
+   * colour — is 4.9:1 on the page and 5.6:1 on a card; `gray-50` is 15:1 and
+   * 17.5:1; `gray-600`, which is only ever a hint, is 3.5:1.
+   */
+  --color-gray-950: oklch(0.93 0.009 262);
+  --color-gray-900: oklch(0.975 0.006 264);
+  --color-gray-800: oklch(0.9 0.013 258);
+  --color-gray-700: oklch(0.815 0.017 258);
+  --color-gray-600: oklch(0.58 0.021 257);
+  /* Clears 4.5:1 on the rail, which is the darkest surface it sits on. */
+  --color-gray-500: oklch(0.488 0.025 264);
+  --color-gray-400: oklch(0.42 0.027 258);
+  --color-gray-300: oklch(0.34 0.028 258);
+  --color-gray-200: oklch(0.28 0.029 260);
+  --color-gray-100: oklch(0.23 0.03 262);
+  --color-gray-50: oklch(0.18 0.03 262);
+
+  /*
+   * Same order, read from the other end: the rail still recedes and the
+   * selection column still comes forward, which in a light theme means toward
+   * white rather than away from black.
+   */
+  /*
+   * The rail and the panel sit close together — they are one thing, a menu and
+   * what it opened — and the stage holds the picture, so it stands apart from
+   * both. Same grouping in the dark theme, read from the other end.
+   */
+  --color-rail: oklch(0.895 0.012 262);
+  --color-panel: oklch(0.915 0.01 262);
+  --color-stage: oklch(0.975 0.005 262);
+  --color-aside: oklch(0.99 0.004 264);
+
+  --color-field: #ffffff;
+
+  --color-link: oklch(0.48 0.22 295);
+  --color-link-strong: oklch(0.4 0.2 295);
+}
+
+:root {
+  --site-font: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --site-font-heading: var(--site-font);
+}
+
 body {
-  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--site-font);
+}
+
+/*
+ * Headings follow their own setting, which usually follows the body.
+ *
+ * Scoped to the public site: the admin is a tool and stays in one face
+ * whatever the site in front of it is wearing.
+ */
+.site-type h1,
+.site-type h2,
+.site-type h3 {
+  font-family: var(--site-font-heading);
 }
 
 /*

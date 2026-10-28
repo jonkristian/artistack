@@ -22,6 +22,9 @@ import { updateProduct as serverUpdateProduct } from './shop/data.remote';
 // ===== Types =====
 
 export type AppearanceData = {
+  /** Ids from `$lib/fonts.ts`. Heading empty follows the body. */
+  fontBody: string;
+  fontHeading: string;
   colorBg: string;
   colorCard: string;
   colorAccent: string;
@@ -137,6 +140,8 @@ export function buildDraftFromServerData(data: {
     layout?: string | null;
     showShareButton?: boolean | null;
     showPressKit?: boolean | null;
+    fontBody?: string | null;
+    fontHeading?: string | null;
   } | null;
 }): UnifiedDraftData {
   const s = data.settings;
@@ -152,6 +157,8 @@ export function buildDraftFromServerData(data: {
       releaseDate: toDateInput(r.releaseDate)
     })),
     appearance: {
+      fontBody: s?.fontBody ?? 'inter',
+      fontHeading: s?.fontHeading ?? '',
       colorBg: s?.colorBg ?? '#0c0a14',
       colorCard: s?.colorCard ?? '#14101f',
       colorAccent: s?.colorAccent ?? '#8b5cf6',

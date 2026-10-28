@@ -124,7 +124,7 @@
 <dialog
   bind:this={dialogEl}
   use:dismissable
-  class="fixed inset-0 m-auto h-fit w-full max-w-md rounded-xl border border-gray-700 bg-gray-900 p-0 text-white backdrop:bg-black/60"
+  class="fixed inset-0 m-auto h-fit w-full max-w-md rounded-xl border border-gray-700 bg-gray-900 p-0 text-gray-50 backdrop:bg-black/60"
   onclose={handleDialogClose}
 >
   <div class="p-6">
@@ -132,7 +132,7 @@
       <h2 class="text-lg font-semibold">Edit Link</h2>
       <button
         onclick={handleClose}
-        class="text-gray-400 hover:text-white"
+        class="text-gray-400 hover:text-gray-50"
         aria-label="Close dialog"
       >
         <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -229,7 +229,7 @@
                 <input
                   type="text"
                   bind:value={linkColor}
-                  class="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-white"
+                  class="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-50"
                 />
               </div>
             </div>

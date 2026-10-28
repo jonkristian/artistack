@@ -14,9 +14,19 @@
    * "none of them" means, and that is one label: a caption can hand the decision
    * back to the clip, while footage with nothing on it is just footage.
    */
+  import { Icon, Cog6Tooth } from 'svelte-hero-icons';
   import { ColorWheel, ToggleSwitch } from '$lib/components/ui';
-  import { PACKS, effectById, pictureEffectById, effectParams } from '$lib/clips/effects';
+  import {
+    PACKS,
+    effectById,
+    pictureEffectById,
+    effectParams,
+    isLookEffect
+  } from '$lib/clips/effects';
+  import type { PictureEffect } from '$lib/clips/effects';
   import { numberClass } from '$lib/utils/classes';
+  import { dismissable } from '$lib/utils/dialog';
+  import { untrack } from 'svelte';
   import type { AppliedEffect } from '$lib/clips/types';
 
   let {
@@ -26,7 +36,9 @@
     family = 'caption',
     swatches = [],
     clipId = null,
-    onchange
+    scope = 'look',
+    onchange,
+    onpick
   }: {
     /** What's set here. Null or absent means it defers, or that there is none. */
     value?: AppliedEffect | null;
@@ -45,6 +57,25 @@
      * an entrance is a movement, and a still of one is a still of nothing.
      */
     clipId?: number | null;
+    /**
+     * Which picture effects this is choosing between.
+     *
+     * `look` is what a shot or a clip can be *in* — a grade, a tape, a
+     * texture. `placed` is everything, including the ones that are events: a
+     * push in, a dropout. Asking a whole shot to be a push in is not something
+     * anyone means, so the shot's picker doesn't offer it; the strip does,
+     * where an event can be put at the moment it happens.
+     */
+    scope?: 'look' | 'placed';
+    /**
+     * A tile was pressed.
+     *
+     * Separate from `onchange`, which also fires for a dial being turned —
+     * every dial sends the whole effect back, so "the effect changed" cannot
+     * tell choosing from adjusting. Whoever wants to show what an effect does
+     * wants this one, and only this one.
+     */
+    onpick?: (effect: AppliedEffect | null) => void;
     onchange: (value: AppliedEffect | null) => void;
   } = $props();
 
@@ -57,7 +88,9 @@
     PACKS.map((pack) => ({
       id: pack.id,
       label: pack.label,
-      effects: (family === 'caption' ? pack.captions : pack.picture) ?? []
+      effects: ((family === 'caption' ? pack.captions : pack.picture) ?? []).filter((effect) =>
+        family === 'picture' && scope === 'look' ? isLookEffect(effect as PictureEffect) : true
+      )
     })).filter((group) => group.effects.length)
   );
 
@@ -77,7 +110,33 @@
         : null
   );
   const params = $derived(chosen ? effectParams(chosen, applied) : {});
-  const inheritedLabel = $derived(effectById(inherited?.id).label);
+
+  /** Whether the chosen effect's dials are out. */
+  let dialsOpen = $state(false);
+  let dialsEl = $state<HTMLDialogElement>();
+
+  $effect(() => {
+    if (dialsOpen) dialsEl?.showModal();
+  });
+
+  /* Choosing a different effect closes dials that belonged to the last one. */
+  $effect(() => {
+    void applied?.id;
+    untrack(() => (dialsOpen = false));
+  });
+  /*
+   * What "Auto" defers to, in the right family.
+   *
+   * It asked the caption registry whichever family it was in, and that one
+   * falls back to Fade — so a shot set to follow a clip with no look of its
+   * own offered "Auto (Fade)", naming a caption entrance as the thing a
+   * picture would do.
+   */
+  const inheritedLabel = $derived(
+    family === 'picture'
+      ? (pictureEffectById(inherited?.id)?.label ?? 'None')
+      : effectById(inherited?.id).label
+  );
 
   /**
    * Whether to show the looks rather than name them.
@@ -121,76 +180,139 @@
      cannot — a still of a movement is a still of nothing — so a caption tile
      keeps the shape and gives that space back rather than holding six empty
      four-by-three rectangles that read as images which failed to load. -->
-<div class="grid gap-4 sm:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-  <!-- A grid of four rather than a wrapping row, so the tiles are four to a
-       line at any width instead of however many happen to fit — and they fill
-       the column rather than leaving a ragged margin down the right of it.
-       `items-start`, or each one stretches to its row's height. -->
-  <div class="grid min-w-0 grid-cols-2 items-start gap-2 sm:grid-cols-3 lg:grid-cols-4">
+<!-- One column, and the dials under the tiles rather than beside them.
+     This used to split in two at `sm` and the tiles went to four across at
+     `lg` — both measured against the *window*, which stopped meaning anything
+     the moment this moved into a panel a fifth of the window wide. On a wide
+     screen it drew four tiles in three hundred pixels and every label came out
+     as a letter and an ellipsis. -->
+<div class="grid gap-4">
+  <!-- Two to a line. A tile is a picture and a name, and a name that doesn't
+       fit is not a name. `items-start`, or each one stretches to its row's
+       height. -->
+  <!-- One per row. Two across left a name and a sentence sharing about a
+       hundred and forty pixels, which is a column of hyphenated words; a row
+       gives the swatch its shape and the words the rest. -->
+  <div class="grid min-w-0 grid-cols-1 items-start gap-2">
     {#if canInherit || family === 'picture'}
+      <!-- The one that is not an effect, in the same row shape as the ones
+           that are: it was a tall blank tile with a name and nothing to say,
+           which made the first thing in the list the odd thing in the list. -->
       <button
         type="button"
-        onclick={() => onchange(null)}
-        class="self-start overflow-hidden rounded-lg border text-left transition-colors {value
+        onclick={() => {
+          onchange(null);
+          onpick?.(null);
+        }}
+        class="flex w-full items-stretch gap-2 overflow-hidden rounded-lg border text-left transition-colors {value
           ? 'border-gray-700 hover:border-gray-500'
           : 'border-violet-500'}"
       >
-        <span class="block w-full bg-gray-950 {showSwatches ? 'aspect-[4/3]' : 'h-9'}"></span>
-        <span class="block w-full truncate px-2 py-1.5 text-xs text-gray-300">
-          {canInherit ? `Auto (${inheritedLabel})` : 'None'}
+        {#if showSwatches}
+          <span
+            class="flex aspect-[4/3] w-24 shrink-0 items-center justify-center bg-gray-950 text-[10px] text-gray-500"
+          >
+            none
+          </span>
+        {/if}
+        <span class="block min-w-0 flex-1 px-2 py-1.5 text-left">
+          <span class="block truncate text-xs text-gray-300">
+            {canInherit ? `Auto (${inheritedLabel})` : 'None'}
+          </span>
+          <span class="mt-0.5 block text-[10px] leading-snug text-gray-500">
+            {canInherit
+              ? `Whatever the clip says, which is ${inheritedLabel.toLowerCase()}.`
+              : 'Leave the footage alone.'}
+          </span>
         </span>
       </button>
     {/if}
 
     {#each groups as group (group.id)}
       {#each group.effects as effect (effect.id)}
-        <button
-          type="button"
-          title={effect.description}
-          onclick={() => onchange({ id: effect.id })}
-          class="self-start overflow-hidden rounded-lg border text-left transition-colors {chosen?.id ===
-          effect.id
-            ? 'border-violet-500'
-            : 'border-gray-700 hover:border-gray-500'}"
-        >
-          {#if showSwatches}
-            <!-- A frame of this clip's own footage with the look on it — but
+        {@const picked = chosen?.id === effect.id}
+        <div class="relative self-start">
+          <!-- The dials belong to the one that is chosen, so they are reached
+               from it: a cog on the tile rather than a block of controls under
+               the grid, which was there whether or not anyone wanted it and
+               made a short list of looks read as a long panel of settings. -->
+          {#if picked && chosen?.params?.length}
+            <button
+              type="button"
+              onclick={() => (dialsOpen = true)}
+              title="{chosen.label} settings"
+              aria-label="{chosen.label} settings"
+              class="absolute top-1 right-1 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-gray-950/80 text-gray-300 transition-colors hover:bg-gray-800 hover:text-gray-50"
+            >
+              <Icon src={Cog6Tooth} size="14" solid />
+            </button>
+          {/if}
+          <button
+            type="button"
+            title={effect.description}
+            onclick={() => {
+              onchange({ id: effect.id });
+              onpick?.({ id: effect.id });
+            }}
+            class="flex w-full items-stretch gap-2 overflow-hidden rounded-lg border text-left transition-colors {picked
+              ? 'border-violet-500'
+              : 'border-gray-700 hover:border-gray-500'}"
+          >
+            {#if showSwatches}
+              <!-- A frame of this clip's own footage with the look on it — but
                  only where a still can carry one. `stillSafe` is off for
                  anything needing motion, and the route returns nothing for it,
                  so the tile would be a black rectangle pretending to be a
                  preview. The word is honest. -->
-            {#if 'stillSafe' in effect && effect.stillSafe}
-              <img
-                src="/admin/clips/{clipId}/effect/{effect.id}"
-                alt=""
-                loading="lazy"
-                class="aspect-[4/3] w-full bg-gray-950 object-cover"
-              />
-            {:else}
-              <span
-                class="flex aspect-[4/3] w-full items-center justify-center bg-gray-950 text-[10px] text-gray-600"
-              >
-                moves
-              </span>
+              {#if 'stillSafe' in effect && effect.stillSafe}
+                <img
+                  src="/admin/clips/{clipId}/effect/{effect.id}"
+                  alt=""
+                  loading="lazy"
+                  class="aspect-[4/3] w-24 shrink-0 bg-gray-950 object-cover"
+                />
+              {:else}
+                <span
+                  class="flex aspect-[4/3] w-24 shrink-0 items-center justify-center bg-gray-950 text-[10px] text-gray-500"
+                >
+                  moves
+                </span>
+              {/if}
             {/if}
-          {:else}
-            <span class="block h-9 w-full bg-gray-950"></span>
-          {/if}
-          <span class="block w-full truncate px-2 py-1.5 text-xs text-gray-300">{effect.label}</span
-          >
-        </button>
+            <span class="block min-w-0 flex-1 px-2 py-1.5 text-left">
+              <span class="block truncate text-xs text-gray-300">{effect.label}</span>
+              <!-- What it does, on the thing it does it to. It was one line
+                   under the whole grid describing whichever tile happened to
+                   be chosen — a caption for a picture you had to remember you
+                   were looking at. -->
+              <span class="mt-0.5 block text-[10px] leading-snug text-gray-500">
+                {effect.description}
+              </span>
+            </span>
+          </button>
+        </div>
       {/each}
     {/each}
   </div>
+</div>
 
-  <!-- What the chosen one is, and its dials, in two columns of its own. -->
-  {#if chosen}
-    <div
-      class="grid min-w-0 grid-cols-1 gap-x-3 gap-y-1.5 self-start sm:border-l sm:border-gray-800 sm:pl-4"
-    >
-      <p class="col-span-2 mb-1 text-xs text-gray-500">{chosen.description}</p>
+<!-- The dials, when they are asked for. A modal rather than a panel section:
+     they belong to one effect, they are read once while setting it up, and in
+     the column they pushed everything else off the bottom of the screen. -->
+{#if dialsOpen && chosen?.params?.length}
+  <dialog
+    bind:this={dialsEl}
+    use:dismissable
+    class="fixed inset-0 m-auto h-fit w-full max-w-sm rounded-xl border border-gray-700 bg-gray-900 p-0 text-gray-50 backdrop:bg-black/60"
+    onclose={() => (dialsOpen = false)}
+  >
+    <div class="space-y-4 p-6">
+      <div>
+        <h2 class="text-lg font-semibold">{chosen.label}</h2>
+        <p class="mt-1 text-xs text-gray-400">{chosen.description}</p>
+      </div>
 
-      {#if chosen.params?.length}
+      <div class="grid min-w-0 grid-cols-1 gap-x-3 gap-y-1.5">
         {#each chosen.params as param (param.key)}
           <!-- One dial per row, and the label yields before the control does.
 
@@ -236,7 +358,17 @@
             {/if}
           </div>
         {/each}
-      {/if}
+      </div>
+
+      <div class="flex justify-end border-t border-gray-800 pt-4">
+        <button
+          type="button"
+          onclick={() => dialsEl?.close()}
+          class="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500"
+        >
+          Done
+        </button>
+      </div>
     </div>
-  {/if}
-</div>
+  </dialog>
+{/if}

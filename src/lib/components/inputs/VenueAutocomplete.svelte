@@ -139,7 +139,7 @@
           onclick={() => selectPlace(suggestion)}
           class="flex w-full cursor-pointer flex-col px-3 py-2 text-left hover:bg-gray-700"
         >
-          <span class="text-sm text-white">{suggestion.structured_formatting.main_text}</span>
+          <span class="text-sm text-gray-50">{suggestion.structured_formatting.main_text}</span>
           <span class="text-xs text-gray-400"
             >{suggestion.structured_formatting.secondary_text}</span
           >

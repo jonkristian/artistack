@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
+  import { autosaving } from '$lib/stores/autosaving.svelte';
   import { authClient } from '$lib/auth-client';
   import { goto, invalidateAll } from '$app/navigation';
   import { onMount, tick, untrack } from 'svelte';
@@ -9,6 +10,34 @@
   import { registerPublishHandler } from '$lib/stores/pendingChanges.svelte';
   import { toast } from '$lib/stores/toast.svelte';
   import { editorPreview } from '$lib/stores/editorPreview.svelte';
+
+  /*
+   * Dark or light, for this browser.
+   *
+   * Not a setting on the server: it is about the screen you are sitting at,
+   * not about the site, and the same person on a laptop in the dark and a
+   * desk in the sun wants different answers from the same account.
+   *
+   * Written onto `<html>` so the whole admin and anything it opens follows
+   * one attribute. The public site is untouched — it paints from its own
+   * palette and never names a grey from this ramp.
+   */
+  const THEME_KEY = 'artistack:admin-theme';
+  let theme = $state<'dark' | 'light'>('dark');
+
+  function setTheme(next: 'dark' | 'light') {
+    theme = next;
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem(THEME_KEY, next);
+  }
+
+  onMount(() => {
+    const saved = localStorage.getItem(THEME_KEY);
+    setTheme(saved === 'light' ? 'light' : 'dark');
+    // Navigating out to the public site takes the preference off with it: the
+    // site has a palette of its own and shouldn't wear the tool's.
+    return () => delete document.documentElement.dataset.theme;
+  });
   import { publishAllChanges, buildDraftFromServerData } from './publishDraft';
   import type { UnifiedDraftData } from './publishDraft';
   import type { Link, Block } from '$lib/server/schema';
@@ -353,7 +382,7 @@
       onclick={() => (navOpen = true)}
       aria-label="Open menu"
       aria-expanded={navOpen}
-      class="shrink-0 rounded-lg p-2 text-gray-400 hover:bg-gray-800 hover:text-white"
+      class="shrink-0 rounded-lg p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-50"
     >
       <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
@@ -364,7 +393,7 @@
         />
       </svg>
     </button>
-    <span class="flex min-w-0 flex-1 items-baseline gap-1.5 font-semibold text-white">
+    <span class="flex min-w-0 flex-1 items-baseline gap-1.5 font-semibold text-gray-50">
       <span class="truncate">{artistName}</span>
       {#if pageLabel}
         <span class="shrink-0 font-normal text-gray-500">/ {pageLabel}</span>
@@ -396,7 +425,7 @@
       rel="noreferrer"
       title="View site"
       aria-label="View site"
-      class="shrink-0 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-800 hover:text-white"
+      class="shrink-0 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-800 hover:text-gray-50"
     >
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
@@ -424,7 +453,7 @@
         disabled={isUpdating}
         aria-label="Undo changes"
         title="Undo changes"
-        class="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white disabled:opacity-40"
+        class="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-50 disabled:opacity-40"
       >
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
@@ -492,7 +521,7 @@
         : 'px-4'}"
     >
       {#if !navSlim}
-        <span class="min-w-0 flex-1 truncate font-semibold text-white">{artistName}</span>
+        <span class="min-w-0 flex-1 truncate font-semibold text-gray-50">{artistName}</span>
       {/if}
       <a
         href="/"
@@ -500,7 +529,7 @@
         rel="noreferrer"
         title="View site"
         aria-label="View site"
-        class="shrink-0 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-800 hover:text-white {navSlim
+        class="shrink-0 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-800 hover:text-gray-50 {navSlim
           ? 'lg:hidden'
           : ''}"
       >
@@ -521,7 +550,7 @@
         title={navSlim ? 'Widen the menu' : 'Narrow the menu'}
         aria-label={navSlim ? 'Widen the menu' : 'Narrow the menu'}
         aria-pressed={navSlim}
-        class="shrink-0 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-800 hover:text-white"
+        class="shrink-0 rounded-md p-1.5 text-gray-500 transition-colors hover:bg-gray-800 hover:text-gray-50"
       >
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
@@ -551,8 +580,8 @@
               class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors {navSlim
                 ? 'lg:justify-center lg:px-0'
                 : ''} {isNavActive(item.href)
-                ? 'bg-gray-800 text-white'
-                : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'}"
+                ? 'bg-gray-800 text-gray-50'
+                : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-50'}"
             >
               {#if item.icon === 'grid'}
                 <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -704,8 +733,8 @@
                       class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors {currentPath.startsWith(
                         child.href
                       )
-                        ? 'bg-gray-800 text-white'
-                        : 'text-gray-400 hover:bg-gray-800/50 hover:text-white'}"
+                        ? 'bg-gray-800 text-gray-50'
+                        : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-50'}"
                     >
                       <!-- The branch: down, then right. Dimmer than the row it
                            belongs to, because it says where this sits rather
@@ -771,56 +800,152 @@
     <!-- Toasts -->
     <Toaster />
 
-    <!-- Update & Undo Buttons. Stacked and icon-only in the slim rail: a
-         labelled button at full width overflowed it and sat out over the page. -->
-    <div class="flex gap-2 p-3 {navSlim ? 'lg:flex-col lg:p-2' : ''}">
+    <!-- Dark or light, for the tool rather than the site.
+         At the foot of the rail with the other things that are about this
+         window and not about the clip or the page in it. -->
+    <div class="px-3 pb-1 {navSlim ? 'lg:px-2' : ''}">
       <button
-        onclick={draft.undo}
-        disabled={!isDirty || isUpdating}
-        class="flex items-center justify-center rounded-lg bg-gray-800 px-3 py-2 text-gray-400 transition-all duration-300 hover:text-white hover:brightness-90 disabled:cursor-not-allowed disabled:opacity-30"
-        title="Undo changes"
+        type="button"
+        onclick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+        title={theme === 'light' ? 'Switch to dark' : 'Switch to light'}
+        aria-label={theme === 'light' ? 'Switch to dark' : 'Switch to light'}
+        class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-50 {navSlim
+          ? 'lg:justify-center lg:px-0'
+          : ''}"
       >
-        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M4 7h11a4 4 0 1 1 0 8h-1M4 7l3-3M4 7l3 3"
-          />
-        </svg>
-      </button>
-      <button
-        onclick={handlePublish}
-        disabled={isUpdating || !isDirty}
-        title="Update"
-        class="flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-white transition-all duration-300 disabled:cursor-not-allowed {navSlim
-          ? 'lg:flex-none lg:px-0'
-          : ''} {isDirty && !isUpdating ? 'bg-purple-600 hover:bg-purple-700' : 'bg-gray-800'}"
-      >
-        {#if isUpdating}
-          <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
-            ></circle>
+        <svg
+          class="h-4 w-4 shrink-0"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          viewBox="0 0 24 24"
+        >
+          {#if theme === 'light'}
             <path
-              class="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            ></path>
-          </svg>
-          <span class={navSlim ? 'lg:hidden' : ''}>Updating...</span>
-        {:else}
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z"
+            />
+          {:else}
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z"
+            />
+          {/if}
+        </svg>
+        <span class={navSlim ? 'lg:hidden' : ''}>
+          {theme === 'light' ? 'Dark' : 'Light'}
+        </span>
+      </button>
+    </div>
+
+    <!-- Update & Undo Buttons. Stacked and icon-only in the slim rail: a
+         labelled button at full width overflowed it and sat out over the page.
+
+         An editor that saves as it goes has nothing to publish, so it says
+         what it is doing in the same place instead: one corner answering "is
+         my work safe", whichever kind of editor you are in. -->
+    {#if autosaving.now}
+      <div class="p-3 {navSlim ? 'lg:p-2' : ''}">
+        <div
+          class="flex items-center gap-2 rounded-lg bg-gray-800/60 px-3 py-2 text-xs {navSlim
+            ? 'lg:justify-center lg:px-0'
+            : ''}"
+          title={autosaving.failure
+            ? `Couldn't save ${autosaving.failure.what}`
+            : autosaving.saving
+              ? 'Saving'
+              : 'Saved as you go'}
+        >
+          {#if autosaving.failure}
+            <span class="h-2 w-2 shrink-0 rounded-full bg-red-400"></span>
+            <span class={navSlim ? 'lg:hidden' : ''}>
+              Couldn't save {autosaving.failure.what}
+            </span>
+          {:else if autosaving.saving}
+            <svg
+              class="h-3.5 w-3.5 shrink-0 animate-spin text-gray-400"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              ></circle>
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
+            </svg>
+            <span class="text-gray-400 {navSlim ? 'lg:hidden' : ''}">Saving…</span>
+          {:else}
+            <span class="h-2 w-2 shrink-0 rounded-full bg-emerald-500/70"></span>
+            <span class="text-gray-500 {navSlim ? 'lg:hidden' : ''}">Saved as you go</span>
+          {/if}
+        </div>
+      </div>
+    {:else}
+      <div class="flex gap-2 p-3 {navSlim ? 'lg:flex-col lg:p-2' : ''}">
+        <button
+          onclick={draft.undo}
+          disabled={!isDirty || isUpdating}
+          class="flex items-center justify-center rounded-lg bg-gray-800 px-3 py-2 text-gray-400 transition-all duration-300 hover:text-gray-50 hover:brightness-90 disabled:cursor-not-allowed disabled:opacity-30"
+          title="Undo changes"
+        >
           <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
               stroke-width="2"
-              d="M5 13l4 4L19 7"
+              d="M4 7h11a4 4 0 1 1 0 8h-1M4 7l3-3M4 7l3 3"
             />
           </svg>
-          <span class={navSlim ? 'lg:hidden' : ''}>Update</span>
-        {/if}
-      </button>
-    </div>
+        </button>
+        <button
+          onclick={handlePublish}
+          disabled={isUpdating || !isDirty}
+          title="Update"
+          class="flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-white transition-all duration-300 disabled:cursor-not-allowed {navSlim
+            ? 'lg:flex-none lg:px-0'
+            : ''} {isDirty && !isUpdating ? 'bg-purple-600 hover:bg-purple-700' : 'bg-gray-800'}"
+        >
+          {#if isUpdating}
+            <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              ></circle>
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
+            </svg>
+            <span class={navSlim ? 'lg:hidden' : ''}>Updating...</span>
+          {:else}
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+            <span class={navSlim ? 'lg:hidden' : ''}>Update</span>
+          {/if}
+        </button>
+      </div>
+    {/if}
 
     <!-- Bottom Actions -->
     <div class="border-t border-gray-800 p-3">
@@ -833,8 +958,8 @@
         class="mb-1 flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-gray-800/50 {navSlim
           ? 'lg:justify-center lg:px-0'
           : ''} {currentPath === '/admin/profile'
-          ? 'bg-gray-800 text-white'
-          : 'text-gray-400 hover:text-white'}"
+          ? 'bg-gray-800 text-gray-50'
+          : 'text-gray-400 hover:text-gray-50'}"
       >
         {#if data.user.image}
           <img src={data.user.image} alt="" class="h-5 w-5 shrink-0 rounded-full object-cover" />
@@ -850,7 +975,7 @@
       <button
         onclick={signOut}
         title="Sign Out"
-        class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-400 transition-colors hover:bg-gray-800/50 hover:text-white {navSlim
+        class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-400 transition-colors hover:bg-gray-800/50 hover:text-gray-50 {navSlim
           ? 'lg:justify-center lg:px-0'
           : ''}"
       >

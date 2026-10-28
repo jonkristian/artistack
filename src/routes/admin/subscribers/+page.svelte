@@ -21,10 +21,10 @@
 <div class="min-h-screen bg-gray-950 p-[clamp(1rem,4vw,1.5rem)]">
   <header class="mb-6 flex flex-wrap items-center justify-between gap-3">
     <p class="text-sm text-gray-400">
-      <span class="font-medium text-white">{active.length}</span>
+      <span class="font-medium text-gray-50">{active.length}</span>
       {active.length === 1 ? 'person' : 'people'}
       {#if data.subscribers.length !== active.length}
-        <span class="text-gray-600">
+        <span class="text-gray-500">
           · {data.subscribers.length - active.length} unsubscribed
         </span>
       {/if}
@@ -34,7 +34,7 @@
       <a
         href="/admin/subscribers/export"
         download
-        class="rounded-lg border border-gray-700 px-4 py-2 text-sm whitespace-nowrap text-gray-300 transition hover:border-gray-600 hover:text-white"
+        class="rounded-lg border border-gray-700 px-4 py-2 text-sm whitespace-nowrap text-gray-300 transition hover:border-gray-600 hover:text-gray-50"
       >
         Export CSV
       </a>
@@ -44,7 +44,7 @@
   {#if data.subscribers.length === 0}
     <div class="rounded-xl border border-dashed border-gray-800 p-10 text-center">
       <p class="text-sm text-gray-400">Nobody yet.</p>
-      <p class="mt-1 text-xs text-gray-600">
+      <p class="mt-1 text-xs text-gray-500">
         The sign-up form appears on your release pages while the fan list is switched on.
       </p>
     </div>
@@ -76,7 +76,7 @@
                 </td>
                 <td class="py-2.5">
                   {#if subscriber.unsubscribedAt}
-                    <span class="text-xs text-gray-600">
+                    <span class="text-xs text-gray-500">
                       Unsubscribed {formatDate(subscriber.unsubscribedAt)}
                     </span>
                   {:else}

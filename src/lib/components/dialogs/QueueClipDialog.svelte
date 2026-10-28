@@ -73,7 +73,7 @@
 <dialog
   bind:this={dialogEl}
   use:dismissable
-  class="fixed inset-0 m-auto h-fit w-full max-w-md rounded-xl border border-gray-700 bg-gray-900 p-0 text-white backdrop:bg-black/60"
+  class="fixed inset-0 m-auto h-fit w-full max-w-md rounded-xl border border-gray-700 bg-gray-900 p-0 text-gray-50 backdrop:bg-black/60"
   {onclose}
 >
   <div class="p-6">
@@ -91,7 +91,7 @@
       >
         <input type="radio" bind:group={mode} value="drip" class="mt-1 accent-violet-500" />
         <span>
-          <span class="block text-sm font-medium text-white">Next available slot</span>
+          <span class="block text-sm font-medium text-gray-50">Next available slot</span>
           <span class="block text-xs text-gray-400">{slotLabel}</span>
         </span>
       </label>
@@ -104,7 +104,7 @@
       >
         <input type="radio" bind:group={mode} value="date" class="mt-1 accent-violet-500" />
         <span class="min-w-0 flex-1">
-          <span class="block text-sm font-medium text-white">On a specific date</span>
+          <span class="block text-sm font-medium text-gray-50">On a specific date</span>
           <span class="block text-xs text-gray-400">
             Goes out then regardless of the usual cadence.
           </span>
@@ -133,7 +133,7 @@
           class="mt-1 accent-violet-500"
         />
         <span>
-          <span class="block text-sm font-medium text-white">Publish now</span>
+          <span class="block text-sm font-medium text-gray-50">Publish now</span>
           <span class="block text-xs text-gray-400">
             {publishConfigured
               ? 'Skips the queue and fires the publish webhook straight away.'
@@ -146,7 +146,7 @@
     <div class="mt-6 flex justify-end gap-2">
       <button
         onclick={() => dialogEl?.close()}
-        class="rounded-lg px-4 py-2 text-sm text-gray-400 hover:text-white"
+        class="rounded-lg px-4 py-2 text-sm text-gray-400 hover:text-gray-50"
       >
         Cancel
       </button>

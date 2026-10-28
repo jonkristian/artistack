@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { fieldClass, labelClass } from '$lib/utils/classes';
+  import { fieldClass, labelClass, dangerButtonClass } from '$lib/utils/classes';
   import { ToggleSwitch, MediaPicker, TagInput, RichTextEditor } from '$lib/components/ui';
   import { SectionCard } from '$lib/components/cards';
   import { goto, invalidateAll } from '$app/navigation';
@@ -224,7 +224,7 @@
                pretending to be a choice between many. -->
           <div class="flex items-center justify-between gap-3 rounded-lg bg-gray-800/50 px-4 py-3">
             <div>
-              <p class="text-sm text-white">Digital product</p>
+              <p class="text-sm text-gray-50">Digital product</p>
               <p class="text-xs text-gray-500">
                 A download rather than something you post. It decides whether a sale needs an
                 address, and whether it's charged straight away.
@@ -425,11 +425,7 @@
 
       <!-- Last thing in the column, so it can't be hit on the way to anything
          else. -->
-      <button
-        type="button"
-        onclick={remove}
-        class="mt-6 w-full rounded-xl border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-400 transition-colors hover:border-red-600 hover:bg-red-600 hover:text-white"
-      >
+      <button type="button" onclick={remove} class="mt-6 {dangerButtonClass}">
         Delete product
       </button>
     </div>

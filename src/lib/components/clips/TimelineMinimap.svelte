@@ -121,7 +121,7 @@
        one at a time is how bands stop being evenly spaced. -->
   {#each effects as fx, index (index)}
     <div
-      class="pointer-events-none absolute top-[4px] h-1.5 rounded-[1px] bg-white/45"
+      class="bg-raise/45 pointer-events-none absolute top-[4px] h-1.5 rounded-[1px]"
       style={place(fx.start, fx.end)}
     ></div>
   {/each}
@@ -153,14 +153,14 @@
        they added up to more than all of it and the window hung off the right
        edge. -->
   <div
-    class="pointer-events-none absolute inset-y-0 rounded-sm border border-white/25 bg-white/10"
+    class="border-raise/25 bg-raise/10 pointer-events-none absolute inset-y-0 rounded-sm border"
     style={place(viewFrom, viewFrom + viewWidth)}
   ></div>
 
   <!-- Pulled a pixel back off the end, so the marker stays inside the row it is
        marking rather than overhanging it. -->
   <div
-    class="pointer-events-none absolute inset-y-0 -ml-px w-px bg-white"
+    class="pointer-events-none absolute inset-y-0 -ml-px w-px bg-gray-50"
     style="left: {(Math.min(playhead, canvas) / canvas) * 100}%"
   ></div>
 </div>

@@ -40,7 +40,7 @@
         value={newPassword}
         oninput={(e) => onNewPasswordChange(e.currentTarget.value)}
         placeholder="New Password"
-        class="w-full rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 pr-10 text-sm text-white placeholder-gray-500 focus:border-gray-500 focus:outline-none"
+        class="w-full rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 pr-10 text-sm text-gray-50 placeholder-gray-500 focus:border-gray-500 focus:outline-none"
       />
       {#if newPassword.length > 0}
         <span
@@ -68,7 +68,7 @@
           ? 'border-red-500'
           : passwordsMatch
             ? 'border-green-500'
-            : 'border-gray-600'} bg-gray-800 px-3 py-2 pr-10 text-sm text-white placeholder-gray-500 focus:outline-none"
+            : 'border-gray-600'} bg-gray-800 px-3 py-2 pr-10 text-sm text-gray-50 placeholder-gray-500 focus:outline-none"
       />
       {#if confirmPassword.length > 0}
         <span class="absolute top-1/2 right-3 -translate-y-1/2">

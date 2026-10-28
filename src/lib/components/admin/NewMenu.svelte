@@ -51,7 +51,7 @@
     onclick={() => (open = !open)}
     aria-expanded={open}
     aria-haspopup="true"
-    class="inline-flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-700 hover:text-white"
+    class="inline-flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-700 hover:text-gray-50"
   >
     <Icon src={Plus} size="16" />
     {label}
@@ -66,7 +66,7 @@
         {#if item.href}
           <a
             href={item.href}
-            class="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-gray-300 transition-colors hover:bg-gray-800 hover:text-white"
+            class="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-gray-300 transition-colors hover:bg-gray-800 hover:text-gray-50"
           >
             {@render item.icon()}
             {item.label}
@@ -78,7 +78,7 @@
               item.run?.();
             }}
             disabled={item.busy}
-            class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-800 hover:text-white disabled:opacity-50"
+            class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-800 hover:text-gray-50 disabled:opacity-50"
           >
             {@render item.icon()}
             {item.busy ? 'Creating…' : item.label}

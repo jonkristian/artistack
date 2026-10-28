@@ -105,10 +105,6 @@ export const load: PageServerLoad = async ({ request, params }) => {
 
   return {
     project,
-    /** The proof, when one exists — it drives the editor's own preview. */
-    proofMedia: project.proofMediaId
-      ? (allMedia.find((m) => m.id === project.proofMediaId) ?? null)
-      : null,
     posts,
     tags: (await tagsFor('clip', project.id)).map((t) => t.name),
     // The whole vocabulary, for the tag input's autocomplete.

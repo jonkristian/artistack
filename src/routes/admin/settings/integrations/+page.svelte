@@ -422,7 +422,7 @@
           </svg>
         </div>
         <div>
-          <h2 class="font-semibold text-white">Google APIs</h2>
+          <h2 class="font-semibold text-gray-50">Google APIs</h2>
           <p class="text-xs text-gray-500">YouTube stats, venue and address lookup</p>
         </div>
       </div>
@@ -438,19 +438,19 @@
       >
         <div>
           <div class="text-xs text-gray-500">YouTube Subscribers</div>
-          <div class="text-lg font-semibold text-white">
+          <div class="text-lg font-semibold text-gray-50">
             {formatNumber(data.socialStats.youtube.subscriberCount)}
           </div>
         </div>
         <div>
           <div class="text-xs text-gray-500">Total Views</div>
-          <div class="text-lg font-semibold text-white">
+          <div class="text-lg font-semibold text-gray-50">
             {formatNumber(data.socialStats.youtube.viewCount)}
           </div>
         </div>
         <div>
           <div class="text-xs text-gray-500">Videos</div>
-          <div class="text-lg font-semibold text-white">
+          <div class="text-lg font-semibold text-gray-50">
             {data.socialStats.youtube.videoCount}
           </div>
         </div>
@@ -474,7 +474,7 @@
       <div class="space-y-3 rounded-lg bg-gray-800/50 p-3">
         <label class="flex items-center justify-between">
           <div>
-            <span class="text-sm text-white">Places API</span>
+            <span class="text-sm text-gray-50">Places API</span>
             <!-- Both, because switching it off silently removes the checkout
                  one too and that is worth knowing before you do it. -->
             <p class="text-xs text-gray-500">
@@ -492,7 +492,7 @@
 
         <label class="flex items-center justify-between">
           <div>
-            <span class="text-sm text-white">YouTube Data API</span>
+            <span class="text-sm text-gray-50">YouTube Data API</span>
             <p class="text-xs text-gray-500">Channel stats & subscriber count</p>
             {#if googleYoutubeEnabled && youtubeDetectedId}
               <p class="mt-1 text-xs text-green-400">Channel detected: {youtubeDetectedId}</p>
@@ -524,7 +524,7 @@
           </span>
         {/if}
       </div>
-      <p class="text-xs text-gray-600">
+      <p class="text-xs text-gray-500">
         Get API key from <a
           href="https://console.cloud.google.com/apis/credentials"
           target="_blank"
@@ -555,7 +555,7 @@
           </svg>
         </div>
         <div>
-          <h2 class="font-semibold text-white">Stats reports</h2>
+          <h2 class="font-semibold text-gray-50">Stats reports</h2>
           <p class="text-xs text-gray-500">Scheduled summaries posted to Discord</p>
         </div>
       </div>
@@ -578,7 +578,7 @@
       </div>
 
       <label class="flex items-center justify-between">
-        <span class="text-sm text-white">Enable scheduled reports</span>
+        <span class="text-sm text-gray-50">Enable scheduled reports</span>
         <ToggleSwitch
           bind:checked={discordEnabled}
           label="Toggle scheduled reports"
@@ -650,7 +650,7 @@
         <button
           onclick={testWebhook}
           disabled={testingWebhook || !discordWebhookUrl}
-          class="rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+          class="rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-50 hover:bg-gray-700 disabled:opacity-50"
         >
           {testingWebhook ? 'Sending...' : 'Test'}
         </button>
@@ -667,7 +667,7 @@
         </p>
       {/if}
 
-      <p class="text-xs text-gray-600">
+      <p class="text-xs text-gray-500">
         Create a webhook in your Discord server settings under Integrations → Webhooks.
       </p>
     </div>
@@ -675,7 +675,7 @@
 
   <!-- Artist Features Section -->
   <div class="pt-4">
-    <h2 class="mb-4 text-lg font-semibold text-white">Artist Features</h2>
+    <h2 class="mb-4 text-lg font-semibold text-gray-50">Artist Features</h2>
 
     <!-- Spotify Integration -->
     <section class="mb-6 rounded-xl border border-gray-800 bg-gray-900 p-5">
@@ -691,7 +691,7 @@
             </svg>
           </div>
           <div>
-            <h3 class="font-semibold text-white">Spotify</h3>
+            <h3 class="font-semibold text-gray-50">Spotify</h3>
             <p class="text-xs text-gray-500">Find a release on Spotify from its ISRC</p>
           </div>
         </div>
@@ -708,13 +708,13 @@
         >
           <div>
             <div class="text-xs text-gray-500">Followers</div>
-            <div class="text-lg font-semibold text-white">
+            <div class="text-lg font-semibold text-gray-50">
               {formatNumber(data.socialStats.spotify.followers)}
             </div>
           </div>
           <div>
             <div class="text-xs text-gray-500">Popularity</div>
-            <div class="text-lg font-semibold text-white">
+            <div class="text-lg font-semibold text-gray-50">
               {data.socialStats.spotify.popularity}/100
             </div>
           </div>
@@ -798,7 +798,7 @@
             </span>
           {/if}
         </div>
-        <p class="text-xs text-gray-600">
+        <p class="text-xs text-gray-500">
           Get credentials from <a
             href="https://developer.spotify.com/dashboard"
             target="_blank"
@@ -814,12 +814,7 @@
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
           <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600/20">
-            <svg
-              class="h-5 w-5 text-violet-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
+            <svg class="text-link h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -829,7 +824,7 @@
             </svg>
           </div>
           <div>
-            <h3 class="font-semibold text-white">Press Kit</h3>
+            <h3 class="font-semibold text-gray-50">Press Kit</h3>
             <p class="text-xs text-gray-500">Enable downloadable press kit in Media library</p>
           </div>
         </div>
@@ -852,12 +847,7 @@
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
           <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600/20">
-            <svg
-              class="h-5 w-5 text-violet-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
+            <svg class="text-link h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -867,7 +857,7 @@
             </svg>
           </div>
           <div>
-            <h3 class="font-semibold text-white">Ad pixels</h3>
+            <h3 class="font-semibold text-gray-50">Ad pixels</h3>
             <p class="text-xs text-gray-500">Attribute ad spend to plays and sign-ups</p>
           </div>
         </div>
@@ -954,12 +944,7 @@
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
           <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600/20">
-            <svg
-              class="h-5 w-5 text-violet-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
+            <svg class="text-link h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -969,7 +954,7 @@
             </svg>
           </div>
           <div>
-            <h3 class="font-semibold text-white">Fan list</h3>
+            <h3 class="font-semibold text-gray-50">Fan list</h3>
             <p class="text-xs text-gray-500">Collect email addresses on your own pages</p>
           </div>
         </div>
@@ -1001,12 +986,7 @@
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
           <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600/20">
-            <svg
-              class="h-5 w-5 text-violet-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
+            <svg class="text-link h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -1016,7 +996,7 @@
             </svg>
           </div>
           <div>
-            <h3 class="font-semibold text-white">Shop</h3>
+            <h3 class="font-semibold text-gray-50">Shop</h3>
             <p class="text-xs text-gray-500">Merch and downloads, at their own address</p>
           </div>
         </div>
@@ -1043,7 +1023,7 @@
                anywhere. -->
           <div class="flex items-center justify-between gap-3 rounded-lg bg-gray-800/50 p-3">
             <div>
-              <p class="text-sm text-white">Test checkout</p>
+              <p class="text-sm text-gray-50">Test checkout</p>
               <p class="text-xs text-gray-500">
                 Adds a checkout that takes no money, so you can walk the shop before you have a
                 payment account. The order, the stock and the receipt are real.
@@ -1067,7 +1047,7 @@
 
           <div class="flex items-center justify-between gap-3">
             <div>
-              <h4 class="text-sm font-medium text-white">Vipps</h4>
+              <h4 class="text-sm font-medium text-gray-50">Vipps</h4>
               <p class="text-xs text-gray-500">
                 {vippsConfigured
                   ? 'Ready to take payments'
@@ -1085,7 +1065,7 @@
 
           <div class="flex items-center justify-between gap-3 rounded-lg bg-gray-800/50 p-3">
             <div>
-              <p class="text-sm text-white">Test mode</p>
+              <p class="text-sm text-gray-50">Test mode</p>
               <p class="text-xs text-gray-500">
                 Runs against the provider's test environment. Nothing is really charged. PayPal's
                 sandbox needs only a PayPal login, so the whole flow can be tried before you have a
@@ -1170,7 +1150,7 @@
           <div class="space-y-4 border-t border-gray-800 pt-5">
             <div class="flex items-center justify-between gap-3">
               <div>
-                <h4 class="text-sm font-medium text-white">PayPal</h4>
+                <h4 class="text-sm font-medium text-gray-50">PayPal</h4>
                 <p class="text-xs text-gray-500">
                   {paypalConfigured
                     ? 'Ready to take payments'
@@ -1259,12 +1239,7 @@
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
           <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600/20">
-            <svg
-              class="h-5 w-5 text-violet-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
+            <svg class="text-link h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -1274,7 +1249,7 @@
             </svg>
           </div>
           <div>
-            <h3 class="font-semibold text-white">Shows</h3>
+            <h3 class="font-semibold text-gray-50">Shows</h3>
             <p class="text-xs text-gray-500">Your gigs, kept in one place</p>
           </div>
         </div>
@@ -1301,12 +1276,7 @@
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
           <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600/20">
-            <svg
-              class="h-5 w-5 text-violet-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
+            <svg class="text-link h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -1316,7 +1286,7 @@
             </svg>
           </div>
           <div>
-            <h3 class="font-semibold text-white">Extra pages</h3>
+            <h3 class="font-semibold text-gray-50">Extra pages</h3>
             <p class="text-xs text-gray-500">An about or a contact, at its own address</p>
           </div>
         </div>
@@ -1343,12 +1313,7 @@
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
           <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600/20">
-            <svg
-              class="h-5 w-5 text-violet-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
+            <svg class="text-link h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -1358,7 +1323,7 @@
             </svg>
           </div>
           <div>
-            <h3 class="font-semibold text-white">Release pages</h3>
+            <h3 class="font-semibold text-gray-50">Release pages</h3>
             <p class="text-xs text-gray-500">
               Smart links for singles and albums, on your own domain
             </p>
@@ -1392,12 +1357,7 @@
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
           <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600/20">
-            <svg
-              class="h-5 w-5 text-violet-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
+            <svg class="text-link h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -1407,7 +1367,7 @@
             </svg>
           </div>
           <div>
-            <h3 class="font-semibold text-white">Clips</h3>
+            <h3 class="font-semibold text-gray-50">Clips</h3>
             <p class="text-xs text-gray-500">Assemble footage into branded social videos</p>
           </div>
         </div>
@@ -1430,7 +1390,7 @@
                review clips long before any of them should go out. -->
         <div class="mt-4 flex items-center justify-between border-t border-gray-800 pt-4">
           <div>
-            <h4 class="text-sm font-medium text-white">Scheduled publishing</h4>
+            <h4 class="text-sm font-medium text-gray-50">Scheduled publishing</h4>
             <p class="text-xs text-gray-500">
               POST a queued clip to your webhook as its slot comes due — video link, poster, preview
               link and post sheet as JSON. Whatever receives it (n8n, a script, your own service)
@@ -1501,7 +1461,7 @@
                 <button
                   type="button"
                   onclick={generatePublishSecret}
-                  class="text-xs text-violet-400 hover:text-violet-300"
+                  class="text-link hover:text-link-strong text-xs"
                 >
                   Generate
                 </button>
@@ -1531,7 +1491,7 @@
                 placeholder="https://discord.com/api/webhooks/..."
                 class={fieldClass}
               />
-              <p class="mt-1 text-xs text-gray-600">Where clips go to be approved.</p>
+              <p class="mt-1 text-xs text-gray-500">Where clips go to be approved.</p>
             </div>
             <div>
               <label class={labelClass} for="clip-published-webhook">
@@ -1544,7 +1504,7 @@
                 placeholder="https://discord.com/api/webhooks/..."
                 class={fieldClass}
               />
-              <p class="mt-1 text-xs text-gray-600">Announced when a clip is released.</p>
+              <p class="mt-1 text-xs text-gray-500">Announced when a clip is released.</p>
             </div>
           </div>
 
@@ -1569,7 +1529,7 @@
             </p>
           {/if}
 
-          <p class="text-xs text-gray-600">
+          <p class="text-xs text-gray-500">
             A signing secret is sent as an
             <code class="text-gray-500">X-Artistack-Signature</code>
             header (HMAC-SHA256 of the body), so the receiver can verify the call came from here. It also

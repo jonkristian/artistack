@@ -304,7 +304,7 @@
       <div class="flex items-center gap-2">
         <button
           onclick={() => (phoneUploadOpen = true)}
-          class="flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm font-medium whitespace-nowrap text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
+          class="flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm font-medium whitespace-nowrap text-gray-300 transition-colors hover:bg-gray-700 hover:text-gray-50"
         >
           <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
@@ -323,7 +323,7 @@
         >
           {#if uploading}
             <div
-              class="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"
+              class="border-raise/30 h-4 w-4 animate-spin rounded-full border-2 border-t-white"
             ></div>
             {uploadProgress === null
               ? 'Uploading...'
@@ -357,12 +357,7 @@
         onremove={handleRemoveFromPressKit}
       >
         {#snippet icon()}
-          <svg
-            class="h-6 w-6 text-violet-400"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
+          <svg class="text-link h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
@@ -379,7 +374,7 @@
               download
               title="Download press-kit.zip"
               aria-label="Download press-kit.zip"
-              class="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-400 transition-colors hover:bg-gray-700 hover:text-white"
+              class="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-400 transition-colors hover:bg-gray-700 hover:text-gray-50"
             >
               <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -398,7 +393,7 @@
           >
             {#if generating}
               <div
-                class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white"
+                class="border-raise/30 h-3.5 w-3.5 animate-spin rounded-full border-2 border-t-white"
               ></div>
               Generating...
             {:else}
@@ -427,12 +422,7 @@
         emptyLabel="Drag logos from below to use them on clips"
       >
         {#snippet icon()}
-          <svg
-            class="h-6 w-6 text-violet-400"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
+          <svg class="text-link h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
@@ -453,7 +443,7 @@
           {:else}
             <button
               onclick={() => handleSetDefaultClipGraphic(item.id)}
-              class="absolute bottom-1 left-1 rounded bg-black/70 px-1 py-0.5 text-[9px] text-gray-300 opacity-0 transition-opacity group-hover:opacity-100 hover:text-white"
+              class="absolute bottom-1 left-1 rounded bg-black/70 px-1 py-0.5 text-[9px] text-white/80 opacity-0 transition-opacity group-hover:opacity-100 hover:text-white"
             >
               Set default
             </button>
@@ -469,7 +459,7 @@
       class="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-700 py-16"
     >
       <svg
-        class="mb-4 h-12 w-12 text-gray-600"
+        class="mb-4 h-12 w-12 text-gray-500"
         fill="none"
         stroke="currentColor"
         viewBox="0 0 24 24"
@@ -511,7 +501,7 @@
               <!-- No poster frame exists for audio, so draw a tile instead of
                    pointing an <img> at the audio file. -->
               <div class="flex h-full w-full items-center justify-center bg-gray-800">
-                <svg class="h-10 w-10 text-violet-400" fill="currentColor" viewBox="0 0 24 24">
+                <svg class="text-link h-10 w-10" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M12 3v10.55A4 4 0 1014 17V7h4V3h-6z" />
                 </svg>
               </div>
@@ -522,7 +512,7 @@
                 class="flex h-full w-full flex-col items-center justify-center gap-2 bg-gray-800 px-2"
               >
                 <svg
-                  class="h-9 w-9 text-violet-400"
+                  class="text-link h-9 w-9"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -554,7 +544,7 @@
               class="pointer-events-none absolute inset-0 flex items-center justify-center transition-opacity group-hover:opacity-0"
             >
               <div class="rounded-full bg-black/50 p-2.5 backdrop-blur-sm">
-                <svg class="h-5 w-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <svg class="h-5 w-5 text-gray-50" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M8 5v14l11-7z" />
                 </svg>
               </div>
@@ -569,7 +559,7 @@
           {/if}
           {#if data.tagsByMedia[item.id]?.length}
             <span
-              class="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-gray-300"
+              class="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white/80"
               title={data.tagsByMedia[item.id].join(', ')}
             >
               {data.tagsByMedia[item.id].length} tag{data.tagsByMedia[item.id].length === 1
@@ -627,7 +617,7 @@
                 class="absolute top-2 right-2 rounded bg-black/60 p-1 opacity-0 transition-opacity group-hover:opacity-100"
               >
                 <svg
-                  class="h-4 w-4 text-white"
+                  class="h-4 w-4 text-gray-50"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -646,7 +636,7 @@
           <div
             class="absolute right-0 bottom-0 left-0 bg-gradient-to-t from-black/80 to-transparent p-3 pt-6"
           >
-            <p class="truncate text-sm text-white">{item.alt || item.filename}</p>
+            <p class="truncate text-sm text-gray-50">{item.alt || item.filename}</p>
             <p class="text-xs text-gray-400">{formatDate(item.createdAt)}</p>
           </div>
         </div>
@@ -664,7 +654,7 @@
         onclick={() => (currentPage = Math.max(1, currentPage - 1))}
         disabled={currentPage === 1}
         aria-label="Previous page"
-        class="rounded-lg px-3 py-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+        class="rounded-lg px-3 py-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-50 disabled:cursor-not-allowed disabled:opacity-30"
       >
         <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
@@ -681,7 +671,7 @@
         onclick={() => (currentPage = Math.min(totalPages, currentPage + 1))}
         disabled={currentPage === totalPages}
         aria-label="Next page"
-        class="rounded-lg px-3 py-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+        class="rounded-lg px-3 py-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-50 disabled:cursor-not-allowed disabled:opacity-30"
       >
         <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -712,13 +702,13 @@
     <div class="w-full max-w-md rounded-xl border border-gray-700 bg-gray-900 p-6">
       <div class="mb-4 flex items-start justify-between gap-4">
         <div class="min-w-0">
-          <h2 class="truncate text-sm font-medium text-white">{taggingItem.filename}</h2>
+          <h2 class="truncate text-sm font-medium text-gray-50">{taggingItem.filename}</h2>
           <p class="mt-0.5 text-xs text-gray-500">Tags are shared with clips</p>
         </div>
         <button
           onclick={() => (taggingId = null)}
           aria-label="Close"
-          class="shrink-0 text-gray-400 hover:text-white">✕</button
+          class="shrink-0 text-gray-400 hover:text-gray-50">✕</button
         >
       </div>
       <TagInput

@@ -48,7 +48,7 @@
   bind:this={dialogEl}
   use:dismissable
   {onclose}
-  class="fixed inset-0 m-auto h-fit w-full max-w-md rounded-xl border border-gray-700 bg-gray-900 p-0 text-white backdrop:bg-black/60"
+  class="fixed inset-0 m-auto h-fit w-full max-w-md rounded-xl border border-gray-700 bg-gray-900 p-0 text-gray-50 backdrop:bg-black/60"
 >
   <div class="p-5">
     <h2 class="text-sm font-medium tracking-wider text-gray-400 uppercase">Page address</h2>
@@ -103,7 +103,7 @@
       <button
         type="button"
         onclick={() => dialogEl?.close()}
-        class="rounded-lg px-4 py-2 text-sm text-gray-400 transition hover:text-white"
+        class="rounded-lg px-4 py-2 text-sm text-gray-400 transition hover:text-gray-50"
       >
         Cancel
       </button>

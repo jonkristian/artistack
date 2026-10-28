@@ -1,8 +1,33 @@
 # 1.8.0 (18-10-2026)
 
-- The clip editor has one set of controls above the timeline: play, the time, zoom and a fit, with the timeline itself hideable and draggable to any height
-- The timeline shows a row when something is on it — an empty clip is three rows rather than seven — and spare height goes to the picture
-- The wheel scrolls the timeline and ctrl or cmd with it zooms, rather than the wheel zooming and nothing scrolling
+- One row of controls above the timeline: play, time, zoom and fit, with the timeline hideable and resizable
+- The timeline only shows a row when something is on it, and the spare height goes to the picture
+- The wheel scrolls the timeline; ctrl or cmd with it zooms
+- The editor plays the edit itself — picture, music and dissolves — with no render needed
+- The quick proof render is removed. Preview and Full switch between the edit and the finished file
+- The render button is above the picture instead of in the Send panel
+- Dissolves are made at the cut, so the clip stays the same length
+- A dissolve now works when only one of the two shots has spare footage
+- Captions have a text editor with bold, italic, strike-through and pixel sizes
+- A caption can set its own font, colour, backdrop, outline and backdrop opacity
+- A caption can have a backdrop and an outline at the same time
+- Caption position is set with two sliders instead of three fixed heights
+- Eight fonts are included and can be used for both the site and captions
+- Appearance has font settings for body and headings
+- Each shot can have its own effect instead of one for the whole clip
+- Media added from upload, library or phone is placed on the timeline automatically
+- The media list is one row per file
+- Send shows a preview of the post, including the cover frame and where the caption is cut
+- Status, review, scheduling and posts are shown in the Send panel instead of a dialog
+- The selected item's settings open in their own panel on the right
+- Delete clip moved to the bottom of the clip menu
+- Advanced has its own menu entry, and a clip only stores settings that differ from the defaults
+- The admin has a light mode
+- Space, arrow keys, home and end work anywhere in the editor
+- Delete also removes a selected effect, and removals can be undone from the toast
+- Fixed: changing a shot's effect now updates the preview immediately
+- Fixed: the colour wheel marker matches the selected colour
+- Fixed: the dissolve marker on a cut can be clicked
 
 # 1.7.0 (12-09-2026)
 

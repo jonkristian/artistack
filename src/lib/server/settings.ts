@@ -27,13 +27,34 @@ const site = v.object({
   faviconGenerated: v.boolean()
 });
 
-const theme = v.object({
+/**
+ * The six colours, on their own.
+ *
+ * Separate from the theme because a saved scheme is a palette and nothing
+ * else: naming a set of colours you like shouldn't also pin the typeface they
+ * happened to be beside, and loading one shouldn't change it.
+ */
+const palette = v.object({
   colorBg: v.string(),
   colorCard: v.string(),
   colorAccent: v.string(),
   colorText: v.string(),
   colorTextMuted: v.string(),
   colorIcon: v.string()
+});
+
+const theme = v.object({
+  /**
+   * The face the site is set in, by id from the font list.
+   *
+   * In the theme rather than beside the title, because it is the same kind of
+   * decision as the palette: what the site looks like, not what it says. Empty
+   * takes the first face in the list. See `$lib/fonts.ts`.
+   */
+  fontBody: v.string(),
+  /** The face headings are set in, if different. Empty follows the body. */
+  fontHeading: v.string(),
+  ...palette.entries
 });
 
 /**
@@ -44,7 +65,7 @@ const theme = v.object({
  * appearance edit, so it lands with Update and Undo puts it back.
  */
 const colorSchemes = v.object({
-  schemes: v.record(v.string(), theme)
+  schemes: v.record(v.string(), palette)
 });
 
 /**
@@ -219,6 +240,8 @@ export const SETTING_KEYS = {
     schema: theme,
     secret: false,
     defaults: {
+      fontBody: 'inter',
+      fontHeading: '',
       colorBg: '#0c0a14',
       colorCard: '#14101f',
       colorAccent: '#8b5cf6',
@@ -230,7 +253,7 @@ export const SETTING_KEYS = {
   colorSchemes: {
     schema: colorSchemes,
     secret: false,
-    defaults: { schemes: {} as Record<string, v.InferOutput<typeof theme>> }
+    defaults: { schemes: {} as Record<string, v.InferOutput<typeof palette>> }
   },
   brandColors: {
     schema: brandColors,
@@ -362,6 +385,8 @@ export type SettingValue<K extends SettingKey> = v.InferOutput<(typeof SETTING_K
 
 export type SiteSettings = SettingValue<'site'>;
 export type ThemeSettings = SettingValue<'theme'>;
+/** Just the colours — what a saved scheme holds. */
+export type Palette = v.InferOutput<typeof palette>;
 export type FeatureSettings = SettingValue<'features'>;
 export type ColorSchemes = SettingValue<'colorSchemes'>;
 export type BrandColors = SettingValue<'brandColors'>;
@@ -455,7 +480,7 @@ export async function getPublicSettings(): Promise<{
 export const getColorSchemes = () => getSetting('colorSchemes');
 
 /** Snapshot a palette under a name, overwriting a scheme of the same name. */
-export async function saveColorScheme(name: string, palette: ThemeSettings): Promise<void> {
+export async function saveColorScheme(name: string, palette: Palette): Promise<void> {
   const { schemes } = await getColorSchemes();
   await setSetting('colorSchemes', { schemes: { ...schemes, [name]: palette } });
 }
@@ -577,6 +602,8 @@ const FIELD_ROUTES: Record<string, [SettingKey, string]> = {
   faviconUrl: ['site', 'faviconUrl'],
   faviconGenerated: ['site', 'faviconGenerated'],
   // theme
+  fontBody: ['theme', 'fontBody'],
+  fontHeading: ['theme', 'fontHeading'],
   colorBg: ['theme', 'colorBg'],
   colorCard: ['theme', 'colorCard'],
   colorAccent: ['theme', 'colorAccent'],

@@ -73,8 +73,8 @@
           <select
             aria-label="Year"
             class="rounded-lg border-0 py-1.5 pr-8 pl-3 text-sm transition-colors {isYear
-              ? 'bg-white/10 text-white'
-              : 'bg-transparent text-gray-400 hover:bg-white/5 hover:text-white'}"
+              ? 'bg-gray-800 text-gray-50'
+              : 'bg-transparent text-gray-400 hover:bg-gray-800/60 hover:text-gray-50'}"
             value={isYear ? data.period : ''}
             onchange={(e) => goto(`?period=${e.currentTarget.value}`, { noScroll: true })}
           >
@@ -89,8 +89,8 @@
           data-sveltekit-noscroll
           aria-current={data.period === option.value ? 'page' : undefined}
           class="rounded-lg px-3 py-1.5 text-sm transition-colors {data.period === option.value
-            ? 'bg-white/10 text-white'
-            : 'text-gray-400 hover:bg-white/5 hover:text-white'}"
+            ? 'bg-gray-800 text-gray-50'
+            : 'text-gray-400 hover:bg-gray-800/60 hover:text-gray-50'}"
         >
           {option.label}
         </a>
@@ -102,7 +102,7 @@
       <!-- Page Views -->
       <div class="rounded-xl border border-gray-800 bg-gray-900 p-5">
         <div class="text-sm text-gray-400">Page Views</div>
-        <div class="mt-2 text-3xl font-bold text-white">
+        <div class="mt-2 text-3xl font-bold text-gray-50">
           {formatNumber(data.currentViews)}
         </div>
         <!-- People rather than hits. The number the view count is usually mistaken for. -->
@@ -115,7 +115,7 @@
       <!-- Link Clicks -->
       <div class="rounded-xl border border-gray-800 bg-gray-900 p-5">
         <div class="text-sm text-gray-400">Link Clicks</div>
-        <div class="mt-2 text-3xl font-bold text-white">
+        <div class="mt-2 text-3xl font-bold text-gray-50">
           {formatNumber(data.currentClicks)}
         </div>
         {@render trend(data.clicksChange)}
@@ -124,7 +124,7 @@
       <!-- Top Referrer -->
       <div class="rounded-xl border border-gray-800 bg-gray-900 p-5">
         <div class="text-sm text-gray-400">Top Referrer</div>
-        <div class="mt-2 truncate text-xl font-bold text-white">
+        <div class="mt-2 truncate text-xl font-bold text-gray-50">
           {data.topReferrer ?? 'No data yet'}
         </div>
         <div class="mt-1 text-sm text-gray-500">{data.periodLabel}</div>
@@ -133,7 +133,7 @@
       <!-- Top Link -->
       <div class="rounded-xl border border-gray-800 bg-gray-900 p-5">
         <div class="text-sm text-gray-400">Most Clicked</div>
-        <div class="mt-2 truncate text-xl font-bold text-white">
+        <div class="mt-2 truncate text-xl font-bold text-gray-50">
           {data.topLink
             ? (data.topLink.label ?? platformLabel(data.topLink.platform))
             : 'No clicks yet'}
@@ -167,9 +167,9 @@
             {#each data.topPages as row (row.path)}
               <div class="flex items-center justify-between gap-3">
                 <span class="flex min-w-0 items-center gap-2" title={row.path}>
-                  <span class="truncate text-sm text-white">{row.label}</span>
+                  <span class="truncate text-sm text-gray-50">{row.label}</span>
                   {#if row.campaign}
-                    <span class="shrink-0 text-xs text-violet-400">Clip</span>
+                    <span class="text-link shrink-0 text-xs">Clip</span>
                   {/if}
                 </span>
                 <div class="flex shrink-0 items-center gap-3">
@@ -195,7 +195,7 @@
           <div class="space-y-3">
             {#each data.pageViews.viewsByReferrer as ref}
               <div class="flex items-center justify-between">
-                <span class="truncate text-sm text-white">{ref.referrer}</span>
+                <span class="truncate text-sm text-gray-50">{ref.referrer}</span>
                 <div class="flex items-center gap-3">
                   <div class="h-2 w-24 overflow-hidden rounded-full bg-gray-700">
                     <div
@@ -219,7 +219,7 @@
           <div class="space-y-3">
             {#each data.pageViews.viewsByCountry as country}
               <div class="flex items-center justify-between">
-                <span class="text-sm text-white">{getCountryName(country.country)}</span>
+                <span class="text-sm text-gray-50">{getCountryName(country.country)}</span>
                 <div class="flex items-center gap-3">
                   <div class="h-2 w-24 overflow-hidden rounded-full bg-gray-700">
                     <div
@@ -244,7 +244,7 @@
           <div class="space-y-3">
             {#each data.pageViews.viewsByDevice as row (row.device)}
               <div class="flex items-center justify-between">
-                <span class="text-sm text-white capitalize">{row.device}</span>
+                <span class="text-sm text-gray-50 capitalize">{row.device}</span>
                 <div class="flex items-center gap-3">
                   <div class="h-2 w-24 overflow-hidden rounded-full bg-gray-700">
                     <div
@@ -270,8 +270,8 @@
             {#each data.actionClicks as row (`${row.action}-${row.subjectId}`)}
               <div class="flex items-center justify-between gap-3">
                 <span class="flex min-w-0 items-center gap-2">
-                  <span class="truncate text-sm text-white">{row.label}</span>
-                  <span class="shrink-0 text-xs text-violet-400">
+                  <span class="truncate text-sm text-gray-50">{row.label}</span>
+                  <span class="text-link shrink-0 text-xs">
                     {row.action === 'presave' ? 'Pre-save' : 'Tickets'}
                   </span>
                 </span>
@@ -299,11 +299,11 @@
             <tbody class="divide-y divide-gray-800">
               {#each data.linkClicks.clicksByLink as link}
                 <tr>
-                  <td class="py-3 text-sm text-white">
+                  <td class="py-3 text-sm text-gray-50">
                     {link.label || platformLabel(link.platform) || 'Unnamed'}
                   </td>
                   <td class="py-3 text-sm text-gray-400">{platformLabel(link.platform)}</td>
-                  <td class="py-3 pr-4 text-right text-sm text-white">{link.count}</td>
+                  <td class="py-3 pr-4 text-right text-sm text-gray-50">{link.count}</td>
                   <td class="py-3">
                     <div class="flex items-center gap-2">
                       <div class="h-2 w-20 overflow-hidden rounded-full bg-gray-700">
@@ -366,18 +366,18 @@
                     d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"
                   />
                 </svg>
-                <span class="font-medium text-white">Spotify</span>
+                <span class="font-medium text-gray-50">Spotify</span>
               </div>
               <div class="space-y-2">
                 <div class="flex justify-between">
                   <span class="text-sm text-gray-400">Followers</span>
-                  <span class="font-medium text-white"
+                  <span class="font-medium text-gray-50"
                     >{formatNumber(data.socialStats.spotify.followers)}</span
                   >
                 </div>
                 <div class="flex justify-between">
                   <span class="text-sm text-gray-400">Popularity</span>
-                  <span class="font-medium text-white"
+                  <span class="font-medium text-gray-50"
                     >{data.socialStats.spotify.popularity}/100</span
                   >
                 </div>
@@ -391,7 +391,7 @@
                     </ul>
                   </div>
                 {/if}
-                <p class="mt-2 text-xs text-gray-600">
+                <p class="mt-2 text-xs text-gray-500">
                   Updated: {new Date(data.socialStats.spotify.lastUpdated).toLocaleDateString()}
                 </p>
               </div>
@@ -408,24 +408,25 @@
                   />
                   <path fill="#FFF" d="M9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
                 </svg>
-                <span class="font-medium text-white">YouTube</span>
+                <span class="font-medium text-gray-50">YouTube</span>
               </div>
               <div class="space-y-2">
                 <div class="flex justify-between">
                   <span class="text-sm text-gray-400">Subscribers</span>
-                  <span class="font-medium text-white"
+                  <span class="font-medium text-gray-50"
                     >{formatNumber(data.socialStats.youtube.subscriberCount)}</span
                   >
                 </div>
                 <div class="flex justify-between">
                   <span class="text-sm text-gray-400">Total Views</span>
-                  <span class="font-medium text-white"
+                  <span class="font-medium text-gray-50"
                     >{formatNumber(data.socialStats.youtube.viewCount)}</span
                   >
                 </div>
                 <div class="flex justify-between">
                   <span class="text-sm text-gray-400">Videos</span>
-                  <span class="font-medium text-white">{data.socialStats.youtube.videoCount}</span>
+                  <span class="font-medium text-gray-50">{data.socialStats.youtube.videoCount}</span
+                  >
                 </div>
                 {#if data.socialStats.youtube.recentVideos && data.socialStats.youtube.recentVideos.length > 0}
                   <div class="mt-3 border-t border-gray-800 pt-3">
@@ -442,7 +443,7 @@
                     </ul>
                   </div>
                 {/if}
-                <p class="mt-2 text-xs text-gray-600">
+                <p class="mt-2 text-xs text-gray-500">
                   Updated: {new Date(data.socialStats.youtube.lastUpdated).toLocaleDateString()}
                 </p>
               </div>

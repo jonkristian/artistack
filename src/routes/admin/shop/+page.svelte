@@ -160,7 +160,7 @@
             <button
               type="button"
               onclick={reset}
-              class="rounded-lg px-4 py-2 text-sm text-gray-400 transition hover:text-white"
+              class="rounded-lg px-4 py-2 text-sm text-gray-400 transition hover:text-gray-50"
             >
               Cancel
             </button>
@@ -173,7 +173,7 @@
   {#if allProducts.length === 0 && !creating}
     <div class="rounded-xl border border-dashed border-gray-800 p-10 text-center">
       <p class="text-sm text-gray-400">Nothing in the shop yet.</p>
-      <p class="mt-1 text-xs text-gray-600">
+      <p class="mt-1 text-xs text-gray-500">
         A record, a shirt, a download — anything you'd sell from your own site.
       </p>
     </div>
@@ -223,7 +223,7 @@
 
             {#if !product.visible}
               <span
-                class="absolute top-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-gray-400 uppercase"
+                class="absolute top-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-white/70 uppercase"
               >
                 Hidden
               </span>
@@ -236,13 +236,13 @@
             {/if}
 
             <div class="p-3 {product.visible ? '' : 'opacity-60'}">
-              <h2 class="truncate text-sm font-medium text-white">{product.name}</h2>
+              <h2 class="truncate text-sm font-medium text-gray-50">{product.name}</h2>
               <p class="mt-0.5 truncate text-xs text-gray-500">
                 {formatPrice(product.price, product.currency, data.settings?.locale)}
               </p>
               <!-- Tags included so a set of products can be scanned for the one
                    filed under a typo. -->
-              <p class="mt-0.5 truncate text-[11px] text-gray-600">
+              <p class="mt-0.5 truncate text-[11px] text-gray-500">
                 {product.type === 'digital'
                   ? 'Download'
                   : 'Posted'}{#if variantsOf(product).length > 0}{' · '}{variantsOf(product).length}

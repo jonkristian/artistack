@@ -225,7 +225,7 @@
       page you're editing is the part it can't tell you.
     -->
     <div class="mb-4">
-      <h1 class="truncate text-lg text-white">{currentPage?.title ?? 'Page'}</h1>
+      <h1 class="truncate text-lg text-gray-50">{currentPage?.title ?? 'Page'}</h1>
       {#if currentPage?.type === 'landing'}
         <p class="mt-0.5 text-xs text-gray-500">The front page, at the root of the site</p>
       {:else if currentPage}
@@ -295,7 +295,7 @@
       {:else}
         <div class="rounded-xl border border-dashed border-gray-700 py-12 text-center">
           <p class="mb-2 text-sm text-gray-400">No blocks yet</p>
-          <p class="text-xs text-gray-600">Add blocks to build your page</p>
+          <p class="text-xs text-gray-500">Add blocks to build your page</p>
         </div>
       {/if}
 

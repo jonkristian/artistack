@@ -39,7 +39,7 @@
   class="group flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2 transition-colors hover:bg-gray-800"
 >
   <div class="flex min-w-0 items-center gap-2">
-    <div data-drag-handle class="cursor-grab text-gray-600 hover:text-gray-400">
+    <div data-drag-handle class="cursor-grab text-gray-500 hover:text-gray-400">
       <svg class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16" />
       </svg>
@@ -72,9 +72,9 @@
     {/if}
     <div class="min-w-0 flex-1">
       <div class="flex items-center gap-2">
-        <span class="truncate text-sm text-white">{title}</span>
+        <span class="truncate text-sm text-gray-50">{title}</span>
         {#if badge}
-          <span class="text-xs text-violet-400">{badge}</span>
+          <span class="text-link text-xs">{badge}</span>
         {/if}
       </div>
       <span class="block truncate text-xs text-gray-500">{subtitle}</span>
@@ -84,7 +84,7 @@
     <button
       type="button"
       onclick={() => onedit(link)}
-      class="cursor-pointer rounded p-1 text-gray-600 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-gray-700 hover:text-white focus-visible:opacity-100"
+      class="cursor-pointer rounded p-1 text-gray-500 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-gray-700 hover:text-gray-50 focus-visible:opacity-100"
       aria-label="Edit {title} link"
     >
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -99,7 +99,7 @@
     <button
       type="button"
       onclick={() => ondelete(link.id)}
-      class="cursor-pointer rounded p-1 text-gray-600 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-gray-700 hover:text-red-400 focus-visible:opacity-100"
+      class="cursor-pointer rounded p-1 text-gray-500 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-gray-700 hover:text-red-400 focus-visible:opacity-100"
       aria-label="Delete {title} link"
     >
       <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

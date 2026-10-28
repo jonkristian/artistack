@@ -73,7 +73,7 @@
               t.action?.run();
               dismissToast(t.id);
             }}
-            class="shrink-0 rounded px-1.5 py-0.5 font-medium text-white/90 underline underline-offset-2 transition-colors hover:bg-white/10 hover:text-white"
+            class="hover:bg-raise/10 shrink-0 rounded px-1.5 py-0.5 font-medium text-gray-50/90 underline underline-offset-2 transition-colors hover:text-gray-50"
           >
             {t.action.label}
           </button>

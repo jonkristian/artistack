@@ -36,6 +36,27 @@ export const EFFECTS: CaptionEffect[] = PACKS.flatMap((pack) => pack.captions ??
 export const PICTURE_EFFECTS: PictureEffect[] = PACKS.flatMap((pack) => pack.picture ?? []);
 
 /**
+ * Whether an effect is a *look* — something the picture is in — rather than
+ * something that happens to it.
+ *
+ * A grade, a tape, a texture: the footage is in it for as long as you like,
+ * and asking a shot to be in one is a sensible thing to ask. A push in or a
+ * signal dropping out is an event — it has a beginning, a middle and an end of
+ * its own, and "this shot is a push in" is not a thing anyone means. Those
+ * belong on the strip, where they can be put at the moment they happen.
+ *
+ * Read off what the effects already declare rather than a new list to keep in
+ * step: `selfTimed` means it runs on its own clock, `burst` means it is over
+ * almost as soon as it starts. Either way it is an event.
+ */
+export function isLookEffect(effect: PictureEffect): boolean {
+  return !effect.selfTimed && effect.shape !== 'burst';
+}
+
+/** The ones worth offering as "what this shot looks like". */
+export const LOOK_EFFECTS: PictureEffect[] = PICTURE_EFFECTS.filter(isLookEffect);
+
+/**
  * The effect by that name, or the plain fade.
  *
  * Never null, so nothing downstream has to carry a branch for "no effect" —
@@ -120,6 +141,24 @@ export function clipEffects(config: {
 }): PlacedEffect[] {
   if (config.effects?.length) return config.effects;
   return config.pictureEffect ? [config.pictureEffect] : [];
+}
+
+/**
+ * A shot's own effects, read off the row.
+ *
+ * Stored as JSON text because it is a list of small objects on a placement,
+ * not something anything queries. Anything unreadable is treated as "none
+ * set": a look that cannot be parsed is not worth failing a render over, and
+ * the shot simply takes the clip's.
+ */
+export function shotEffects(raw: unknown): AppliedEffect[] | null {
+  if (!raw || typeof raw !== 'string') return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length ? (parsed as AppliedEffect[]) : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The one a clip-wide picker is editing: the entry with no window on it. */

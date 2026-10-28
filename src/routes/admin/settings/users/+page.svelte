@@ -126,7 +126,7 @@
   }
 
   function getRoleBadgeClass(role: string | null) {
-    return role === 'admin' ? 'bg-violet-500/20 text-violet-400' : 'bg-gray-700/50 text-gray-400';
+    return role === 'admin' ? 'bg-violet-500/20 text-link' : 'bg-gray-700/50 text-gray-400';
   }
 </script>
 
@@ -138,7 +138,7 @@
       {#if isAdmin}
         <button
           onclick={() => (showAddForm = !showAddForm)}
-          class="text-sm text-gray-400 hover:text-white"
+          class="text-sm text-gray-400 hover:text-gray-50"
         >
           {showAddForm ? 'Cancel' : '+ Add'}
         </button>
@@ -204,7 +204,7 @@
         <button
           type="submit"
           disabled={!!addForm.pending}
-          class="w-full rounded-lg bg-white/10 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20 disabled:opacity-50"
+          class="w-full rounded-lg bg-gray-800 py-2 text-sm font-medium text-gray-50 transition-colors hover:bg-gray-700 disabled:opacity-50"
         >
           {addForm.pending ? 'Sending…' : 'Send invitation'}
         </button>
@@ -223,13 +223,13 @@
             : `${manualLink.reason ?? 'The mail server refused it'} — pass this link to ${manualLink.name} yourself.`}
         </p>
         <div class="mt-3 flex items-center gap-1 rounded-lg bg-gray-950 py-1 pr-1 pl-3">
-          <span class="min-w-0 flex-1 truncate py-1 text-xs text-violet-400">{manualLink.url}</span>
+          <span class="text-link min-w-0 flex-1 truncate py-1 text-xs">{manualLink.url}</span>
           <button
             onclick={() => {
               navigator.clipboard.writeText(manualLink!.url);
               toast.success('Link copied');
             }}
-            class="shrink-0 rounded-md px-2 py-1 text-xs text-gray-400 hover:bg-gray-800 hover:text-white"
+            class="shrink-0 rounded-md px-2 py-1 text-xs text-gray-400 hover:bg-gray-800 hover:text-gray-50"
           >
             Copy
           </button>
@@ -257,17 +257,17 @@
                 <input
                   bind:value={editName}
                   placeholder="Name"
-                  class="min-w-0 flex-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-1.5 text-sm text-white focus:border-gray-600 focus:outline-none"
+                  class="min-w-0 flex-1 rounded-lg border border-gray-700 bg-gray-900 px-3 py-1.5 text-sm text-gray-50 focus:border-gray-600 focus:outline-none"
                 />
                 <input
                   bind:value={editEmail}
                   type="email"
                   placeholder="Email"
-                  class="min-w-0 flex-[1.5] rounded-lg border border-gray-700 bg-gray-900 px-3 py-1.5 text-sm text-white focus:border-gray-600 focus:outline-none"
+                  class="min-w-0 flex-[1.5] rounded-lg border border-gray-700 bg-gray-900 px-3 py-1.5 text-sm text-gray-50 focus:border-gray-600 focus:outline-none"
                 />
                 <select
                   bind:value={editRole}
-                  class="shrink-0 rounded-lg border border-gray-700 bg-gray-900 px-3 py-1.5 text-sm text-white focus:border-gray-600 focus:outline-none"
+                  class="shrink-0 rounded-lg border border-gray-700 bg-gray-900 px-3 py-1.5 text-sm text-gray-50 focus:border-gray-600 focus:outline-none"
                 >
                   <option value="editor">Editor</option>
                   <option value="admin">Admin</option>
@@ -292,13 +292,13 @@
               <div class="flex justify-end gap-2">
                 <button
                   onclick={cancelEdit}
-                  class="rounded-lg px-3 py-1.5 text-sm text-gray-400 hover:text-white"
+                  class="rounded-lg px-3 py-1.5 text-sm text-gray-400 hover:text-gray-50"
                 >
                   Cancel
                 </button>
                 <button
                   onclick={() => saveUserEdit(u.id)}
-                  class="rounded-lg bg-white/10 px-3 py-1.5 text-sm text-white transition-colors hover:bg-white/20"
+                  class="rounded-lg bg-gray-800 px-3 py-1.5 text-sm text-gray-50 transition-colors hover:bg-gray-700"
                 >
                   Save
                 </button>
@@ -319,7 +319,7 @@
                 {/if}
                 <div>
                   <div class="flex items-center gap-2">
-                    <span class="text-sm font-medium text-white">{u.name}</span>
+                    <span class="text-sm font-medium text-gray-50">{u.name}</span>
                     <span class="rounded px-1.5 py-0.5 text-xs {getRoleBadgeClass(u.role)}">
                       {getRoleLabel(u.role)}
                     </span>
@@ -342,14 +342,14 @@
                   {#if pending.has(u.id)}
                     <button
                       onclick={() => handleResend(u.id, u.name)}
-                      class="rounded px-2 py-1 text-xs text-gray-400 hover:bg-gray-700 hover:text-white"
+                      class="rounded px-2 py-1 text-xs text-gray-400 hover:bg-gray-700 hover:text-gray-50"
                     >
                       Resend invite
                     </button>
                   {/if}
                   <button
                     onclick={() => startEditUser(u)}
-                    class="rounded p-1.5 text-gray-500 hover:bg-gray-700 hover:text-white"
+                    class="rounded p-1.5 text-gray-500 hover:bg-gray-700 hover:text-gray-50"
                     aria-label="Edit user"
                   >
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -381,7 +381,7 @@
           {/if}
         </div>
       {:else}
-        <p class="py-4 text-center text-sm text-gray-600">No other team members yet</p>
+        <p class="py-4 text-center text-sm text-gray-500">No other team members yet</p>
       {/each}
     </div>
   </SectionCard>

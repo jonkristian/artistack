@@ -83,7 +83,7 @@
     aria-expanded={open}
     aria-haspopup="true"
     disabled={items.length === 0}
-    class="inline-flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-700 hover:text-white disabled:opacity-50"
+    class="inline-flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-700 hover:text-gray-50 disabled:opacity-50"
   >
     {label}
     <span
@@ -104,14 +104,14 @@
         bind:value={query}
         placeholder="Filter…"
         aria-label="Filter what's waiting"
-        class="mb-2 w-full rounded-lg border border-gray-800 bg-gray-950 px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-gray-700 focus:outline-none"
+        class="mb-2 w-full rounded-lg border border-gray-800 bg-gray-950 px-3 py-2 text-sm text-gray-50 placeholder-gray-600 focus:border-gray-700 focus:outline-none"
       />
 
       {#if groups.length === 0}
-        <p class="px-2 py-6 text-center text-sm text-gray-600">Nothing matches</p>
+        <p class="px-2 py-6 text-center text-sm text-gray-500">Nothing matches</p>
       {:else}
         {#each groups as [kind, list] (kind)}
-          <div class="px-2 pt-2 pb-1 text-xs tracking-wider text-gray-600 uppercase">
+          <div class="px-2 pt-2 pb-1 text-xs tracking-wider text-gray-500 uppercase">
             {kind}
           </div>
           {#each list as item (item.key)}
@@ -132,7 +132,7 @@
                 </span>
               {/if}
               <span class="min-w-0 flex-1">
-                <span class="block truncate text-sm text-white">{item.label}</span>
+                <span class="block truncate text-sm text-gray-50">{item.label}</span>
                 {#if item.detail}
                   <span class="block truncate text-xs text-gray-500">{item.detail}</span>
                 {/if}

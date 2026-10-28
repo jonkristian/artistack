@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dangerButtonClass } from '$lib/utils/classes';
   import { SectionCard } from '$lib/components/cards';
   import { formatPrice } from '$lib/utils/price';
   import {
@@ -115,7 +116,7 @@
   <div class="max-w-2xl space-y-4">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h1 class="text-lg font-medium text-white">{data.order.reference}</h1>
+        <h1 class="text-lg font-medium text-gray-50">{data.order.reference}</h1>
         {#if data.order.createdAt}
           <p class="mt-0.5 text-xs text-gray-500">
             {formatDate.format(new Date(data.order.createdAt))}
@@ -136,7 +137,8 @@
       <div class="space-y-4">
         <div class="flex items-baseline justify-between">
           <span class="text-sm text-gray-400">Total</span>
-          <span class="text-lg font-medium text-white tabular-nums">{money(data.order.amount)}</span
+          <span class="text-lg font-medium text-gray-50 tabular-nums"
+            >{money(data.order.amount)}</span
           >
         </div>
 
@@ -206,7 +208,7 @@
               <img src={item.imageUrl} alt="" class="h-10 w-10 shrink-0 rounded-lg object-cover" />
             {/if}
             <span class="min-w-0 flex-1">
-              <span class="text-white">{item.quantity} × {item.name}</span>
+              <span class="text-gray-50">{item.quantity} × {item.name}</span>
               <span class="ml-2 text-xs text-gray-500">
                 {item.type === 'digital' ? 'Download' : 'Posted'}
               </span>
@@ -228,12 +230,12 @@
       <dl class="space-y-3 text-sm">
         <div class="flex justify-between gap-4">
           <dt class="text-gray-500">Name</dt>
-          <dd class="text-right text-white">{data.order.buyerName}</dd>
+          <dd class="text-right text-gray-50">{data.order.buyerName}</dd>
         </div>
         <div class="flex justify-between gap-4">
           <dt class="text-gray-500">Email</dt>
           <dd class="text-right">
-            <a href="mailto:{data.order.buyerEmail}" class="text-violet-400 hover:text-violet-300">
+            <a href="mailto:{data.order.buyerEmail}" class="text-link hover:text-link-strong">
               {data.order.buyerEmail}
             </a>
           </dd>
@@ -241,14 +243,14 @@
         {#if data.order.buyerPhone}
           <div class="flex justify-between gap-4">
             <dt class="text-gray-500">Phone</dt>
-            <dd class="text-right text-white">{data.order.buyerPhone}</dd>
+            <dd class="text-right text-gray-50">{data.order.buyerPhone}</dd>
           </div>
         {/if}
         {#if data.order.addressLine}
           <div class="flex justify-between gap-4">
             <dt class="text-gray-500">Address</dt>
             <!-- One block, as it would be written on the parcel. -->
-            <dd class="text-right whitespace-pre-line text-white">
+            <dd class="text-right whitespace-pre-line text-gray-50">
               {[
                 data.order.addressLine,
                 [data.order.postcode, data.order.city].filter(Boolean).join(' '),
@@ -262,7 +264,7 @@
         {#if data.order.note}
           <div class="flex justify-between gap-4">
             <dt class="text-gray-500">Note</dt>
-            <dd class="text-right text-white">{data.order.note}</dd>
+            <dd class="text-right text-gray-50">{data.order.note}</dd>
           </div>
         {/if}
       </dl>
@@ -271,11 +273,7 @@
     <!-- Only an order that never became one. A paid order is a receipt, and
          deleting it would take the buyer's downloads with it. -->
     {#if data.order.paymentStatus === 'pending' || data.order.paymentStatus === 'cancelled'}
-      <button
-        type="button"
-        onclick={remove}
-        class="mt-6 w-full rounded-xl border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-400 transition-colors hover:border-red-600 hover:bg-red-600 hover:text-white"
-      >
+      <button type="button" onclick={remove} class="mt-6 {dangerButtonClass}">
         Delete this order
       </button>
     {/if}

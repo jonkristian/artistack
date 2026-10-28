@@ -96,9 +96,9 @@
 
   <div class="absolute inset-x-0 bottom-0 flex flex-col gap-1.5 p-2.5">
     <div class="min-w-0">
-      <p class="truncate text-sm font-medium text-white">{product.name}</p>
+      <p class="truncate text-sm font-medium text-gray-50">{product.name}</p>
       {#if showPrice}
-        <p class="text-xs text-white/70">
+        <p class="text-xs text-gray-50/70">
           {formatPrice(product.price, product.currency, locale)}
         </p>
       {/if}
@@ -108,7 +108,7 @@
          that can't be honoured is worse than none. -->
     {#if soldOut}
       <span
-        class="rounded-lg bg-white/15 px-2 py-1.5 text-center text-xs font-medium text-white/80"
+        class="rounded-lg bg-white/15 px-2 py-1.5 text-center text-xs font-medium text-gray-50/80"
       >
         Sold out
       </span>
@@ -145,16 +145,16 @@
         <button
           onclick={() => setQuantity(inCart - 1)}
           disabled={busy}
-          class="h-7 w-7 rounded text-white transition-opacity hover:opacity-70 disabled:opacity-40"
+          class="h-7 w-7 rounded text-gray-50 transition-opacity hover:opacity-70 disabled:opacity-40"
           aria-label="One fewer {product.name}"
         >
           −
         </button>
-        <span class="text-xs font-medium text-white tabular-nums">{inCart}</span>
+        <span class="text-xs font-medium text-gray-50 tabular-nums">{inCart}</span>
         <button
           onclick={() => setQuantity(inCart + 1)}
           disabled={busy || atStockLimit}
-          class="h-7 w-7 rounded text-white transition-opacity hover:opacity-70 disabled:opacity-40"
+          class="h-7 w-7 rounded text-gray-50 transition-opacity hover:opacity-70 disabled:opacity-40"
           aria-label="One more {product.name}"
         >
           +

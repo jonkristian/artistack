@@ -1,11 +1,9 @@
 <script lang="ts">
   import type { Media, MediaRole } from '$lib/server/schema';
   import { ImageModal, type Shape, type Aspect } from '$lib/components/dialogs';
-  import { addMedia } from '../../../routes/admin/media/data.remote';
-  import { invalidateAll } from '$app/navigation';
   import { toast } from '$lib/stores/toast.svelte';
   import {
-    uploadFile as uploadToServer,
+    addToLibrary,
     isVideoFile,
     isAudioFile,
     isImageFile,
@@ -160,24 +158,11 @@
     cropShape?: Shape
   ): Promise<{ url: string; id: number } | null> {
     try {
-      const result = await uploadToServer(file, 'media', (f) => (uploadProgress = f));
-      const added = await addMedia({
+      return await addToLibrary(file, (f) => (uploadProgress = f), {
         role,
         sourceMediaId,
-        cropShape,
-        filename: file.name,
-        url: result.url,
-        originalUrl: result.originalUrl,
-        thumbnailUrl: result.thumbnailUrl,
-        mimeType: result.mimeType,
-        width: result.width,
-        height: result.height,
-        size: result.size,
-        originalSize: result.originalSize,
-        durationMs: result.durationMs
+        cropShape
       });
-      await invalidateAll();
-      return { url: result.url, id: added.media.id };
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Upload failed');
       return null;
@@ -425,10 +410,10 @@
           {#if uploading}
             <div class="flex flex-col items-center gap-1.5">
               <div
-                class="h-6 w-6 animate-spin rounded-full border-2 border-white/30 border-t-white"
+                class="border-raise/30 h-6 w-6 animate-spin rounded-full border-2 border-t-white"
               ></div>
               {#if uploadProgress !== null}
-                <span class="text-xs text-white tabular-nums"
+                <span class="text-xs text-gray-50 tabular-nums"
                   >{Math.round(uploadProgress * 100)}%</span
                 >
               {/if}
@@ -454,7 +439,7 @@
                   currentPage = 1;
                   open = true;
                 }}
-                class="rounded bg-gray-700 px-3 py-1.5 text-sm font-medium text-white"
+                class="rounded bg-gray-700 px-3 py-1.5 text-sm font-medium text-gray-50"
               >
                 Replace
               </button>
@@ -489,7 +474,7 @@
             {/if}
           {:else if isDragging}
             <svg
-              class="mb-2 h-10 w-10 text-violet-400"
+              class="text-link mb-2 h-10 w-10"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -501,7 +486,7 @@
                 d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
               />
             </svg>
-            <span class="text-sm text-violet-400">Drop {kindLabel} here</span>
+            <span class="text-link text-sm">Drop {kindLabel} here</span>
           {:else}
             <svg
               class="mb-2 h-10 w-10 text-gray-500"
@@ -548,7 +533,7 @@
       ondragleave={handleDragLeave}
     >
       <div class="flex items-center justify-between border-b border-gray-700 p-4">
-        <h2 class="text-lg font-semibold text-white">
+        <h2 class="text-lg font-semibold text-gray-50">
           {#if multiple}
             Select {kindLabel}s ({multiSelection.length} selected)
           {:else}
@@ -565,14 +550,10 @@
               Done
             </button>
           {/if}
-          <a
-            href="/admin/media"
-            target="_blank"
-            class="text-sm text-violet-400 hover:text-violet-300"
-          >
+          <a href="/admin/media" target="_blank" class="text-link hover:text-link-strong text-sm">
             Manage library
           </a>
-          <button onclick={handleClose} class="text-gray-400 hover:text-white" aria-label="Close">
+          <button onclick={handleClose} class="text-gray-400 hover:text-gray-50" aria-label="Close">
             <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 stroke-linecap="round"
@@ -648,7 +629,7 @@
                   <div
                     class="flex h-full w-full flex-col items-center justify-center gap-1 bg-gray-800 p-2"
                   >
-                    <svg class="h-6 w-6 text-violet-400" fill="currentColor" viewBox="0 0 24 24">
+                    <svg class="text-link h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
                       <path d="M12 3v10.55A4 4 0 1014 17V7h4V3h-6z" />
                     </svg>
                     <span class="w-full truncate text-center text-[10px] text-gray-400">
@@ -668,7 +649,7 @@
                     class="pointer-events-none absolute inset-0 flex items-center justify-center"
                   >
                     <div class="rounded-full bg-black/50 p-2 backdrop-blur-sm">
-                      <svg class="h-4 w-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+                      <svg class="h-4 w-4 text-gray-50" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M8 5v14l11-7z" />
                       </svg>
                     </div>
@@ -684,7 +665,7 @@
                 {#if isSelected}
                   <div class="absolute inset-0 flex items-center justify-center bg-violet-600/30">
                     <svg
-                      class="h-6 w-6 text-white"
+                      class="h-6 w-6 text-gray-50"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -708,7 +689,7 @@
                 onclick={() => (currentPage = Math.max(1, currentPage - 1))}
                 disabled={currentPage === 1}
                 aria-label="Previous page"
-                class="rounded-lg px-3 py-1.5 text-sm text-gray-400 transition-colors hover:bg-gray-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+                class="rounded-lg px-3 py-1.5 text-sm text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-50 disabled:cursor-not-allowed disabled:opacity-30"
               >
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -725,7 +706,7 @@
                 onclick={() => (currentPage = Math.min(totalPages, currentPage + 1))}
                 disabled={currentPage === totalPages}
                 aria-label="Next page"
-                class="rounded-lg px-3 py-1.5 text-sm text-gray-400 transition-colors hover:bg-gray-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+                class="rounded-lg px-3 py-1.5 text-sm text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-50 disabled:cursor-not-allowed disabled:opacity-30"
               >
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path

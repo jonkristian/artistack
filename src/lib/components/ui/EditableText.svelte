@@ -83,7 +83,7 @@
 {:else}
   <button
     onclick={startEdit}
-    class="cursor-pointer rounded px-2 py-1 transition-colors hover:bg-white/10 {className}"
+    class="hover:bg-raise/10 cursor-pointer rounded px-2 py-1 transition-colors {className}"
     title="Click to edit"
   >
     {value || placeholder}

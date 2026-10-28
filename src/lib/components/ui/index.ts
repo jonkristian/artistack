@@ -7,6 +7,8 @@ export { default as EditorPreview } from './EditorPreview.svelte';
 export { default as DateTimePicker } from './DateTimePicker.svelte';
 export { default as ImageSelect } from './ImageSelect.svelte';
 export { default as MediaPicker } from './MediaPicker.svelte';
+export { default as FontSelect } from './FontSelect.svelte';
+export { default as MediaAdd } from './MediaAdd.svelte';
 export { default as MediaDropZone } from './MediaDropZone.svelte';
 export { default as LayoutPreview } from './LayoutPreview.svelte';
 export { default as PasswordFields } from './PasswordFields.svelte';

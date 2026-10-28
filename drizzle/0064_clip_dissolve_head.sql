@@ -1,0 +1,13 @@
+-- What the incoming shot paid for the dissolve at its start, in seconds.
+--
+-- A dissolve is made from the frames either side of the cut: the tail the
+-- first shot was trimmed off and the head the second one was. Half from each
+-- when both have some — but a file dropped in whole has neither, which is how
+-- most clips start, and a dissolve was impossible there until now. One shot's
+-- spare tail is a whole dissolve on its own; it simply sits to one side of the
+-- cut rather than across it.
+--
+-- Which means the split is no longer always down the middle, and taking the
+-- dissolve off again has to give each side back exactly what it gave. Halving
+-- it instead walked the cut along the strip a little on every press.
+ALTER TABLE `clip_sources` ADD `dissolve_head` real;

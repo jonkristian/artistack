@@ -197,7 +197,7 @@
           onkeydown={handleKeydown}
           placeholder="Search or add…"
           aria-label="Search or add a tag"
-          class="min-w-0 flex-1 bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none"
+          class="min-w-0 flex-1 bg-transparent text-sm text-gray-50 placeholder-gray-500 focus:outline-none"
         />
       </div>
 
@@ -207,7 +207,7 @@
             <button
               type="button"
               onclick={create}
-              class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-violet-300 hover:bg-gray-800"
+              class="text-link-strong flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-gray-800"
             >
               <svg
                 class="h-3.5 w-3.5 shrink-0"
@@ -236,14 +236,14 @@
               aria-selected={chosen}
               onclick={() => toggle(name)}
               class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-gray-800
-                     {chosen ? 'text-white' : 'text-gray-300'}"
+                     {chosen ? 'text-gray-50' : 'text-gray-300'}"
             >
               <!-- The tick's space is held whether or not it's there, so the
                    names line up and the chosen ones read as a column. -->
               <span class="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
                 {#if chosen}
                   <svg
-                    class="h-3.5 w-3.5 text-violet-400"
+                    class="text-link h-3.5 w-3.5"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"

@@ -55,17 +55,14 @@ export async function sweepClipLeftovers(): Promise<SweepResult> {
   /*
    * Media rows of our own making that no clip claims.
    *
-   * Both columns have to be checked: a row can be some project's finished
-   * render and some other project's nothing at all, and an `IN` against one
-   * column would call it orphaned.
+   * `proof` is still in the net. The quick-render path is gone, but the rows
+   * and files it made are still on disk and nothing points at them any more —
+   * so this is what finally collects them.
    */
-  const claimed = await db
-    .select({ output: clipProjects.outputMediaId, proof: clipProjects.proofMediaId })
-    .from(clipProjects);
+  const claimed = await db.select({ output: clipProjects.outputMediaId }).from(clipProjects);
   const live = new Set<number>();
   for (const row of claimed) {
     if (row.output) live.add(row.output);
-    if (row.proof) live.add(row.proof);
   }
 
   const ours = await db

@@ -25,7 +25,8 @@
     clipId = null,
     onchange,
     onremove,
-    onclose
+    onclose,
+    inline = false
   }: {
     effect: PlacedEffect;
     /** Which one it is, only so the heading can say. */
@@ -35,18 +36,21 @@
     clipId?: number | null;
     onchange: (patch: AppliedEffect) => void;
     onremove: () => void;
+    /** Shown in the selection panel rather than over the page. */
+    inline?: boolean;
     onclose: () => void;
   } = $props();
 
   const label = $derived(pictureEffectById(effect.id)?.label ?? 'Effect');
 </script>
 
-<BlockDialog title="{label} · block {index + 1}" wide {onremove} {onclose}>
+<BlockDialog title="{label} · block {index + 1}" wide {inline} {onremove} {onclose}>
   <!-- No None here, unlike the Look panel's copy. Removing the block is how you
        say no effect, and it is one press away at the bottom of this dialog —
        an option that empties a block without removing it would leave a bar on
        the strip standing for nothing. -->
   <EffectPicker
+    scope="placed"
     family="picture"
     value={effect}
     {clipId}

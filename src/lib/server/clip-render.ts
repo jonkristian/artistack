@@ -5,6 +5,9 @@ import { join, basename } from 'path';
 import { runFfmpeg, probeVideo, probeDuration, rasterizeSvg, hasBinary } from './ffmpeg';
 import { DEFAULT_STILL_SECONDS } from './schema';
 import { DATA_DIR } from './paths';
+import type { AppliedEffect } from '$lib/clips/types';
+import { fontById } from '$lib/fonts';
+import { captionFont } from './font-files';
 import {
   captionAnchors,
   captionBackdrop,
@@ -19,6 +22,17 @@ import {
   type TimedCaption,
   type ClipAspect
 } from '$lib/clips/types';
+import { alreadyFills, driftWindow, turnedSize } from '$lib/clips/framing';
+import {
+  CAPTION_SIZE_DIVISOR,
+  captionBackdropOpacity,
+  captionBorder,
+  captionBorderWidth,
+  captionFontId,
+  captionX
+} from '$lib/clips/types';
+import { captionAss, captionText } from '$lib/clips/caption-html';
+import { bedFades, placeBeds } from '$lib/clips/audio';
 import {
   captionEffectOf,
   captionSeed,
@@ -229,6 +243,17 @@ export interface ClipSourceInput {
   zoom?: number | null;
   /** Drift slowly across whatever the fill crops away. */
   pan?: boolean | null;
+  /**
+   * This shot's own effects, run over this shot and no other.
+   *
+   * The clip's `effects` are laid over the finished picture, where they can be
+   * placed at a moment and run on the clip's clock. These run here, inside the
+   * part, where the clock starts at zero and the only footage in sight is this
+   * shot's — which is precisely what "this shot looks like this" means, and
+   * what a windowed effect on the clip could only approximate until the shot
+   * was moved.
+   */
+  effects?: AppliedEffect[] | null;
 }
 
 export interface RenderInput {
@@ -245,13 +270,6 @@ export interface RenderInput {
   outroPath?: string | null;
   /** The beds, in the order they should be mixed. */
   audio?: ClipAudioInput[];
-  /**
-   * Render a proof: the same edit, made quickly and thrown away.
-   *
-   * For judging where things sit while you work, which needs the timing to be
-   * right and nothing else. See PROOF below for what it gives up.
-   */
-  proof?: boolean;
   outputPath: string;
 }
 
@@ -509,48 +527,6 @@ function rotateFilter(rotation: number | null | undefined): string {
   }
 }
 
-/**
- * How fast a drift crosses the frame, as a share of its width per second.
- *
- * Small on purpose. The point is that you notice the shot is alive without
- * ever catching it moving.
- *
- * One per cent a second: a four-second still travels a twenty-fifth of the
- * frame, a twenty-second hold about a fifth of it. Three per cent was the first
- * guess and read as a camera move rather than as breathing — slow enough to be
- * smooth, fast enough to watch, which is the wrong side of the line.
- *
- * A rate rather than a distance, so a long hold drifts further than a short one
- * instead of covering the same ground more slowly. At 1080 wide this is about a
- * third of a pixel per frame, which is why the drift is cropped at twice the
- * size — see the note where that happens.
- */
-const DRIFT_PER_SECOND = 0.01;
-
-/**
- * Where a drifting window sits at each end of a shot, 0 to 1 across the room
- * available to it.
- *
- * Returns null when there is nowhere to go: a picture the same shape as the
- * frame has no overflow, and a drift with no room would be a scale change
- * nobody asked for. The axis is chosen rather than offered — it is whichever
- * one the material actually has room on.
- */
-function driftWindow(
-  room: { x: number; y: number },
-  width: number,
-  seconds: number
-): { axis: 'x' | 'y'; from: number; to: number } | null {
-  const axis = room.x >= room.y ? 'x' : 'y';
-  const available = axis === 'x' ? room.x : room.y;
-  if (available < 2) return null;
-
-  // Never further than there is room for, and never faster than the rate.
-  const travel = Math.min(available, DRIFT_PER_SECOND * seconds * width);
-  const half = travel / available / 2;
-  return { axis, from: 0.5 - half, to: 0.5 + half };
-}
-
 function buildFill(
   fill: string,
   width: number,
@@ -573,13 +549,7 @@ function buildFill(
    * aspects it crops nothing and is a plain scale — and it can't produce a
    * black bar if the two are a hair apart, which `black` could.
    */
-  let fills = false;
-  if (source && source.width > 0 && source.height > 0) {
-    const quarter = Math.abs((((rotation ?? 0) % 360) + 360) % 360) % 180 === 90;
-    const w = quarter ? source.height : source.width;
-    const h = quarter ? source.width : source.height;
-    fills = Math.abs(w / h - width / height) / (width / height) < 0.01;
-  }
+  const fills = alreadyFills({ width, height }, source, rotation);
 
   if (fill === 'black' && !fills) {
     return (
@@ -640,12 +610,10 @@ function buildFill(
     let y = '(ih-oh)/2';
 
     if (framing?.pan && source && source.width > 0 && source.height > 0) {
-      const quarter = Math.abs((((rotation ?? 0) % 360) + 360) % 360) % 180 === 90;
-      const sw = quarter ? source.height : source.width;
-      const sh = quarter ? source.width : source.height;
+      const turned = turnedSize(source, rotation);
       // What `force_original_aspect_ratio=increase` will settle on.
-      const factor = Math.max((width * zoom) / sw, (height * zoom) / sh);
-      const room = { x: sw * factor - width, y: sh * factor - height };
+      const factor = Math.max((width * zoom) / turned.width, (height * zoom) / turned.height);
+      const room = { x: turned.width * factor - width, y: turned.height * factor - height };
       const drift = driftWindow(room, width, framing.seconds);
 
       if (drift) {
@@ -694,8 +662,7 @@ interface AssContext {
 export function buildAss(ctx: AssContext, captions: TimedCaption[]): string {
   const { width, height, config, adv, font, accentColor } = ctx;
 
-  const capSize = Math.round(width / adv.captionSizeDivisor);
-  const headSize = Math.round(width / adv.headlineSizeDivisor);
+  const capSize = Math.round(width / CAPTION_SIZE_DIVISOR);
 
   /*
    * Where the style puts a caption, before any caption says otherwise.
@@ -746,7 +713,7 @@ export function buildAss(ctx: AssContext, captions: TimedCaption[]): string {
    * known after asking the effects what they intend to draw.
    */
   const drawn = captions
-    .filter((caption) => caption.text?.trim())
+    .filter((caption) => captionText(caption.text ?? '').trim())
     .map((caption) => {
       const backdrop = captionBackdrop(caption, config);
       const color = captionColor(caption, config, accentColor);
@@ -779,22 +746,50 @@ export function buildAss(ctx: AssContext, captions: TimedCaption[]): string {
       };
     });
 
-  const backdrops: (string | null)[] = [];
+  /*
+   * One style per panel, where a panel is a colour *and* how solid it is.
+   *
+   * Opacity used to be a single clip-wide dial, so the colour alone named a
+   * style. It is a caption's own now — white at half strength is grey, and
+   * that belongs beside the colour rather than three panels away — which makes
+   * two captions on the same colour at different strengths two different
+   * panels. Keyed on the pair, and `null` is the no-panel style.
+   */
+  type Panel = { colour: string | null; opacity: number };
+  const panelKey = (p: Panel) => (p.colour ? `${p.colour}@${p.opacity}` : 'none');
+
+  const backdrops: Panel[] = [];
   for (const item of drawn) {
-    if (!backdrops.includes(item.backdrop)) backdrops.push(item.backdrop);
+    const panel: Panel = {
+      colour: item.backdrop,
+      opacity: captionBackdropOpacity(item.caption)
+    };
+    if (!backdrops.some((p) => panelKey(p) === panelKey(panel))) backdrops.push(panel);
   }
   const hasCopies = drawn.some((item) => item.ass.copies?.length);
-  if (backdrops.length === 0 || (hasCopies && !backdrops.includes(null))) backdrops.push(null);
+  /*
+   * A caption wanting both a panel and a ring is drawn as two lines, and the
+   * upper one needs the plain style to carry the ring. Without this the style
+   * simply wasn't in the table when every caption had a panel, and the line
+   * named `Cap-1` — which libass skips, so the words vanished and the box
+   * stayed.
+   */
+  const needsBare = drawn.some((item) => item.backdrop && captionBorder(item.caption, config));
+  const none: Panel = { colour: null, opacity: 0 };
+  if (backdrops.length === 0 || ((hasCopies || needsBare) && !backdrops.some((p) => !p.colour))) {
+    backdrops.push(none);
+  }
 
   /*
    * `BackColour` is `&HAABBGGRR`, where the alpha runs the other way from the
    * one anybody expects: 00 is solid and FF is invisible. So the dial, which
    * asks how solid the panel is, is inverted on the way in.
    */
-  const veil = Math.round((1 - Math.min(100, Math.max(0, adv.captionBackdropPercent)) / 100) * 255)
-    .toString(16)
-    .padStart(2, '0')
-    .toUpperCase();
+  const veil = (opacity: number) =>
+    Math.round((1 - Math.min(100, Math.max(0, opacity)) / 100) * 255)
+      .toString(16)
+      .padStart(2, '0')
+      .toUpperCase();
 
   /*
    * The panel's colour goes in `OutlineColour`, not `BackColour`.
@@ -812,11 +807,12 @@ export function buildAss(ctx: AssContext, captions: TimedCaption[]): string {
    * editor's overlay honoured both, so the preview was right and the file was
    * wrong, which is the exact failure the shared caption helpers exist to stop.
    */
-  const styleLine = (name: string, size: number, backdrop: string | null, extraOutline = 0) => {
-    const panel = backdrop ? `&H${veil}${assColor(backdrop).slice(4)}` : null;
+  const styleLine = (name: string, size: number, backdrop: Panel, extraOutline = 0) => {
+    const colour = backdrop.colour;
+    const panel = colour ? `&H${veil(backdrop.opacity)}${assColor(colour).slice(4)}` : null;
     return (
       `Style: ${name},${font},${size},${primary},${panel ?? '&H00000000'},&H00000000,1,` +
-      `${backdrop ? 3 : 1},${(backdrop ? 8 : 4) + extraOutline},${backdrop ? 0 : 2},` +
+      `${colour ? 3 : 1},${(colour ? 8 : 4) + extraOutline},${colour ? 0 : 2},` +
       `${alignment},${adv.captionMarginX},${adv.captionMarginX},${marginV}`
     );
   };
@@ -831,28 +827,25 @@ export function buildAss(ctx: AssContext, captions: TimedCaption[]): string {
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold,' +
       ' BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV',
-    ...backdrops.map((backdrop, i) => styleLine(`Cap${i}`, capSize, backdrop)),
     /*
-     * A headline is a caption in a bigger voice, not one in a different place.
+     * One style per panel, and nothing else.
      *
-     * This style used to anchor centre with no margin, so a big caption landed
-     * in the middle of the frame while the editor — and every normal caption —
-     * put it where the clip's caption position said. Pressing its anchor button
-     * fixed it, because that writes a `y` and the line's own `\an2` overrides
-     * the style: so it was wrong exactly once, before anyone had touched it.
-     *
-     * Same alignment, same margins as Cap. The size and the heavier outline are
-     * what make it a headline.
+     * There was a second, identical table at a bigger size for captions marked
+     * `headline` — the aA switch. Captions carry a real size in their own
+     * markup now, so the flag has nothing left to decide and every line is a
+     * Cap. Half the styles, and no question about which of two tables a line
+     * is on.
      */
-    ...backdrops.map((backdrop, i) => styleLine(`Head${i}`, headSize, backdrop, 1)),
+    ...backdrops.map((backdrop, i) => styleLine(`Cap${i}`, capSize, backdrop)),
     '',
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text'
   ];
 
   for (const { caption, backdrop, color, marginV, ass } of drawn) {
-    const voice = caption.headline ? 'Head' : 'Cap';
-    const style = `${voice}${backdrops.indexOf(backdrop)}`;
+    const voice = 'Cap';
+    const mine = panelKey({ colour: backdrop, opacity: captionBackdropOpacity(caption) });
+    const style = `${voice}${backdrops.findIndex((p) => panelKey(p) === mine)}`;
 
     /*
      * `\an2` because MarginV is measured from whichever edge the alignment
@@ -868,8 +861,35 @@ export function buildAss(ctx: AssContext, captions: TimedCaption[]): string {
      * pair as well, so the two spellings of one colour are not interchangeable
      * — hence the slice rather than a second formatter.
      */
-    const colour = `{\\1c&H${assColor(color).slice(4)}&}`;
-    const text = assText(caption.text);
+    /*
+     * The words' colour, and the ring around them.
+     *
+     * Inline rather than in the style, because both are a caption's own
+     * business and the styles are shared by every caption that sits on the
+     * same kind of panel. `\3c` is the outline colour; `\bord0` is a caption
+     * that asked for no ring — which only means anything on the plain style,
+     * since a panel is drawn *with* the outline and taking it away would take
+     * the panel with it.
+     */
+    const ring = captionBorder(caption, config);
+    const outline = ring
+      ? `{\\3c&H${assColor(ring).slice(4)}&\\bord${captionBorderWidth(caption, config)}}`
+      : '{\\bord0}';
+    /*
+     * The face, when this line wants one the style doesn't carry.
+     *
+     * Inline `\fn` rather than a style per font: a style is a row in a table
+     * and the table is already multiplied by every backdrop colour in the
+     * clip. One override on the line is what libass gives you for exactly
+     * this, and it resolves the same way the style's own Fontname does — out
+     * of the directory handed to the filter.
+     */
+    const own = captionFontId(caption, config);
+    const face = own && fontById(own)?.name !== font ? `{\\fn${fontById(own)?.name}}` : '';
+    const colour = `{\\1c&H${assColor(color).slice(4)}&}${outline}${face}`;
+    // The caption's own size is what a `</span>` returns to, so the parser is
+    // told it rather than left to guess from the style it happens to be on.
+    const text = hardSpaces(captionAss(caption.text, capSize));
     const copies = ass.copies ?? [];
 
     /*
@@ -886,18 +906,89 @@ export function buildAss(ctx: AssContext, captions: TimedCaption[]): string {
       const end = copy.to != null ? caption.start + copy.to : caption.end;
       if (end <= start) continue;
       lines.push(
-        `Dialogue: ${copy.layer},${assTime(start)},${assTime(end)},${voice}${backdrops.indexOf(
-          null
-        )},,${left},${right},${marginV},,${anchor}{${copy.tags}}${text}`
+        `Dialogue: ${copy.layer},${assTime(start)},${assTime(end)},` +
+          `${voice}${backdrops.findIndex((p) => !p.colour)},,` +
+          `${left},${right},${marginV},,${anchor}{${copy.tags}}${text}`
       );
     }
 
     // The words themselves, above whatever the effect put underneath them —
     // unless it asked for otherwise, which is what a caption on a panel needs.
     const layer = ass.layer ?? copies.reduce((top, copy) => Math.max(top, copy.layer + 1), 0);
+    /*
+     * Off centre, by the margins rather than by `\pos`.
+     *
+     * Alignment 2 centres the block between MarginL and MarginR, so widening
+     * one by what the other loses moves the centre by that much and leaves the
+     * available width — and therefore every line break — exactly as it was.
+     * The same trick the split copies use a few lines up, and the reason a
+     * caption nudged sideways still wraps where it did.
+     */
+    const dx = Math.round(captionX(caption) * width);
+    const marginL = Math.max(0, Math.round(adv.captionMarginX + dx));
+    const marginR = Math.max(0, Math.round(adv.captionMarginX - dx));
+
+    /*
+     * A panel and an outline, which one style cannot carry.
+     *
+     * BorderStyle 3 paints the box with the outline colour, so there is no
+     * outline left for that style to draw — white panel, yellow words and a
+     * black ring is three things and the style has room for two. Two lines
+     * then: the panelled style underneath with its words made invisible, so
+     * only the box survives, and the plain style over it carrying the colour
+     * and the ring.
+     *
+     * Same text, same margins, same alignment, same tags — so the box is
+     * exactly the size of the words it sits behind, wraps where they wrap, and
+     * any fade or move takes the pair together. Only when both are asked for;
+     * one of either is still one line.
+     */
+    const stacked = Boolean(backdrop) && Boolean(ring);
+    const bare = `${voice}${backdrops.findIndex((p) => !p.colour)}`;
+    const tags = ass.tags ? `{${ass.tags}}` : '';
+
+    /*
+     * The pair is placed outright, which is what keeps it a pair.
+     *
+     * libass shuffles un-positioned lines apart when they would overlap, and a
+     * box with words on top of it is nothing but an overlap — so it moved the
+     * words a whole line up and left the box behind. Worse, it counted lines
+     * that had already finished: the same two lines rendered on their own sat
+     * correctly, and only went wrong once an effect's earlier copies were in
+     * the file with them. A line given `\pos` is exempt.
+     *
+     * The point is where the margins already put it — the centre of what's
+     * left between them, at the same height `MarginV` means — so this moves
+     * nothing. Measured against the margin-only version on a caption long
+     * enough to wrap: identical rows, identical columns, identical breaks.
+     */
+    const place = stacked
+      ? `\\pos(${Math.round((marginL + (width - marginR)) / 2)},${height - marginV})`
+      : '';
+
+    if (stacked) {
+      lines.push(
+        `Dialogue: ${layer},${assTime(caption.start)},${assTime(caption.end)},${style},,` +
+          `${marginL},${marginR},${marginV},,` +
+          /*
+           * The fill only.
+           *
+           * `\1a&HFF&` makes the glyphs invisible while still laying them out,
+           * which is what gives the box its shape. The outline alpha is left
+           * alone on purpose: under BorderStyle 3 the outline *is* the box, so
+           * hiding it hides the panel. Measured rather than reasoned — with
+           * `\3a&HFF&` as well the rendered frame came back with no white
+           * pixels in it at all.
+           */
+          `{\\an2${place}}{\\1a&HFF&}${tags}${text}`
+      );
+    }
+
     lines.push(
-      `Dialogue: ${layer},${assTime(caption.start)},${assTime(caption.end)},${style},,0,0,${marginV},,` +
-        `${anchor}${colour}${ass.tags ? `{${ass.tags}}` : ''}${text}`
+      `Dialogue: ${stacked ? layer + 1 : layer},${assTime(caption.start)},` +
+        `${assTime(caption.end)},${stacked ? bare : style},,` +
+        `${marginL},${marginR},${marginV},,` +
+        `${stacked ? `{\\an2${place}}` : anchor}${colour}${tags}${text}`
     );
   }
 
@@ -1007,8 +1098,6 @@ async function renderPart(
    */
   const silentIndex = 1;
 
-  const filterGraph = `${fill};[filled]${chain}[v]`;
-
   /*
    * Trim on the input side (fast seek); it's re-encoded downstream so it stays
    * accurate.
@@ -1058,6 +1147,33 @@ async function renderPart(
     : source.trimStart != null && source.trimEnd != null
       ? Math.max(0, source.trimEnd - source.trimStart)
       : probe.duration;
+
+  /*
+   * This shot's own look, between the fill and the clip-wide filters.
+   *
+   * After the fill, because an effect works on the framed picture rather than
+   * on whatever shape the footage arrived in; before the clip's grade, so a
+   * shot that is black and white still takes the tone the clip is graded to,
+   * the way a filter applies over a look in any editor.
+   *
+   * On this part's own clock, which starts at zero — the one difference from
+   * the clip's effects, and the reason this is where they run. A rhythm in an
+   * effect means a rhythm through the shot.
+   */
+  const own = source.effects?.length
+    ? pictureGraph(
+        { effects: source.effects },
+        { width, height, fps: adv.fps, duration: partLength },
+        '[filled]',
+        '[own]'
+      )
+    : [];
+
+  // Statements, not one chain: an effect may branch to ruin a strip of the
+  // picture and composite it back, which is more than a comma can express.
+  const filterGraph = own.length
+    ? `${fill};${own.join(';')};[own]${chain}[v]`
+    : `${fill};[filled]${chain}[v]`;
 
   const args: string[] = ['-y', '-loglevel', 'error', ...seek, '-i', source.path];
 
@@ -1311,10 +1427,24 @@ function compositeGraph(
   return { inputs, graph, video: picture, audio: '[pao]', duration };
 }
 
+/**
+ * Parts, end to end.
+ *
+ * It used to be able to crossfade them here, and that is why it no longer
+ * does: ffmpeg's `xfade` consumes the overlap, so a joined body came out
+ * shorter than the clip the captions, the beds and the queue were all timed
+ * against — every caption after the first join played late, by the length of
+ * the fade, once per join.
+ *
+ * A dissolve is made at the join instead, out of the frames either side of it
+ * (`$lib/clips/joins.ts`): the two shots overlap on the strip and the incoming
+ * one fades up, which sends the clip down the composite path where fading into
+ * something is what the overlay already does. The clip's length is then what
+ * the strip says it is, which is the whole point.
+ */
 async function joinParts(
   tmp: string,
   parts: string[],
-  xfade: boolean,
   adv: ClipAdvancedConfig,
   signal?: AbortSignal
 ): Promise<string> {
@@ -1325,51 +1455,6 @@ async function joinParts(
   // its only input — on a single-source clip that was the second most expensive
   // stage of the render, for nothing.
   if (parts.length === 1) return parts[0];
-
-  if (xfade && parts.length >= 2) {
-    const duration = adv.xfadeSeconds;
-    const inputs: string[] = [];
-    for (const part of parts) inputs.push('-i', part);
-
-    // xfade offsets are absolute on the output timeline, so each one is the
-    // running total minus the overlap consumed so far.
-    let accumulated = await probeDuration(parts[0]);
-    let prevVideo = '0:v';
-    let prevAudio = '0:a';
-    const graph: string[] = [];
-
-    for (let k = 1; k < parts.length; k++) {
-      const partDuration = await probeDuration(parts[k]);
-      const offset = Math.max(0, accumulated - duration);
-      graph.push(
-        `[${prevVideo}][${k}:v]xfade=transition=fade:duration=${duration}` +
-          `:offset=${offset.toFixed(3)}[vx${k}]`
-      );
-      graph.push(`[${prevAudio}][${k}:a]acrossfade=d=${duration}[ax${k}]`);
-      prevVideo = `vx${k}`;
-      prevAudio = `ax${k}`;
-      accumulated = accumulated + partDuration - duration;
-    }
-
-    await runFfmpeg(
-      [
-        '-y',
-        '-loglevel',
-        'error',
-        ...inputs,
-        '-filter_complex',
-        graph.join(';'),
-        '-map',
-        `[${prevVideo}]`,
-        '-map',
-        `[${prevAudio}]`,
-        ...encodeArgs(adv),
-        output
-      ],
-      { signal }
-    );
-    return output;
-  }
 
   // concat demuxer: single-quotes in a path would break the list format, and
   // these are our own temp files, so plain interpolation is safe here.
@@ -1516,17 +1601,15 @@ function buildAudioGraph(
    * input index travels with each one, since that's fixed by the command line
    * and must not be re-sorted along with them.
    */
-  const placed = tracks
-    .map((track, index) => ({
-      track,
-      input: index + bedOffset,
-      start: track.start,
-      // Null means "until the clip does", and a value past the end means the
-      // same thing — the clip is the outer bound either way.
-      stop: Math.min(track.end ?? totalDuration, totalDuration)
-    }))
-    .filter((bed) => bed.stop > bed.start)
-    .sort((a, b) => a.start - b.start);
+  /*
+   * The same placement the editor plays, so the music is where it sounded.
+   * The input index is attached afterwards: which ffmpeg input a bed came in
+   * on is the one part of this the player has no opinion about.
+   */
+  const placed = placeBeds(tracks, totalDuration).map((bed) => ({
+    ...bed,
+    input: tracks.indexOf(bed.track) + bedOffset
+  }));
 
   const parts: string[] = [];
   const beds: string[] = [];
@@ -1542,21 +1625,11 @@ function buildAudioGraph(
      * Equal-power curves on both sides, so the level holds flat through the
      * handover instead of dipping in the middle the way two linear ramps do.
      */
-    const next = placed[index + 1];
-    const previous = placed[index - 1];
-    const overlapOut = next ? Math.max(0, bed.stop - next.start) : 0;
-    const overlapIn = previous ? Math.max(0, previous.stop - bed.start) : 0;
-
-    const base = Math.max(0, adv.bedFadeSeconds);
-    /*
-     * The toggles govern a bed's own edges — how it arrives out of silence and
-     * how it leaves. An overlap overrides them: two beds at full is not a
-     * choice anyone makes, it's a clash.
-     */
-    const fadeInSec = overlapIn > 0 ? overlapIn : bed.track.fadeIn ? base : 0;
-    const fadeOutSec = overlapOut > 0 ? overlapOut : bed.track.fadeOut ? base : 0;
-    const curveIn = overlapIn > 0 ? ':curve=qsin' : '';
-    const curveOut = overlapOut > 0 ? ':curve=qsin' : '';
+    const fades = bedFades(placed, index, Math.max(0, adv.bedFadeSeconds));
+    const fadeInSec = fades.in;
+    const fadeOutSec = fades.out;
+    const curveIn = fades.crossIn ? ':curve=qsin' : '';
+    const curveOut = fades.crossOut ? ':curve=qsin' : '';
 
     // Match the natural track's format before doing anything else.
     let chain = 'aresample=48000,aformat=channel_layouts=stereo';
@@ -1693,59 +1766,6 @@ export async function renderClip(
 
   let { width, height } = DIMENSIONS[config.aspect] ?? DIMENSIONS['9:16'];
 
-  if (input.proof) {
-    /*
-     * What a proof gives up, and what it keeps.
-     *
-     * Everything here is chosen against measurements on fifteen seconds of
-     * 1080×1920: the full settings took 47.9s, this takes about 2.4s.
-     *
-     * Half size is the cheapest large saving and costs nothing that matters —
-     * a proof is for judging timing, not sharpness. The blurred fill is the
-     * single most expensive creative option, more than tripling even a small
-     * render, so it goes; black bars change what the edges look like and
-     * nothing about when anything happens. Loudnorm decodes every source in
-     * full before the encode even starts, which is a quarter of the work for a
-     * level nobody is judging yet.
-     *
-     * Grain, vignette, the grade and the branding all stay. They cost almost
-     * nothing by comparison, and dropping them would make the proof a worse
-     * answer to the question it exists for — which is what this will look like.
-     * The footage effects are the exception, and not because of the cost: the
-     * editor can draw those live, so burning them in would buy nothing and
-     * charge a render for every change of mind.
-     */
-    width = Math.round(width / 2 / 2) * 2;
-    height = Math.round(height / 2 / 2) * 2;
-    /*
-     * Only the blurred fill goes. It is the single most expensive creative
-     * option — more than tripling even a small render — and black bars change
-     * what the edges look like without changing when anything happens.
-     *
-     * Cropping is not expensive, and used to be dropped along with it. That was
-     * fine while the fill was one clip-wide choice about footage; it stopped
-     * being fine when a shot could ask to fill the frame, because the proof
-     * then answered a question about framing with black bars and looked like
-     * the setting had done nothing.
-     */
-    if (config.fill === 'blur') config.fill = 'black';
-    config.loudnorm = false;
-
-    /*
-     * Nothing burned on. A proof is the picture, and the editor draws the
-     * captions, the logo and the watermark over it in the browser — where a
-     * caption can be retyped and land instantly instead of costing a render.
-     *
-     * Which also makes the proof cheaper: no libass pass, and no still image
-     * composited over every frame of every source.
-     */
-    config.intro = false;
-    config.watermark = false;
-    adv.preset = 'ultrafast';
-    adv.crf = 30;
-    adv.audioBitrateKbps = 96;
-    onLog?.(`Proof: ${width}×${height}, ${config.fill} fill, no loudnorm`);
-  }
   const accentColor = config.logoColor || '#8b5cf6';
 
   const tmp = await stagingDir();
@@ -1947,7 +1967,7 @@ export async function renderClip(
     let nextInput: number;
 
     if (sequential) {
-      const joined = await joinParts(tmp, parts, config.xfade, adv, signal);
+      const joined = await joinParts(tmp, parts, adv, signal);
       bodyInputs.push('-i', joined);
       bodyVideo = '[0:v]';
       bodyAudio = '[0:a]';
@@ -2011,37 +2031,14 @@ export async function renderClip(
      * station ident sits over whatever is playing. Degrading them as well would
      * mostly mean an illegible mark.
      */
-    /*
-     * Not in the proof. The editor draws it over the video instead.
-     *
-     * The same rule the captions, the logo and the watermark follow, and for
-     * the same reason: a browser can show it for nothing, so a render is a
-     * needless price for seeing it. A `<video>` takes a CSS filter like any
-     * other element, and the grade, the curves, the softness and the channel
-     * split all have counterparts there — which means switching a look, or
-     * dragging an effect along the strip, lands instantly instead of costing a
-     * quick render each time.
-     *
-     * That is worth about a second per proof at half size on fifteen seconds:
-     * 0.28s with nothing on it, 1.36s with the VHS look. Most of which is not
-     * the effects at all but two whole-frame YUV↔RGB conversions ffmpeg inserts
-     * because `curves` and `rgbashift` are RGB-native and the rest of the chain
-     * is not.
-     *
-     * The grain is the one thing the browser cannot honestly show, so the proof
-     * is a slightly cleaner picture than the file will be — the same trade the
-     * caption overlay already makes by being a likeness rather than a copy.
-     */
-    const look = input.proof
-      ? []
-      : pictureGraph(
-          config,
-          // The body's length, not the finished clip's: effects run on
-          // `bodyVideo`, which is everything before the outro is appended.
-          { width, height, fps: adv.fps, duration: bodyDuration },
-          bodyVideo,
-          '[look]'
-        );
+    const look = pictureGraph(
+      config,
+      // The body's length, not the finished clip's: effects run on
+      // `bodyVideo`, which is everything before the outro is appended.
+      { width, height, fps: adv.fps, duration: bodyDuration },
+      bodyVideo,
+      '[look]'
+    );
     if (look.length) {
       // Statements, not one chain: an effect may branch to ruin a strip of the
       // picture and composite it back, which is more than a comma can express.
@@ -2061,8 +2058,7 @@ export async function renderClip(
      * first. Before the outro, so the closing card stays clean, which is what
      * the per-part version did by accident and this one does on purpose.
      */
-    const brandOn = !input.proof;
-    if (brandOn && hasIntroGraphic && config.intro && introSeconds > 0) {
+    if (hasIntroGraphic && config.intro && introSeconds > 0) {
       const fadeAt = introSeconds > 0.6 ? introSeconds - 0.4 : 0.2;
       bodyInputs.push('-loop', '1', '-i', join(tmp, 'logo.png'));
       bodyGraph.push(
@@ -2076,7 +2072,7 @@ export async function renderClip(
       nextInput += 1;
     }
 
-    if (brandOn && hasWatermarkGraphic && config.watermark) {
+    if (hasWatermarkGraphic && config.watermark) {
       const from = config.intro && hasIntroGraphic ? introSeconds : 0;
       bodyInputs.push('-loop', '1', '-i', join(tmp, 'wm.png'));
       bodyGraph.push(
@@ -2136,23 +2132,50 @@ export async function renderClip(
     const videoFilters: string[] = [];
     let audioChain = '';
 
-    // Drawn over the video in the editor instead; see the proof block above.
-    const captions = input.proof ? [] : (input.captions ?? []);
+    const captions = input.captions ?? [];
     if (captions.length) {
+      /*
+       * The face, and where to find it.
+       *
+       * A chosen face comes with its own file: `fontsdir` hands libass a
+       * directory to look in before it asks the system anything, so the
+       * caption is burned in the drawing the site is set in whatever the
+       * container happens to have installed. Nothing chosen falls back to the
+       * old search — `fc-match` against a list of families that might be
+       * there, which is how this worked when the answer could only ever be a
+       * system font.
+       */
+      /*
+       * Anything this clip could draw with, not just its default.
+       *
+       * The directory is handed over whenever *any* line names a face, because
+       * a caption overriding the clip's choice has to resolve too — and the
+       * directory holds every face either could ask for.
+       */
+      const wanted = config.captionFont || '';
+      const anyOwn = captions.some((caption) => Boolean(caption.font));
+      const chosen = fontById(wanted);
+      const picked = chosen || anyOwn ? await captionFont(wanted) : null;
+
       const ass = buildAss(
         {
           width,
           height,
           config,
           adv,
-          font: await resolveFont(adv, onLog),
+          font: chosen ? chosen.name : await resolveFont(adv, onLog),
           accentColor
         },
         captions
       );
       const assPath = join(tmp, 'subs.ass');
       await writeFile(assPath, ass);
-      videoFilters.push(`ass=${escapeFilterPath(assPath)}`);
+      if (picked) onLog?.(`Captions: ${picked.dir}`);
+      videoFilters.push(
+        picked
+          ? `ass=f=${escapeFilterPath(assPath)}:fontsdir=${escapeFilterPath(picked.dir)}`
+          : `ass=${escapeFilterPath(assPath)}`
+      );
     }
 
     // Fade OUT only, never in. A video fade-in makes frame 1 pure black, and

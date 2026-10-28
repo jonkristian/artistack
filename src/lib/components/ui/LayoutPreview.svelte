@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { fontStack } from '$lib/fonts';
   import type { Component } from 'svelte';
   import type {
     Profile,
@@ -75,11 +76,23 @@
     /** Prices and dates are formatted with it; without it they read American. */
     locale: settings?.locale ?? 'nb-NO'
   } as Settings);
+
+  /*
+   * The type, like the colours: taken from the draft, not from what is saved.
+   *
+   * It was missing here, so picking a face changed the dropdown and nothing
+   * else — the preview went on being set in the admin's own font, which is the
+   * one thing it is not supposed to show you.
+   */
+  const previewBody = $derived(fontStack(settings?.fontBody));
+  const previewHeading = $derived(fontStack(settings?.fontHeading || settings?.fontBody));
 </script>
 
 <div
-  class="preview-container"
+  class="preview-container site-type"
   style="
+		--site-font: {previewBody};
+		--site-font-heading: {previewHeading};
 		--color-bg: {previewSettings.colorBg};
 		--color-card: {previewSettings.colorCard};
 		--color-accent: {previewSettings.colorAccent};
@@ -104,5 +117,7 @@
   .preview-container {
     min-height: 100%;
     background-color: var(--color-bg);
+    /* The admin around it is set in its own face; inside here is the site. */
+    font-family: var(--site-font);
   }
 </style>

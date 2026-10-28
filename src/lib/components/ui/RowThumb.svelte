@@ -23,7 +23,7 @@
   <img {src} {alt} loading="lazy" class="h-8 w-8 shrink-0 rounded object-cover" />
 {:else}
   <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-gray-800">
-    <svg class="h-3.5 w-3.5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg class="h-3.5 w-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path
         stroke-linecap="round"
         stroke-linejoin="round"

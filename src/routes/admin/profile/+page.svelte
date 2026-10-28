@@ -81,7 +81,7 @@
           </div>
         {/if}
         <div>
-          <p class="font-medium text-white">{currentUser.name}</p>
+          <p class="font-medium text-gray-50">{currentUser.name}</p>
           <p class="text-xs text-gray-500">
             {currentUser.role === 'admin' ? 'Admin' : 'Editor'}
           </p>
@@ -96,7 +96,7 @@
         <div>
           <label class="mb-1 block text-sm text-gray-400" for="profile-email">Email</label>
           <input id="profile-email" type="email" bind:value={email} class={fieldClass} />
-          <p class="mt-1 text-xs text-gray-600">This is what you sign in with.</p>
+          <p class="mt-1 text-xs text-gray-500">This is what you sign in with.</p>
         </div>
 
         {#if profileError}
@@ -148,7 +148,7 @@
           <button
             onclick={savePassword}
             disabled={savingPassword || !passwordReady}
-            class="rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
+            class="rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium text-gray-50 transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {savingPassword ? 'Changing…' : 'Change password'}
           </button>

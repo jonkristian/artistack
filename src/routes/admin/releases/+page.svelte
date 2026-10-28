@@ -232,7 +232,7 @@
             </button>
             <button
               type="button"
-              class="rounded-lg px-4 py-2 text-sm text-gray-400 transition hover:text-white"
+              class="rounded-lg px-4 py-2 text-sm text-gray-400 transition hover:text-gray-50"
               onclick={reset}
             >
               Cancel
@@ -246,7 +246,7 @@
   {#if releases.length === 0}
     <div class="rounded-xl border border-dashed border-gray-800 p-10 text-center">
       <p class="text-sm text-gray-400">No releases yet.</p>
-      <p class="mt-1 text-xs text-gray-600">
+      <p class="mt-1 text-xs text-gray-500">
         Create one to get a shareable page with per-platform click tracking.
       </p>
     </div>
@@ -303,12 +303,12 @@
             {/if}
 
             <div class="p-3">
-              <h2 class="truncate text-sm font-medium text-white">{release.title}</h2>
+              <h2 class="truncate text-sm font-medium text-gray-50">{release.title}</h2>
               <p class="mt-0.5 truncate text-xs text-gray-500">
                 {formatDate(release.releaseDate)} · {count}
                 {count === 1 ? 'link' : 'links'}
               </p>
-              <p class="mt-0.5 truncate text-[11px] text-gray-600">
+              <p class="mt-0.5 truncate text-[11px] text-gray-500">
                 {isOut ? 'Out' : 'Upcoming'}
               </p>
             </div>

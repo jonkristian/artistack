@@ -54,7 +54,7 @@
     aria-haspopup="listbox"
     aria-expanded={open}
     onclick={() => (open = !open)}
-    class="flex w-full items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-2 py-1.5 text-left text-sm text-white transition-colors hover:border-gray-600 focus:border-violet-500 focus:outline-none"
+    class="flex w-full items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-2 py-1.5 text-left text-sm text-gray-50 transition-colors hover:border-gray-600 focus:border-violet-500 focus:outline-none"
   >
     {#if selected?.image}
       <img

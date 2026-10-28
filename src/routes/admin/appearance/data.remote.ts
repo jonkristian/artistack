@@ -7,6 +7,7 @@ import {
   deleteColorScheme
 } from '$lib/server/settings';
 import * as v from 'valibot';
+import { FONTS } from '$lib/fonts';
 import { command } from '$app/server';
 import { db } from '$lib/server/db';
 import { settings } from '$lib/server/schema';
@@ -22,6 +23,9 @@ const hexColor = v.pipe(
   v.regex(/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/, 'Invalid hex color format')
 );
 
+/** The ids a setting may hold, taken from the list rather than retyped. */
+const FONT_IDS = FONTS.map((f) => f.id) as [string, ...string[]];
+
 const appearanceSchema = v.object({
   // Colors - validated as hex colors
   colorBg: v.optional(v.nullable(hexColor)),
@@ -30,6 +34,10 @@ const appearanceSchema = v.object({
   colorText: v.optional(v.nullable(hexColor)),
   colorTextMuted: v.optional(v.nullable(hexColor)),
   colorIcon: v.optional(v.nullable(hexColor)),
+  // The faces, as ids from the font list. Empty for the heading means it
+  // follows the body, which is what most sites want and all of them start as.
+  fontBody: v.optional(v.picklist(FONT_IDS)),
+  fontHeading: v.optional(v.picklist(['', ...FONT_IDS])),
   // Layout - restricted to valid options
   layout: v.optional(v.picklist(['default', 'simple'])),
   // UI options

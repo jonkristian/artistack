@@ -105,13 +105,13 @@
 <dialog
   bind:this={dialogEl}
   use:dismissable
-  class="fixed inset-0 m-auto h-fit w-full max-w-md rounded-xl border border-gray-700 bg-gray-900 p-0 text-white backdrop:bg-black/60"
+  class="fixed inset-0 m-auto h-fit w-full max-w-md rounded-xl border border-gray-700 bg-gray-900 p-0 text-gray-50 backdrop:bg-black/60"
   {onclose}
 >
   <div class="p-6">
     <div class="mb-6 flex items-center justify-between">
       <h2 class="text-lg font-semibold">{initial ? 'Edit act' : 'Add act'}</h2>
-      <button onclick={close} class="text-gray-400 hover:text-white" aria-label="Close dialog">
+      <button onclick={close} class="text-gray-400 hover:text-gray-50" aria-label="Close dialog">
         <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
             stroke-linecap="round"
@@ -189,7 +189,7 @@
       </button>
       <button
         onclick={close}
-        class="rounded-lg px-4 py-2 text-sm text-gray-400 transition hover:text-white"
+        class="rounded-lg px-4 py-2 text-sm text-gray-400 transition hover:text-gray-50"
       >
         Cancel
       </button>

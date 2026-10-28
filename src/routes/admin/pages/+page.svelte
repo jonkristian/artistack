@@ -160,7 +160,7 @@
             <button
               type="button"
               onclick={reset}
-              class="rounded-lg px-4 py-2 text-sm text-gray-400 transition hover:text-white"
+              class="rounded-lg px-4 py-2 text-sm text-gray-400 transition hover:text-gray-50"
             >
               Cancel
             </button>
@@ -173,7 +173,7 @@
   {#if listed.length === 0 && !creating}
     <div class="rounded-xl border border-dashed border-gray-800 p-10 text-center">
       <p class="text-sm text-gray-400">No pages yet.</p>
-      <p class="mt-1 text-xs text-gray-600">
+      <p class="mt-1 text-xs text-gray-500">
         An about or a contact — anything that isn't the front page, a release or the shop.
       </p>
     </div>
@@ -190,7 +190,7 @@
             onclick={() => selection.toggle(page.id)}
           />
           <a href="/admin/pages/{page.id}" class="min-w-0 flex-1">
-            <span class="block truncate text-sm text-white">{page.title}</span>
+            <span class="block truncate text-sm text-gray-50">{page.title}</span>
             <span class="mt-0.5 block truncate text-xs text-gray-500">/{page.slug}</span>
           </a>
 

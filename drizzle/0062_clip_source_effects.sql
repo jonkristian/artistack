@@ -1,0 +1,12 @@
+-- A shot's own effects, as the captions have had all along.
+--
+-- The clip's effects list stays what it is — a look over the whole thing, or
+-- an event placed at a moment, which is the adjustment layer of this editor.
+-- What it could not say is "this shot, and only this shot": the nearest thing
+-- was an effect windowed to where the shot happened to be, which stayed behind
+-- the moment the shot was moved or trimmed.
+--
+-- JSON, the same shape the clip's own list holds, because it is the same kind
+-- of thing: `[{ "id": "mono", "params": { "grain": 16 } }]`. Null inherits,
+-- exactly as `fit` and `watermark` do on the same row.
+ALTER TABLE `clip_sources` ADD `effects` text;

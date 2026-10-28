@@ -100,7 +100,7 @@
     aria-haspopup="true"
     title={compact ? summary : undefined}
     aria-label={compact ? `Filter — ${summary}` : undefined}
-    class="relative flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 py-1.5 text-sm whitespace-nowrap text-gray-300 transition-colors hover:bg-gray-700 hover:text-white {compact
+    class="relative flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 py-1.5 text-sm whitespace-nowrap text-gray-300 transition-colors hover:bg-gray-700 hover:text-gray-50 {compact
       ? 'px-2'
       : 'px-3'}"
   >
@@ -148,7 +148,7 @@
         onclick={clear}
         class="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors hover:bg-gray-800 {chosen.length ===
         0
-          ? 'text-white'
+          ? 'text-gray-50'
           : 'text-gray-400'}"
       >
         <span>{allLabel}</span>

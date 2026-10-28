@@ -378,20 +378,20 @@
     <button
       onclick={() => shiftMonth(-1)}
       aria-label="Previous month"
-      class="rounded-lg border border-gray-800 bg-gray-900 p-2 text-gray-400 transition-colors hover:border-gray-700 hover:text-white"
+      class="rounded-lg border border-gray-800 bg-gray-900 p-2 text-gray-400 transition-colors hover:border-gray-700 hover:text-gray-50"
     >
       <Icon src={ChevronLeft} size="16" />
     </button>
     <button
       onclick={() => (viewing = new Date(today.getFullYear(), today.getMonth(), 1))}
-      class="rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 text-xs whitespace-nowrap text-gray-400 transition-colors hover:border-gray-700 hover:text-white"
+      class="rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 text-xs whitespace-nowrap text-gray-400 transition-colors hover:border-gray-700 hover:text-gray-50"
     >
       Today
     </button>
     <button
       onclick={() => shiftMonth(1)}
       aria-label="Next month"
-      class="rounded-lg border border-gray-800 bg-gray-900 p-2 text-gray-400 transition-colors hover:border-gray-700 hover:text-white"
+      class="rounded-lg border border-gray-800 bg-gray-900 p-2 text-gray-400 transition-colors hover:border-gray-700 hover:text-gray-50"
     >
       <Icon src={ChevronRight} size="16" />
     </button>
@@ -401,7 +401,7 @@
     class can, and a phone has no room for "September" beside three buttons and
     a filter.
   -->
-  <h2 class="text-lg font-semibold text-white capitalize">
+  <h2 class="text-lg font-semibold text-gray-50 capitalize">
     <span class="sm:hidden">{monthLabelShort}</span>
     <span class="hidden sm:inline">{monthLabel}</span>
   </h2>
@@ -456,7 +456,7 @@
           <button
             onclick={() => toggle(kind.id)}
             class="flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition-colors {off
-              ? 'border-gray-800 bg-gray-900 text-gray-600'
+              ? 'border-gray-800 bg-gray-900 text-gray-500'
               : kind.chip}"
             aria-pressed={!off}
           >
@@ -469,14 +469,14 @@
 
     <div class="px-3 sm:hidden">
       {#if agenda.length === 0}
-        <p class="py-8 text-center text-sm text-gray-600">Nothing this month</p>
+        <p class="py-8 text-center text-sm text-gray-500">Nothing this month</p>
       {:else}
         {#each agenda as { date, items }, i (date.toISOString())}
           {@const todays = isSameDay(date, today)}
           <div class={i > 0 ? 'border-t border-gray-800/70' : ''}>
             <div
               class="pt-2.5 pb-1 text-xs capitalize {todays
-                ? 'font-semibold text-violet-400'
+                ? 'text-link font-semibold'
                 : 'text-gray-500'}"
             >
               {agendaDay.format(date)}{todays ? ' · today' : ''}
@@ -508,7 +508,7 @@
                     {entry.title}
                   </span>
                   {#if entry.detail}
-                    <span class="shrink-0 text-xs text-gray-600">{entry.detail}</span>
+                    <span class="shrink-0 text-xs text-gray-500">{entry.detail}</span>
                   {/if}
                 </a>
               {/each}
@@ -528,14 +528,14 @@
       <div class="flex gap-2 border-t border-gray-800 py-2.5">
         <button
           onclick={() => shiftMonth(-1)}
-          class="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-800 px-3 py-2 text-sm text-gray-400 capitalize transition-colors hover:border-gray-700 hover:text-white"
+          class="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-800 px-3 py-2 text-sm text-gray-400 capitalize transition-colors hover:border-gray-700 hover:text-gray-50"
         >
           <Icon src={ChevronLeft} size="14" />
           {siblingMonth(-1)}
         </button>
         <button
           onclick={() => shiftMonth(1)}
-          class="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-800 px-3 py-2 text-sm text-gray-400 capitalize transition-colors hover:border-gray-700 hover:text-white"
+          class="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-800 px-3 py-2 text-sm text-gray-400 capitalize transition-colors hover:border-gray-700 hover:text-gray-50"
         >
           {siblingMonth(1)}
           <Icon src={ChevronRight} size="14" />

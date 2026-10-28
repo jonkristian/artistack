@@ -32,8 +32,8 @@
             href={item.href}
             class="block border-b-2 px-4 py-2.5 text-sm whitespace-nowrap transition-colors {currentPath ===
             item.href
-              ? 'border-white text-white'
-              : 'border-transparent text-gray-400 hover:border-gray-700 hover:text-white'}"
+              ? 'border-white text-gray-50'
+              : 'border-transparent text-gray-400 hover:border-gray-700 hover:text-gray-50'}"
           >
             {item.label}
           </a>

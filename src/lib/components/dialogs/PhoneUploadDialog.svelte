@@ -144,8 +144,8 @@
   >
     <div class="w-full max-w-sm rounded-xl border border-gray-700 bg-gray-900">
       <div class="flex items-center justify-between border-b border-gray-700 p-4">
-        <h2 class="font-semibold text-white">Upload from phone</h2>
-        <button onclick={close} class="text-gray-400 hover:text-white" aria-label="Close">
+        <h2 class="font-semibold text-gray-50">Upload from phone</h2>
+        <button onclick={close} class="text-gray-400 hover:text-gray-50" aria-label="Close">
           <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               stroke-linecap="round"
@@ -221,7 +221,7 @@
 
           <button
             onclick={copyLink}
-            class="mb-4 w-full truncate rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-xs text-violet-400 hover:bg-gray-800"
+            class="text-link mb-4 w-full truncate rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-xs hover:bg-gray-800"
             title="Copy link"
           >
             {qr.url}

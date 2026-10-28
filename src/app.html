@@ -16,6 +16,17 @@
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover">
+    <!-- Before the first paint, or the admin flashes dark on every load for
+         anyone who chose light. Only on /admin: the public site paints from
+         its own palette and must not inherit a preference set in the tool. -->
+    <script>
+      if (location.pathname.startsWith('/admin')) {
+        try {
+          const saved = localStorage.getItem('artistack:admin-theme');
+          if (saved === 'light') document.documentElement.dataset.theme = 'light';
+        } catch {}
+      }
+    </script>
     <div style="display: contents">%sveltekit.body%</div>
   </body>
 </html>

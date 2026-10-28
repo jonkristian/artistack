@@ -66,7 +66,7 @@
     type="button"
     onclick={() => (open = !open)}
     class="rounded px-2 py-0.5 text-xs transition-colors {open
-      ? 'bg-gray-600 text-white'
+      ? 'bg-gray-600 text-gray-50'
       : 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'}"
     aria-label="Emoji"
     aria-expanded={open}

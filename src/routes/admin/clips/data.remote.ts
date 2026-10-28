@@ -1,6 +1,7 @@
 import { requireUser } from '$lib/server/guards';
-import { getClipSettings, updateClipSettings } from '$lib/server/settings';
+import { getClipSettings, updateClipSettings, getSetting, setSetting } from '$lib/server/settings';
 import * as v from 'valibot';
+import { FONTS } from '$lib/fonts';
 import { command, query } from '$app/server';
 import { db } from '$lib/server/db';
 import { removeMediaFile } from '$lib/server/paths';
@@ -22,7 +23,7 @@ import {
   isImage,
   type ClipRenderConfig
 } from '$lib/server/schema';
-import { CLIP_ROTATIONS } from '$lib/clips/types';
+import { CLIP_ROTATIONS, DEFAULT_ADVANCED_CONFIG } from '$lib/clips/types';
 import { and, eq, asc, desc } from 'drizzle-orm';
 import { enqueueRender, cancelRender } from '$lib/server/render-queue';
 import { buildPostSheet } from '$lib/server/post-sheet';
@@ -55,19 +56,34 @@ const appliedEffectSchema = v.object({
   params: v.optional(v.record(v.string(), v.union([v.number(), v.string(), v.boolean()])))
 });
 
+/** The faces a caption or a clip may name, taken from the list rather than retyped. */
+const FONT_IDS = FONTS.map((f) => f.id) as [string, ...string[]];
+
 const timedCaptionSchema = v.object({
   start: v.number(),
   end: v.number(),
   text: v.string(),
-  headline: v.optional(v.boolean()),
   /** Its own colour, when the clip's choice isn't right for this one. */
   color: v.optional(v.nullable(v.pipe(v.string(), v.regex(/^#[0-9A-Fa-f]{6}$/)))),
   /** Its own panel colour, or 'none'; absent leaves it to the clip. */
   background: v.optional(
     v.nullable(v.union([v.literal('none'), v.pipe(v.string(), v.regex(/^#[0-9A-Fa-f]{6}$/))]))
   ),
+  /** How heavy that ring is, in render pixels. */
+  borderWidth: v.optional(v.nullable(v.pipe(v.number(), v.minValue(0), v.maxValue(16)))),
+  /** How solid its panel is, 0–100; absent leaves it to the clip. */
+  backgroundOpacity: v.optional(v.nullable(v.pipe(v.number(), v.minValue(0), v.maxValue(100)))),
+  /** Its own face, by id from the font list; absent leaves it to the clip. */
+  font: v.optional(v.nullable(v.picklist(['', ...FONT_IDS]))),
+  /** The ring around its letters, or 'none'; absent leaves it to the clip. */
+  border: v.optional(
+    v.nullable(v.union([v.literal('none'), v.pipe(v.string(), v.regex(/^#[0-9A-Fa-f]{6}$/))]))
+  ),
   /** Which of the three heights it sits at. */
   anchor: v.optional(v.picklist(['top', 'middle', 'bottom'])),
+  /** A nudge from that anchor, and from centre, as shares of the frame. */
+  offsetY: v.optional(v.nullable(v.pipe(v.number(), v.minValue(-1), v.maxValue(1)))),
+  offsetX: v.optional(v.nullable(v.pipe(v.number(), v.minValue(-0.5), v.maxValue(0.5)))),
   /** The height itself — the older form of `anchor`, still read, never written. */
   y: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(1))),
   /** Which timeline row it's drawn in. Nothing to do with the render. */
@@ -106,11 +122,8 @@ const advancedSchema = v.partial(
     watermarkX: v.number(),
     watermarkY: v.number(),
 
-    captionSizeDivisor: v.pipe(v.number(), v.minValue(1)),
-    headlineSizeDivisor: v.pipe(v.number(), v.minValue(1)),
     // The three heights a caption can sit at, as a share of the frame up from
     // the bottom. Anywhere in the frame is allowed — off it is not.
-    captionBackdropPercent: v.pipe(v.number(), v.minValue(0), v.maxValue(100)),
     captionTopPercent: v.pipe(v.number(), v.minValue(0), v.maxValue(100)),
     captionMiddlePercent: v.pipe(v.number(), v.minValue(0), v.maxValue(100)),
     captionBottomPercent: v.pipe(v.number(), v.minValue(0), v.maxValue(100)),
@@ -141,7 +154,12 @@ const configSchema = v.partial(
     colorizeCaption: v.boolean(),
     captionBackground: v.boolean(),
     captionBackdropColor: v.nullable(v.string()),
+    /** The ring every caption gets unless it says otherwise; null means black. */
+    captionBorderColor: v.optional(v.nullable(v.string())),
+    captionBorderWidth: v.optional(v.pipe(v.number(), v.minValue(0), v.maxValue(16))),
     captionEffect: v.nullable(appliedEffectSchema),
+    /** The clip's own face for captions; empty leaves it to the server's search. */
+    captionFont: v.optional(v.picklist(['', ...FONT_IDS])),
     /** Footage effects, each optionally placed on the timeline. */
     effects: v.array(
       v.object({
@@ -158,7 +176,6 @@ const configSchema = v.partial(
     grain: v.boolean(),
     vignette: v.boolean(),
     zoom: v.boolean(),
-    xfade: v.boolean(),
     speed: v.pipe(v.number(), v.minValue(0.5), v.maxValue(2)),
     videoFadeIn: v.boolean(),
     videoFadeOut: v.boolean(),
@@ -196,7 +213,10 @@ export const createProject = command(v.object({ name: v.string() }), async ({ na
     .values({
       name: name.trim() || 'Untitled clip',
       description: siteSettings?.defaultDescription ?? null,
-      config: { ...DEFAULT_CLIP_CONFIG }
+      // Empty, not a copy of the defaults: a new clip agrees with everything,
+      // and writing that agreement down is how a clip gets pinned to the
+      // settings as they were the day it was made.
+      config: {} as ClipRenderConfig
     })
     .returning();
 
@@ -238,6 +258,23 @@ export const saveClipDefaultTags = command(v.array(v.string()), async (names) =>
   return { success: true, cleared: tagIds.length === 0 };
 });
 
+/**
+ * What a value says that its default doesn't.
+ *
+ * Compared by shape rather than by identity, so an effect or a colour written
+ * out the same way as the default counts as the default. A key the defaults
+ * have never heard of is always a change — it is somebody's, and nothing here
+ * is entitled to decide it isn't.
+ */
+function onlyChanges<T extends object>(value: T, defaults: Partial<T>): Partial<T> {
+  const against = defaults as Record<string, unknown>;
+  const kept: Record<string, unknown> = {};
+  for (const [key, own] of Object.entries(value)) {
+    if (JSON.stringify(own) !== JSON.stringify(against[key])) kept[key] = own;
+  }
+  return kept as Partial<T>;
+}
+
 export const updateProject = command(
   v.object({
     id: v.number(),
@@ -264,17 +301,36 @@ export const updateProject = command(
       if (value !== undefined) update[key] = value;
     }
 
-    // Merge rather than replace: the UI sends only the fields it changed.
-    // `advanced` needs its own merge — a shallow spread would swap the whole
-    // block out and silently reset every dial the caller didn't mention.
+    /*
+     * Merge rather than replace: the UI sends only the fields it changed. And
+     * then keep only what actually differs from the defaults.
+     *
+     * A stored default is a default that can never improve: one clip here held
+     * forty-two advanced dials, every one of them byte-identical to the
+     * constant in code, written by a single press of "Reset all to defaults" —
+     * so it was pinned to the engine's settings as of the day that button was
+     * pressed, and no change to them would ever reach it. Written this way a
+     * clip holds its disagreements and nothing else, and putting a dial back
+     * where it started removes it again rather than freezing it.
+     *
+     * `advanced` is merged separately because a shallow spread would swap the
+     * whole block out and silently reset every dial the caller didn't mention.
+     */
     if (config) {
       const { advanced, ...rest } = config;
       const previous: Partial<ClipRenderConfig> = existing.config ?? {};
+
+      const mergedAdvanced = advanced
+        ? { ...(previous.advanced ?? {}), ...advanced }
+        : previous.advanced;
+      const ownAdvanced = mergedAdvanced
+        ? onlyChanges(mergedAdvanced, DEFAULT_ADVANCED_CONFIG)
+        : null;
+
+      const { advanced: _was, ...merged } = { ...previous, ...rest };
       update.config = {
-        ...DEFAULT_CLIP_CONFIG,
-        ...previous,
-        ...rest,
-        ...(advanced ? { advanced: { ...(previous.advanced ?? {}), ...advanced } } : {})
+        ...onlyChanges(merged, DEFAULT_CLIP_CONFIG),
+        ...(ownAdvanced && Object.keys(ownAdvanced).length ? { advanced: ownAdvanced } : {})
       };
     }
 
@@ -292,10 +348,7 @@ export const deleteProject = command(v.number(), async (id) => {
   await requireUser();
 
   const [project] = await db
-    .select({
-      outputMediaId: clipProjects.outputMediaId,
-      proofMediaId: clipProjects.proofMediaId
-    })
+    .select({ outputMediaId: clipProjects.outputMediaId })
     .from(clipProjects)
     .where(eq(clipProjects.id, id))
     .limit(1);
@@ -316,16 +369,10 @@ export const deleteProject = command(v.number(), async (id) => {
   await db.delete(clipProjects).where(eq(clipProjects.id, id));
   await pruneOrphanTags();
 
-  /*
-   * Both renders go with the clip.
-   *
-   * There is no way to delete either on its own — a new one supersedes the old,
-   * and this removes the last — so leaving one behind strands a file nothing
-   * points at. Only the full render was discarded, which meant every clip ever
-   * deleted left its last quick render on disk for good.
-   */
+  // The render goes with the clip. There is no way to delete it on its own —
+  // a new one supersedes the old, and this removes the last — so leaving it
+  // behind strands a file nothing points at.
   if (project?.outputMediaId) await discardRender(project.outputMediaId);
-  if (project?.proofMediaId) await discardRender(project.proofMediaId);
 
   return { success: true };
 });
@@ -333,26 +380,19 @@ export const deleteProject = command(v.number(), async (id) => {
 /**
  * Deletes a clip's rendered video and its thumbnail.
  *
- * Only ever touches rows this app produced — a `render` or a `proof` — and only
- * when no other project still points at them, so a hand-picked asset that
- * happened to be set as an output can't be swept up. Never allowed to fail the
- * delete.
- *
- * It refused anything that wasn't a `render`, which is why passing it a quick
- * render did nothing at all: the file stayed, the row stayed, and the caller
- * had no way of knowing. Whichever kind it is decides which column to check for
- * other claimants — a proof is never anyone's output, and vice versa.
+ * Only ever touches rows this app produced, and only when no other project
+ * still points at them, so a hand-picked asset that happened to be set as an
+ * output can't be swept up. Never allowed to fail the delete.
  */
 async function discardRender(mediaId: number): Promise<void> {
   try {
     const [item] = await db.select().from(media).where(eq(media.id, mediaId)).limit(1);
-    if (!item || (item.role !== 'render' && item.role !== 'proof')) return;
+    if (!item || item.role !== 'render') return;
 
-    const column = item.role === 'proof' ? clipProjects.proofMediaId : clipProjects.outputMediaId;
     const others = await db
       .select({ id: clipProjects.id })
       .from(clipProjects)
-      .where(eq(column, mediaId));
+      .where(eq(clipProjects.outputMediaId, mediaId));
     if (others.length) return;
 
     await db.delete(media).where(eq(media.id, mediaId));
@@ -640,14 +680,26 @@ export const updateSource = command(
     // How far into the picture the shot sits, on top of the fill.
     zoom: v.optional(v.pipe(v.number(), v.minValue(1), v.maxValue(3))),
     // Drift slowly across whatever the fill crops away.
-    pan: v.optional(v.boolean())
+    pan: v.optional(v.boolean()),
+    // What this shot's head paid for the dissolve at its start; null at a cut.
+    dissolveHead: v.optional(v.nullable(v.number())),
+    /**
+     * This shot's own effects; null hands the look back to the clip.
+     *
+     * No window on them, unlike the clip's list: a shot is the window. Stored
+     * as JSON on the row so it travels with the placement — move the shot and
+     * its look goes with it, which is the whole reason it isn't an entry on
+     * the clip's lane.
+     */
+    effects: v.optional(v.nullable(v.array(appliedEffectSchema)))
   }),
   async ({ id, ...fields }) => {
     await requireUser();
 
     const update: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(fields)) {
-      if (value !== undefined) update[key] = value;
+      if (value === undefined) continue;
+      update[key] = key === 'effects' ? (value ? JSON.stringify(value) : null) : value;
     }
     if (Object.keys(update).length === 0) return { success: true };
 
@@ -668,17 +720,34 @@ export const updateSource = command(
  * pressed once, but a double-tap on a phone is one press as far as the person
  * is concerned.
  */
+/*
+ * Puts a removed shot back, exactly as it was.
+ *
+ * Every column of the row, because an undo that returns *most* of a shot is
+ * worse than none: it used to take nine of them, so a shot came back having
+ * forgotten where it sat on the strip, its fades, its fill, how far in it was
+ * framed and what look it wore. Anything added to the table belongs here too.
+ */
 export const restoreSource = command(
   v.object({
     id: v.number(),
     projectId: v.number(),
     mediaId: v.number(),
     position: v.nullable(v.number()),
+    start: v.nullable(v.number()),
+    lane: v.nullable(v.number()),
     trimStart: v.nullable(v.number()),
     trimEnd: v.nullable(v.number()),
+    fadeIn: v.nullable(v.boolean()),
+    fadeOut: v.nullable(v.boolean()),
     muted: v.nullable(v.boolean()),
     watermark: v.nullable(v.boolean()),
-    rotation: v.nullable(v.number())
+    fit: v.nullable(v.string()),
+    zoom: v.nullable(v.number()),
+    pan: v.nullable(v.boolean()),
+    rotation: v.nullable(v.number()),
+    dissolveHead: v.nullable(v.number()),
+    effects: v.nullable(v.string())
   }),
   async (row) => {
     await requireUser();
@@ -757,25 +826,22 @@ export const removeSource = command(v.number(), async (id) => {
  * is concerned.
  */
 
-export const startRender = command(
-  v.object({ projectId: v.number(), proof: v.optional(v.boolean()) }),
-  async ({ projectId, proof = false }) => {
-    await requireUser();
+export const startRender = command(v.object({ projectId: v.number() }), async ({ projectId }) => {
+  await requireUser();
 
-    const sources = await db
-      .select()
-      .from(clipSources)
-      .where(eq(clipSources.projectId, projectId))
-      .orderBy(asc(clipSources.position));
+  const sources = await db
+    .select()
+    .from(clipSources)
+    .where(eq(clipSources.projectId, projectId))
+    .orderBy(asc(clipSources.position));
 
-    if (sources.length === 0) {
-      return { success: false, message: 'Add at least one source clip first' };
-    }
-
-    const job = await enqueueRender(projectId, proof);
-    return { success: true, job };
+  if (sources.length === 0) {
+    return { success: false, message: 'Add at least one source clip first' };
   }
-);
+
+  const job = await enqueueRender(projectId);
+  return { success: true, job };
+});
 
 export const stopRender = command(v.number(), async (jobId) => {
   await requireUser();

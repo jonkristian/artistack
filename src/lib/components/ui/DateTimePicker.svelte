@@ -266,7 +266,7 @@
         commitTime(e.currentTarget.value);
       }
     }}
-    class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white tabular-nums transition-colors hover:border-gray-600 focus:border-violet-500 focus:outline-none"
+    class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-50 tabular-nums transition-colors hover:border-gray-600 focus:border-violet-500 focus:outline-none"
   />
 {:else}
   <div
@@ -279,7 +279,7 @@
       <button
         type="button"
         onclick={() => (open = !open)}
-        class="flex w-full items-center justify-between gap-2 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white transition-colors hover:border-gray-600"
+        class="flex w-full items-center justify-between gap-2 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-50 transition-colors hover:border-gray-600"
         aria-expanded={open}
       >
         <span class:text-gray-500={!valid}>{valueLabel}</span>
@@ -313,7 +313,7 @@
               type="button"
               onclick={() => shiftMonth(-1)}
               aria-label="Previous month"
-              class="rounded-md p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white"
+              class="rounded-md p-1.5 text-gray-400 hover:bg-gray-800 hover:text-gray-50"
             >
               <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -324,12 +324,12 @@
                 />
               </svg>
             </button>
-            <span class="text-sm font-medium text-white capitalize">{monthLabel}</span>
+            <span class="text-sm font-medium text-gray-50 capitalize">{monthLabel}</span>
             <button
               type="button"
               onclick={() => shiftMonth(1)}
               aria-label="Next month"
-              class="rounded-md p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white"
+              class="rounded-md p-1.5 text-gray-400 hover:bg-gray-800 hover:text-gray-50"
             >
               <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -344,7 +344,7 @@
 
           <div class="grid grid-cols-7 gap-0.5 text-center">
             {#each weekdays as day (day)}
-              <span class="py-1 text-[10px] text-gray-600 uppercase">{day}</span>
+              <span class="py-1 text-[10px] text-gray-500 uppercase">{day}</span>
             {/each}
             {#each grid as day, i (i)}
               {#if day === null}
@@ -357,7 +357,7 @@
                   selectedDay
                     ? 'bg-violet-600 font-medium text-white'
                     : isToday(day)
-                      ? 'text-violet-400 hover:bg-gray-800'
+                      ? 'text-link hover:bg-gray-800'
                       : 'text-gray-300 hover:bg-gray-800'}"
                 >
                   {day}

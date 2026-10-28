@@ -310,7 +310,7 @@
           type="button"
           onclick={handleTestSmtp}
           disabled={!smtpHost || !smtpUser || !smtpPassword || smtpTestLoading}
-          class="rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
+          class="rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-gray-50 transition-colors hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {smtpTestLoading ? 'Testing...' : 'Test Connection'}
         </button>
@@ -319,7 +319,7 @@
           type="button"
           onclick={handleSendSamples}
           disabled={!smtpHost || !smtpUser || !smtpPassword || samplesLoading}
-          class="rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
+          class="rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-gray-50 transition-colors hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {samplesLoading ? 'Sending…' : 'Send me a sample of each'}
         </button>

@@ -1,5 +1,7 @@
 <script lang="ts">
   import { tick, type Snippet } from 'svelte';
+  import { openPopover } from './Popover.svelte';
+  import Slider from './Slider.svelte';
 
   interface Props {
     value: string;
@@ -25,8 +27,48 @@
      * automatic or absent, and a site's background can be neither.
      */
     actions?: { label: string; onclick: () => void }[];
+    /**
+     * A number that belongs with the colour, shown under the wheel.
+     *
+     * Some colours have a size: a border has a width, a glow has a radius.
+     * They are one decision — nobody sets a border's colour without a thought
+     * about how heavy it is — and splitting them puts a stray number field
+     * next to a swatch, which reads as two settings that happen to be
+     * adjacent. Absent for every colour that is only a colour.
+     */
+    /**
+     * How see-through the colour is, 0–100, when that is part of it.
+     *
+     * Distinct from `amount` below, which is a number that merely travels with
+     * a colour — a border's weight, a glow's radius. This one *is* the colour,
+     * so it is drawn inside the wheel and the preview shows the result rather
+     * than the opaque version of it.
+     */
+    alpha?: {
+      value: number;
+      onchange: (percent: number) => void;
+      label?: string;
+    };
+    amount?: {
+      label: string;
+      value: number;
+      min: number;
+      max: number;
+      step?: number;
+      /** What the number is in, said once beside it. */
+      hint?: string;
+      onchange: (value: number) => void;
+    };
     /** Just the swatch, no hex beside it — for a control with no room to say it twice. */
     compact?: boolean;
+    /**
+     * What this colour is for.
+     *
+     * A bare swatch in a toolbar says a colour is settable and not *which*
+     * colour: three of them side by side are the words, the panel behind them
+     * and the ring around them, and nothing on screen says so.
+     */
+    title?: string;
     /** The trigger's own classes, for surfaces that don't look like a form. */
     triggerClass?: string;
     /**
@@ -59,12 +101,25 @@
     ontoggle,
     swatches = [],
     onkeep,
+    alpha,
     actions = [],
+    amount,
     compact = false,
+    title,
     trigger,
     rootClass = '',
     triggerClass = 'flex items-center gap-2 rounded border border-gray-700 bg-gray-800/50 px-2 py-1.5 transition-colors hover:border-gray-500'
   }: Props = $props();
+
+  /** The grey chequerboard everything transparent is read against. */
+  const CHEQUER =
+    'background-image: linear-gradient(45deg, #52525b 25%, transparent 25%),' +
+    ' linear-gradient(-45deg, #52525b 25%, transparent 25%),' +
+    ' linear-gradient(45deg, transparent 75%, #52525b 75%),' +
+    ' linear-gradient(-45deg, transparent 75%, #52525b 75%);' +
+    ' background-size: 10px 10px;' +
+    ' background-position: 0 0, 0 5px, 5px -5px, -5px 0px;' +
+    ' background-color: #27272a;';
 
   /** Whether the colour on screen is one of the kept ones, which decides what Keep says. */
   const kept = $derived(swatches.some((c) => c.toLowerCase() === value.toLowerCase()));
@@ -118,14 +173,38 @@
     popupPos = { top, left };
   }
 
+  /** This wheel, for the one-popover-at-a-time rule. */
+  const token = Symbol('colour wheel');
+
   function setOpen(newOpen: boolean) {
-    if (newOpen) placePopup();
+    if (newOpen) {
+      placePopup();
+      // Opening takes the floor, which closes whichever wheel had it.
+      openPopover.claim(token);
+    } else {
+      openPopover.release(token);
+    }
+
     if (ontoggle) {
       ontoggle(newOpen);
     } else {
       internalOpen = newOpen;
     }
   }
+
+  /*
+   * Closes when another one opens.
+   *
+   * The rule lives here rather than in the screens that use it: two wheels
+   * open at once is two controls both claiming to be the thing you are
+   * setting, whatever the screen happens to be.
+   */
+  $effect(() => {
+    if (isOpen && !openPopover.holds(token)) setOpen(false);
+  });
+
+  // Nothing is holding the floor on behalf of a wheel that has gone.
+  $effect(() => () => openPopover.release(token));
   let hue = $state(0);
   let saturation = $state(100);
   let lightness = $state(50);
@@ -242,7 +321,14 @@
     }
 
     // Draw hue indicator
-    const indicatorAngle = ((hue - 90) * Math.PI) / 180;
+    /*
+     * The same angle the ring was painted at.
+     *
+     * The ring above lays hue 0 at 3 o'clock and walks clockwise, so the
+     * marker has to read the same way. It used to turn a quarter first, which
+     * put the dot on cyan while the colour was magenta.
+     */
+    const indicatorAngle = (hue * Math.PI) / 180;
     const indicatorRadius = (outerRadius + innerRadius) / 2;
     ctx.beginPath();
     ctx.arc(
@@ -297,7 +383,7 @@
     const x = e.clientX - rect.left - 100;
     const y = e.clientY - rect.top - 100;
     const angle = Math.atan2(y, x);
-    hue = Math.round(((angle * 180) / Math.PI + 90 + 360) % 360);
+    hue = Math.round(((angle * 180) / Math.PI + 360) % 360);
     updateColor();
     drawWheel();
     drawSquare();
@@ -314,10 +400,14 @@
     drawSquare();
   }
 
+  /** What the dials currently add up to, shown here and nowhere else yet. */
+  function paintColor() {
+    hexInput = hslToHex(hue, saturation, lightness);
+  }
+
   function updateColor() {
-    const newHex = hslToHex(hue, saturation, lightness);
-    hexInput = newHex;
-    onchange?.(newHex);
+    paintColor();
+    onchange?.(hexInput);
   }
 
   function handleHexInput(e: Event) {
@@ -350,7 +440,14 @@
     <span class="mb-2 block text-sm text-gray-400">{label}</span>
   {/if}
 
-  <button bind:this={buttonEl} type="button" onclick={() => setOpen(!isOpen)} class={triggerClass}>
+  <button
+    bind:this={buttonEl}
+    type="button"
+    onclick={() => setOpen(!isOpen)}
+    {title}
+    aria-label={title}
+    class={triggerClass}
+  >
     {#if trigger}
       {@render trigger({ value, none })}
     {:else}
@@ -420,11 +517,40 @@
               min="0"
               max="100"
               bind:value={lightness}
-              oninput={updateColor}
+              oninput={paintColor}
+              onchange={updateColor}
               class="h-2 w-full cursor-pointer appearance-none rounded-lg"
               style="background: linear-gradient(to right, #000, hsl({hue}, {saturation}%, 50%), #fff)"
             />
           </div>
+
+          <!-- How see-through it is.
+               Part of the colour, not a number next to it: a white panel at
+               half strength is grey, and a control that shows you white while
+               the picture shows you grey is the colour not being the colour.
+               Over a chequerboard, the way every editor draws transparency,
+               with the colour's own gradient on top of it. -->
+          {#if alpha}
+            <div>
+              <div class="mb-1 flex items-baseline justify-between text-xs text-gray-400">
+                <span>{alpha.label ?? 'Opacity'}</span>
+                <span class="tabular-nums">{Math.round(alpha.value)}%</span>
+              </div>
+              <div class="rounded" style={CHEQUER}>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={alpha.value}
+                  aria-label={alpha.label ?? 'Opacity'}
+                  class="h-2 w-full cursor-pointer appearance-none rounded-lg"
+                  style="background: linear-gradient(to right, transparent, {hexInput})"
+                  oninput={(e) => alpha?.onchange(Number(e.currentTarget.value))}
+                />
+              </div>
+            </div>
+          {/if}
 
           <!-- Hex Input -->
           <div>
@@ -434,7 +560,7 @@
               type="text"
               bind:value={hexInput}
               oninput={handleHexInput}
-              class="w-full rounded border border-gray-600 bg-gray-800 p-2 font-mono text-sm text-white focus:border-[var(--theme-primary)] focus:outline-none"
+              class="w-full rounded border border-gray-600 bg-gray-800 p-2 font-mono text-sm text-gray-50 focus:border-[var(--theme-primary)] focus:outline-none"
               maxlength="7"
             />
           </div>
@@ -443,8 +569,34 @@
 
       <!-- Preview -->
       <div class="mt-3 flex items-center gap-3">
-        <div class="h-10 flex-1 rounded-lg" style="background-color: {hexInput}"></div>
+        <div class="h-10 flex-1 rounded-lg" style={alpha ? CHEQUER : ''}>
+          <div
+            class="h-full w-full rounded-lg"
+            style="background-color: {hexInput}; opacity: {alpha ? alpha.value / 100 : 1}"
+          ></div>
+        </div>
       </div>
+
+      <!-- The size that goes with the colour, when the colour has one. Under
+           the preview, so you can see what the number does to what you just
+           picked. -->
+      {#if amount}
+        <div class="mt-3 flex items-center gap-3 border-t border-gray-700 pt-3">
+          <span class="min-w-0 flex-1 truncate text-xs text-gray-400">{amount.label}</span>
+          <Slider
+            value={amount.value}
+            min={amount.min}
+            max={amount.max}
+            step={amount.step ?? 1}
+            label={amount.label}
+            class="w-28"
+            onchange={(next) => amount?.onchange(next)}
+          />
+          <span class="w-10 shrink-0 text-right text-xs text-gray-400 tabular-nums">
+            {amount.value}{amount.hint ?? ''}
+          </span>
+        </div>
+      {/if}
 
       <!-- The shelf. Above the wheel would put it in the way of the thing it's
            an alternative to; under the preview it reads as "or one of these". -->
