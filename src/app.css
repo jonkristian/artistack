@@ -284,6 +284,16 @@
 :root {
   --site-font: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --site-font-heading: var(--site-font);
+  /*
+   * What the tool is set in, as opposed to what the site is set in.
+   *
+   * They were the same variable, and the admin renders *inside* the root
+   * layout's `.site-type` wrapper — that is where every page goes — so the
+   * faces chosen for the public site were inherited by the editor used to
+   * choose them. Pick a condensed display face for your headings and the admin
+   * starts shouting its own labels back at you.
+   */
+  --admin-font: 'Inter', ui-sans-serif, system-ui, sans-serif;
 }
 
 body {
@@ -300,6 +310,12 @@ body {
 .site-type h2,
 .site-type h3 {
   font-family: var(--site-font-heading);
+}
+
+/* Which it now is, rather than only saying so. */
+[data-admin] {
+  --site-font-heading: var(--admin-font);
+  font-family: var(--admin-font);
 }
 
 /*

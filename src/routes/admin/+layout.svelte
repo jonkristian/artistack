@@ -370,7 +370,7 @@
   <title>{pageTitle}</title>
 </svelte:head>
 
-<div class="flex min-h-screen">
+<div data-admin class="flex min-h-screen">
   <!-- Narrow-screen top bar: the way into the nav, where you are, and — on the
        two-pane pages — which pane you're looking at. One row, because a second
        bar holding two buttons costs a tenth of a phone screen. The title yields
