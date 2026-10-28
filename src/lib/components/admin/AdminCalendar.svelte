@@ -114,7 +114,7 @@
           label: 'Releases',
           dot: 'bg-violet-400',
           edge: 'border-violet-500/50',
-          chip: 'border-violet-500/40 bg-violet-500/10 text-violet-200',
+          chip: 'border-violet-500/40 bg-violet-500/10 text-violet-200 light:text-violet-800',
           enabled: !!settings?.releasesEnabled
         },
         {

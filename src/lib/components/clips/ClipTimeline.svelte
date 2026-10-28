@@ -322,6 +322,11 @@
    * pixels says "this one has a picture in it"; twenty-four said "these are
    * different kinds of thing".
    */
+  /*
+   * A picture row is the tallest: it carries the thumbnail, the trim handles
+   * and the slip rail under them, and a poster at a caption's height is a
+   * stamp nobody can recognise a shot by.
+   */
   const LANE_HEIGHTS = { fx: 22, clip: 52, caption: 38, audio: 38 } as const;
 
   /*
@@ -455,20 +460,20 @@
     rows.reduce((total, kind) => total + LANE_HEIGHTS[kind] + LANE_GAP, LANE_INSET * 2 - LANE_GAP)
   );
 
-  const laneHeights = $derived.by(() => {
-    const spare = height === null ? 0 : Math.max(0, Math.round(height - naturalHeight));
-    const each = CLIP_ROWS > 0 ? Math.floor(spare / CLIP_ROWS) : 0;
-    // The remainder to the last picture row rather than nowhere, so the strip
-    // fills the box it was dragged to instead of leaving a pixel or two over.
-    let given = 0;
-    return rows.map((kind, index) => {
-      if (kind !== 'clip') return LANE_HEIGHTS[kind];
-      const last = index === CLIPS_AT + CLIP_ROWS - 1;
-      const share = last ? spare - given : each;
-      given += share;
-      return LANE_HEIGHTS.clip + share;
-    });
-  });
+  /*
+   * Every lane is the height it is, and no taller.
+   *
+   * Spare height used to be shared out among the picture rows, so dragging
+   * the strip taller grew those lanes — but not the blocks inside them, which
+   * are drawn at the base height. The result was a container visibly bigger
+   * than the thing it contained, which reads as a block that failed to fill
+   * its row.
+   *
+   * It was room kept for frames drawn along a block, and this strip draws a
+   * poster. Dragging the strip taller now buys room for more lanes rather
+   * than a taller one, which is what the gesture is for.
+   */
+  const laneHeights = $derived(rows.map((kind) => LANE_HEIGHTS[kind]));
 
   /** Where each row's top edge sits, for whatever shape the strip is in. */
   const rowTops = $derived(
@@ -590,10 +595,39 @@
    * strip starts pulling itself along, and how fast it goes at the very edge.
    *
    * Speed ramps with depth into the zone rather than switching on, so easing
-   * towards the edge creeps and shoving into it moves.
+   * towards the edge creeps and shoving into it moves. Squared, not straight:
+   * a straight ramp is already moving properly a third of the way in, and a
+   * third of the way in is where you are when you are simply working near the
+   * right-hand end of the strip.
+   *
+   * A hundred pixels was most of the room you have to line one block up
+   * against another, so the pull started while you were still aiming. Forty
+   * eight is a thumb's width of edge — far enough in to reach without leaving
+   * the window, close enough that nothing you meant to do happens there.
+   *
+   * Pixels per second, not per frame. Per frame it ran at whatever rate the
+   * monitor happened to have, so the same gesture on a 144Hz screen tore along
+   * at well over twice the speed it was tuned at.
    */
-  const EDGE_ZONE = 100;
-  const EDGE_SPEED = 16;
+  const EDGE_ZONE = 48;
+  const EDGE_SPEED = 600;
+
+  /**
+   * And how fast when there is nothing out there yet, in seconds of clip per
+   * second of holding.
+   *
+   * Past the end of everything, the pull is not scrolling to somewhere — it is
+   * making somewhere, and every pixel it travels is time added to whatever is
+   * in hand. Six hundred pixels a second is a reasonable rate to cross a clip
+   * at and an absurd rate to lengthen one by: at a middling zoom it grew an
+   * outro by seventeen seconds in little over one.
+   *
+   * So out there the speed is quoted in seconds instead, and the zoom converts
+   * it — which also makes the gesture mean the same thing however far in you
+   * are looking, where a rate in pixels means something different at every
+   * zoom level.
+   */
+  const EDGE_GROW = 2;
 
   /**
    * How close a dragged edge has to come to something before it takes its
@@ -1684,6 +1718,45 @@
     oncaptions([...captions, { start: tidy(start), end: tidy(end), text: '' }]);
   }
 
+  /**
+   * The ruler is a scrub bar.
+   *
+   * Pressing anywhere on the strip already seeks, and dragging it pans — which
+   * is the right pair for the body of the strip, where a drag is how you get
+   * around. But the row of timecodes is not somewhere you arrange anything: it
+   * is the time axis itself, and every editor lets you drag along it to run
+   * the picture past. The overview does it too; this is the same gesture at
+   * the zoom you are actually working at.
+   */
+  function startRulerScrub(e: PointerEvent) {
+    if (e.button !== 0) return;
+    // The lane under this would otherwise start a pan with the same press.
+    e.stopPropagation();
+    e.preventDefault();
+
+    const el = e.currentTarget as HTMLElement;
+    const release = beginDragGesture();
+    clock.seek(Math.max(0, Math.min(visible, secondsAt(e.clientX))));
+
+    try {
+      el.setPointerCapture(e.pointerId);
+    } catch {
+      // Already gone; the listeners below still see the gesture through.
+    }
+
+    const move = (ev: PointerEvent) =>
+      clock.seek(Math.max(0, Math.min(visible, secondsAt(ev.clientX))));
+    const finish = () => {
+      release();
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', finish);
+      el.removeEventListener('pointercancel', finish);
+    };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', finish);
+    el.addEventListener('pointercancel', finish);
+  }
+
   function startPan(e: PointerEvent) {
     if (drag || e.button !== 0 || !lane) return;
 
@@ -1758,14 +1831,27 @@
       if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
 
       /*
-       * A focused button owns Space and Enter, and nothing else.
+       * A button you arrived at by keyboard owns Space and Enter, and nothing
+       * else. A button you clicked owns neither.
        *
-       * It used to own the lot, which made the transport unusable the moment
-       * you touched it: click play, press space to pause — the button is still
-       * focused, so Home, End and the arrows all went to it and did nothing.
-       * The one key worth protecting is the one that presses it.
+       * A focused button used to own the lot, which made the transport
+       * unusable the moment you touched it: click play, press space to pause —
+       * the button is still focused, so Home, End and the arrows all went to
+       * it and did nothing. Keeping Space was still one too many: clicking an
+       * effect or a caption's controls leaves focus on whatever was clicked,
+       * so the next space pressed the button again instead of playing.
+       *
+       * `:focus-visible` is exactly that distinction — the browser already
+       * works out whether focus arrived by keyboard, which is the only case
+       * where Space has to stay with the button for it to be reachable at all.
        */
-      if (el && /^(BUTTON|A)$/.test(el.tagName) && (e.key === ' ' || e.key === 'Enter')) return;
+      if (
+        el &&
+        /^(BUTTON|A)$/.test(el.tagName) &&
+        (e.key === ' ' || e.key === 'Enter') &&
+        el.matches(':focus-visible')
+      )
+        return;
 
       if (e.key === ' ') {
         e.preventDefault();
@@ -1921,6 +2007,16 @@
    * what matters is which moment is under the cursor, not which of the two got
    * it there.
    */
+  /**
+   * Near enough to an edge to be inside it.
+   *
+   * A shot shows for `start <= t < end`, so the last frame of one is some way
+   * before `end`. Forty milliseconds is a frame at 25fps and under two at 60,
+   * which is close enough to the edge to be the frame you are choosing and far
+   * enough inside to be this shot's.
+   */
+  const A_FRAME = 0.04;
+
   function updateDrag(clientX: number, clientY?: number) {
     if (!drag) return;
 
@@ -1949,7 +2045,14 @@
      * it is the one worth showing: the far edge when stretching the end, the
      * near one otherwise.
      */
-    clock.seek(drag.grip === 'end' ? now.end : now.start);
+    clock.seek(
+      drag.grip === 'end'
+        ? // A frame inside, not the edge itself. A shot is on screen for
+          // `start <= t < end`, so seeking to exactly `end` lands on whatever
+          // comes after it — you stretched a shot and watched the next one.
+          Math.max(now.start, now.end - A_FRAME)
+        : now.start
+    );
 
     /*
      * Nothing to tell a bed about: it follows the same clock, so moving the
@@ -1992,7 +2095,9 @@
     key: number,
     from: number,
     to: number,
-    total: number
+    total: number,
+    /** Where the block sits on the timeline, so the picture can be put on it. */
+    blockStart: number
   ) {
     if (e.button !== 0) return;
     e.preventDefault();
@@ -2009,6 +2114,16 @@
 
     const release = beginDragGesture();
     slip = { kind, key, from, to, perPx: total / width, startX: e.clientX, shift: 0 };
+
+    /*
+     * Put the playhead on the block's first frame, once.
+     *
+     * The block doesn't move while it is slipped — the window inside it does —
+     * so the playhead has nowhere new to go. Parking it on the opening frame
+     * is enough: the stage reads the window as it stands, so dragging the rail
+     * runs the footage past a fixed playhead, which is what slipping is.
+     */
+    if (kind === 'clip') clock.seek(blockStart + A_FRAME);
 
     try {
       rail.setPointerCapture(e.pointerId);
@@ -2092,6 +2207,19 @@
   let dragMoved = false;
   let pointerY = 0;
   let edgeFrame = 0;
+  /** The timestamp of the last pull, so the speed is in seconds rather than frames. */
+  let edgeLast = 0;
+  /**
+   * The fraction of a pixel the last frame couldn't spend.
+   *
+   * A slow pull is a pixel or so a frame, and a scroll position is whole
+   * pixels: asking for 1.2 and getting 1 loses a fifth of every frame, and
+   * asking for 0.8 and getting 0 loses all of it — the strip stops dead until
+   * the arithmetic happens to clear a whole pixel again. That stutter is what
+   * a gentle pull felt like. Kept here and spent next frame, so a slow pull is
+   * slow rather than intermittent.
+   */
+  let edgeCarry = 0;
 
   /**
    * Pulls the strip along while a block is held near either end of the window.
@@ -2100,11 +2228,16 @@
    * still at the edge is precisely the gesture — the pointer stops sending
    * events at the moment the scrolling most needs to continue.
    */
-  function edgePull() {
+  function edgePull(now: number) {
     edgeFrame = requestAnimationFrame(edgePull);
 
+    // The first frame has nothing to measure against, and a frame dropped
+    // while the browser was busy must not arrive as one long jump.
+    const elapsed = edgeLast === 0 ? 0 : Math.min(0.05, (now - edgeLast) / 1000);
+    edgeLast = now;
+
     const box = scroller;
-    if (!box || !drag || !dragMoved) return;
+    if (!box || !drag || !dragMoved || elapsed === 0) return;
 
     const rect = box.getBoundingClientRect();
     let depth = 0;
@@ -2115,8 +2248,28 @@
     }
     if (depth === 0) return;
 
+    /*
+     * Full speed a little before the rim, not at it.
+     *
+     * The last few pixels of the window belong to the browser: an auto-hidden
+     * sidebar, a dock, a hot corner. Reaching them to get the strip moving at
+     * a useful rate means reaching into whatever else lives there. Saturating
+     * at 85% of the zone means the fastest pull is a few pixels short of the
+     * edge, and the rest of the ramp is unchanged.
+     */
+    const into = Math.max(-1, Math.min(1, depth / 0.85));
+
+    // Crossing the clip, or adding to it: two different speeds, because out
+    // past the end the distance travelled is the edit.
+    const ahead = drag?.now.end ?? 0;
+    const speed = ahead > settled ? EDGE_GROW * pxPerSecond : EDGE_SPEED;
+    const wanted = into * Math.abs(into) * speed * elapsed + edgeCarry;
+    const whole = Math.trunc(wanted);
+    edgeCarry = wanted - whole;
+    if (whole === 0) return;
+
     const before = box.scrollLeft;
-    box.scrollLeft = before + Math.max(-1, Math.min(1, depth)) * EDGE_SPEED;
+    box.scrollLeft = before + whole;
     // Already at one end: nothing moved, so nothing to re-derive.
     if (box.scrollLeft === before) return;
 
@@ -2167,6 +2320,8 @@
     dragMoved = false;
     const pressedAt = e.clientX;
     const pressedY = e.clientY;
+    edgeLast = 0;
+    edgeCarry = 0;
     edgeFrame = requestAnimationFrame(edgePull);
 
     const move = (ev: PointerEvent) => {
@@ -2366,13 +2521,49 @@
   Only drawn when something was actually cut. An untrimmed block would show a
   bar lit end to end, which is a line of chrome saying nothing.
 -->
+<!-- A row that can be added to, saying so.
+
+     Double-clicking an empty row makes the thing that row is for, and a
+     gesture nobody can see is a gesture nobody makes. Both rows wore the
+     strip's grab hand, which says "drag me somewhere" about rows whose whole
+     job is to be added to.
+
+     So: the plus cursor, the words under the pointer, and a dashed edge while
+     you are over it — the shape the new block will take. Drawn before the
+     blocks, so whatever is already in the row stays on top of it, and it hands
+     both gestures back to the lane rather than swallowing them: pressing here
+     still seeks, dragging still pans. -->
+{#snippet addable(first: number, last: number, what: string)}
+  <div
+    role="presentation"
+    onpointerdown={startPan}
+    ondblclick={addCaptionHere}
+    title="Double-click to add {what}"
+    class="absolute inset-x-0 rounded-sm border border-dashed border-transparent transition-colors {panning
+      ? 'cursor-grabbing'
+      : 'hover:border-raise/25 cursor-copy'}"
+    style="top: {laneTop(first)}px; height: {laneTop(last) + laneHeight(last) - laneTop(first)}px"
+  ></div>
+{/snippet}
+
 {#snippet extent(
   kind: 'clip' | 'audio',
   key: number,
   from: number,
   to: number,
   total: number,
-  lit: string
+  /**
+   * The colour of the part in use.
+   *
+   * Fixed rather than from the grey ramp: a block is media and keeps its own
+   * surface in both themes, so a themed grey inside one inverts away from the
+   * block it is drawn on. `gray-200` did exactly that — in light mode the lit
+   * window came out the same dark as the track behind it, and a trimmed clip
+   * looked like it had no rail at all.
+   */
+  lit: string,
+  /** Where the block sits on the timeline, so slipping can park the playhead. */
+  blockStart: number
 )}
   {#if railed({ from, to }, total)}
     {@const at = slipped(kind, key, from, to)}
@@ -2390,7 +2581,7 @@
       aria-valuemin={0}
       aria-valuemax={total}
       aria-valuenow={at.from}
-      onpointerdown={(e) => startSlip(e, kind, key, from, to, total)}
+      onpointerdown={(e) => startSlip(e, kind, key, from, to, total, blockStart)}
       class="absolute inset-x-0 bottom-0 h-2 cursor-ew-resize bg-black/50"
     >
       <div
@@ -2518,6 +2709,26 @@
           </span>
         {/each}
 
+        <!-- The band the timecodes sit in, which is the control rather than a
+             backdrop for one. Sideways arrows for the same reason the overview
+             uses them: the grab hand a few pixels below means pan, and two
+             gestures that feel alike should not do different things.
+
+             Double-click is swallowed as well — the strip adds a caption where
+             you double-click it, and the time axis is not a place to put one. -->
+        <div
+          role="slider"
+          tabindex="-1"
+          aria-label="Scrub the clip"
+          aria-valuemin={0}
+          aria-valuemax={visible}
+          aria-valuenow={playhead}
+          onpointerdown={startRulerScrub}
+          ondblclick={(e) => e.stopPropagation()}
+          class="absolute inset-x-0 top-0 cursor-ew-resize"
+          style="height: {lanesTop}px"
+        ></div>
+
         <!-- Which row is for what, said in colour rather than in a column of words
          beside the strip. The blocks already carry these colours, so an empty
          row reads as "a caption goes here" without costing sixty pixels of
@@ -2551,6 +2762,10 @@
             style="top: {laneTop(row)}px; height: {laneHeight(row)}px"
           ></div>
         {/each}
+
+        <!-- The two rows you can make something in, saying so. -->
+        {@render addable(0, CLIPS_AT - 1, 'an effect')}
+        {@render addable(CAPTIONS_AT, AUDIO_AT - 1, 'a caption')}
 
         <!-- Effects, in the short row above the footage.
 
@@ -2587,14 +2802,15 @@
         {#each effects as fx, index (index)}
           {@const at = shown('fx', index, fxSpan(fx))}
           {@const effect = pictureEffectById(fx.id)}
-          <!-- A burst has no edges to pull.
+          <!-- A burst is drawn wider than it lasts.
 
-             It lasts a sixth of a second, which is a pixel or two at any usable
-             zoom, so resize handles would be two grab targets on a sliver with
-             nothing between them — and its length is not the interesting thing
-             about it anyway. Everything else is an ordinary block: the name
-             inside, a wider floor so the name is readable, and the body both
-             moves it and opens it. -->
+             A sixth of a second is a pixel or two at any usable zoom, so it is
+             given a floor to be readable and grabbable at. It used to be given
+             no handles on top of that, on the grounds that its length was not
+             the interesting thing about it — but a tear held across a bar is a
+             different edit from a tear on one beat, and the dialog could say
+             so while the strip could not. The floor is seventy-two pixels;
+             there is room for two handles in that. -->
           {@const burst = effect?.shape === 'burst'}
           <div
             data-block
@@ -2609,18 +2825,14 @@
               : MIN_BLOCK_PX}px; top: {laneTop(
               drag?.kind === 'fx' && drag.key === index ? drag.lane : (fx.lane ?? 0)
             )}px; height: {LANE_HEIGHTS.fx}px"
-            title="{effect?.label ?? fx.id} · {burst
-              ? secs(at.start)
-              : `${secs(at.start)}–${secs(at.end)}`}"
+            title="{effect?.label ?? fx.id} · {secs(at.start)}–{secs(at.end)}"
           >
-            {#if !burst}
-              <button
-                type="button"
-                aria-label="{effect?.label ?? fx.id} start"
-                onpointerdown={(e) => startDrag(e, 'fx', index, 'start', fxSpan(fx), fx.lane ?? 0)}
-                class="h-full w-2 shrink-0 cursor-ew-resize rounded-l bg-white/25 hover:bg-white/50"
-              ></button>
-            {/if}
+            <button
+              type="button"
+              aria-label="{effect?.label ?? fx.id} start"
+              onpointerdown={(e) => startDrag(e, 'fx', index, 'start', fxSpan(fx), fx.lane ?? 0)}
+              class="h-full w-2 shrink-0 cursor-ew-resize rounded-l bg-white/25 hover:bg-white/50"
+            ></button>
             <!-- The body moves it and opens it, the way a clip's does. There is no
                field in here to press into by mistake, so it needs no separate
                grip the way a caption does. -->
@@ -2628,18 +2840,16 @@
               type="button"
               aria-label="Move {effect?.label ?? fx.id}"
               onpointerdown={(e) => startDrag(e, 'fx', index, 'move', fxSpan(fx), fx.lane ?? 0)}
-              class="flex h-full min-w-0 flex-1 cursor-grab items-center gap-1 px-1.5 text-left text-gray-50 active:cursor-grabbing"
+              class="flex h-full min-w-0 flex-1 cursor-grab items-center gap-1 px-1.5 text-left text-white active:cursor-grabbing"
             >
               <span class="truncate">{effect?.label ?? fx.id}</span>
             </button>
-            {#if !burst}
-              <button
-                type="button"
-                aria-label="{effect?.label ?? fx.id} end"
-                onpointerdown={(e) => startDrag(e, 'fx', index, 'end', fxSpan(fx), fx.lane ?? 0)}
-                class="h-full w-2 shrink-0 cursor-ew-resize rounded-r bg-white/25 hover:bg-white/50"
-              ></button>
-            {/if}
+            <button
+              type="button"
+              aria-label="{effect?.label ?? fx.id} end"
+              onpointerdown={(e) => startDrag(e, 'fx', index, 'end', fxSpan(fx), fx.lane ?? 0)}
+              class="h-full w-2 shrink-0 cursor-ew-resize rounded-r bg-white/25 hover:bg-white/50"
+            ></button>
           </div>
         {/each}
 
@@ -2740,7 +2950,7 @@
               aria-label="Trim the start of {clip.label}"
               onpointerdown={(e) =>
                 startDrag(e, 'clip', clip.id, 'start', clipSpan(clip), clip.lane)}
-              class="h-full w-2 shrink-0 cursor-ew-resize rounded-l bg-gray-400/70 hover:bg-gray-200"
+              class="h-full w-2 shrink-0 cursor-ew-resize rounded-l bg-white/45 hover:bg-white/80"
             ></button>
 
             <!-- The picture is the play button.
@@ -2797,9 +3007,17 @@
               type="button"
               aria-label="Trim the end of {clip.label}"
               onpointerdown={(e) => startDrag(e, 'clip', clip.id, 'end', clipSpan(clip), clip.lane)}
-              class="h-full w-2 shrink-0 cursor-ew-resize rounded-r bg-gray-400/70 hover:bg-gray-200"
+              class="h-full w-2 shrink-0 cursor-ew-resize rounded-r bg-white/45 hover:bg-white/80"
             ></button>
-            {@render extent('clip', clip.id, win.from, win.to, clip.length, 'bg-gray-200/80')}
+            {@render extent(
+              'clip',
+              clip.id,
+              win.from,
+              win.to,
+              clip.length,
+              'bg-white/80',
+              at.start
+            )}
           </div>
         {/each}
 
@@ -2857,8 +3075,8 @@
                 onpointerdown={(e) =>
                   startDrag(e, 'caption', index, 'move', captionSpan(caption), caption.lane ?? 0)}
                 class="h-full min-w-0 flex-1 cursor-grab truncate px-1 text-left text-[12px] active:cursor-grabbing {caption.text
-                  ? 'text-gray-50'
-                  : 'text-gray-50/40'}"
+                  ? 'text-white'
+                  : 'text-white/40'}"
               >
                 {typed(caption.text) || 'Say something'}
               </button>
@@ -2971,7 +3189,15 @@
                 startDrag(e, 'audio', track.id, 'end', trackSpan(track), track.lane ?? 0)}
               class="h-full w-2 shrink-0 cursor-ew-resize rounded-r bg-emerald-300/80 hover:bg-emerald-200"
             ></button>
-            {@render extent('audio', track.id, win.from, win.to, track.length, 'bg-emerald-200/80')}
+            {@render extent(
+              'audio',
+              track.id,
+              win.from,
+              win.to,
+              track.length,
+              'bg-emerald-200/80',
+              at.start
+            )}
           </div>
         {/each}
 

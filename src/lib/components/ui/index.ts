@@ -2,6 +2,7 @@ export { default as SortableList } from './SortableList.svelte';
 export { default as ToggleSwitch } from './ToggleSwitch.svelte';
 export { default as EditableText } from './EditableText.svelte';
 export { default as ColorWheel } from './ColorWheel.svelte';
+export { default as PopoverPanel } from './PopoverPanel.svelte';
 export { default as FilterSelect } from './FilterSelect.svelte';
 export { default as EditorPreview } from './EditorPreview.svelte';
 export { default as DateTimePicker } from './DateTimePicker.svelte';

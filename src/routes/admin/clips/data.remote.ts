@@ -1,4 +1,5 @@
 import { requireUser } from '$lib/server/guards';
+import { clipSnapshot, restoreClip, type ClipSnapshot } from '$lib/server/clip-snapshot';
 import { getClipSettings, updateClipSettings, getSetting, setSetting } from '$lib/server/settings';
 import * as v from 'valibot';
 import { FONTS } from '$lib/fonts';
@@ -113,14 +114,18 @@ const advancedSchema = v.partial(
     introMinSeconds: v.pipe(v.number(), v.minValue(0)),
     introMaxSeconds: v.pipe(v.number(), v.minValue(0)),
     introFallbackSeconds: v.pipe(v.number(), v.minValue(0)),
+    introFixedSeconds: v.optional(v.nullable(v.pipe(v.number(), v.minValue(0)))),
+    introLeadSeconds: v.optional(v.pipe(v.number(), v.minValue(0))),
     outroSeconds: v.pipe(v.number(), v.minValue(0)),
     outroOverlapSeconds: v.pipe(v.number(), v.minValue(0)),
     cardBackground: v.string(),
 
     logoWidthPercent: v.pipe(v.number(), v.minValue(1), v.maxValue(100)),
     watermarkWidthPercent: v.pipe(v.number(), v.minValue(1), v.maxValue(100)),
-    watermarkX: v.number(),
-    watermarkY: v.number(),
+    outroWidthPercent: v.optional(v.pipe(v.number(), v.minValue(1), v.maxValue(100))),
+    markFadeSeconds: v.optional(v.pipe(v.number(), v.minValue(0))),
+    watermarkAlign: v.optional(v.picklist(['left', 'right'])),
+    watermarkInset: v.optional(v.pipe(v.number(), v.minValue(0))),
 
     // The three heights a caption can sit at, as a share of the frame up from
     // the bottom. Anywhere in the frame is allowed — off it is not.
@@ -183,6 +188,8 @@ const configSchema = v.partial(
     audioFadeOut: v.boolean(),
     intro: v.boolean(),
     outro: v.boolean(),
+    outroHold: v.optional(v.boolean()),
+    introHold: v.optional(v.boolean()),
     watermark: v.boolean(),
     introGraphicMediaId: v.nullable(v.number()),
     watermarkGraphicMediaId: v.nullable(v.number()),
@@ -966,5 +973,41 @@ export const getPostSheet = query(
     await requireUser();
 
     return buildPostSheet(projectId, origin);
+  }
+);
+
+/**
+ * The clip as it stands, for the history to hold on to.
+ *
+ * Read from here rather than assembled from what the editor already has: the
+ * page holds the clip the way it draws it — merged with defaults, with derived
+ * layout hung off it — and an undo has to put back what was *stored*.
+ *
+ * A `command` even though it only reads. A `query` memoises per argument, so
+ * asking for the same clip twice gives the same answer twice — and the two
+ * asks either side of a write would come back identical, the step would look
+ * like a no-op, and nothing would ever be recorded. The whole point here is
+ * that the second answer is different from the first.
+ */
+export const takeClipSnapshot = command(v.number(), async (projectId) => {
+  await requireUser();
+  return await clipSnapshot(projectId);
+});
+
+/**
+ * Writes one back.
+ *
+ * Unvalidated beyond its shape on purpose: this is not somebody's input, it is
+ * a row set this server handed out a moment ago, and re-describing seventeen
+ * columns in valibot would be a second definition of the table to keep in step
+ * with the first. `requireUser` is the gate; `restoreClip` only ever touches
+ * the project named in the snapshot.
+ */
+export const putClipSnapshot = command(
+  v.custom<ClipSnapshot>(() => true),
+  async (snapshot) => {
+    await requireUser();
+    await restoreClip(snapshot);
+    return { success: true };
   }
 );

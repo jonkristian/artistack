@@ -11,11 +11,18 @@
   import MediaAdd from '$lib/components/ui/MediaAdd.svelte';
   import FontSelect from '$lib/components/ui/FontSelect.svelte';
   import PostPreview from '$lib/components/clips/PostPreview.svelte';
-  import { ColorWheel, RichTextEditor, TagInput, ToggleSwitch } from '$lib/components/ui';
+  import {
+    ColorWheel,
+    PopoverPanel,
+    RichTextEditor,
+    TagInput,
+    ToggleSwitch
+  } from '$lib/components/ui';
   import { onMount } from 'svelte';
   import { Autosave } from '$lib/utils/autosave.svelte';
   import { autosaving } from '$lib/stores/autosaving.svelte';
   import { renderFingerprint } from '$lib/clips/fingerprint';
+  import { ClipHistory } from '$lib/clips/history.svelte';
   import { clipLayout } from '$lib/clips/layout';
   import { secs, tidy } from '$lib/clips/time';
   import { clipWideEffect, pictureCss, shotEffects } from '$lib/clips/effects';
@@ -73,6 +80,7 @@
     DEFAULT_ADVANCED_CONFIG,
     captionAnchors,
     stageGraphicId,
+    BRANDING_FIELDS,
     type BrandStage,
     captionBackdrop,
     captionColor,
@@ -91,6 +99,8 @@
   import type { PageData } from './$types';
   import {
     updateProject,
+    takeClipSnapshot,
+    putClipSnapshot,
     saveClipDefaultTags,
     saveClipDefaultDescription,
     deleteProject,
@@ -182,7 +192,115 @@
    * this one the answer used to float over the picture, which is the part of
    * the screen least able to spare it.
    */
-  onMount(() => autosaving.register(autosave));
+  /*
+   * The autosave and the undo go to the rail together.
+   *
+   * Getters rather than values, because the rail reads them whenever it draws
+   * and the stack is a rune class — handing over `canUndo` once would hand
+   * over whether it was true at registration.
+   */
+  onMount(() =>
+    autosaving.register(autosave, {
+      get canUndo() {
+        return history.canUndo;
+      },
+      get canRedo() {
+        return history.canRedo;
+      },
+      get undoLabel() {
+        return history.undoLabel;
+      },
+      get redoLabel() {
+        return history.redoLabel;
+      },
+      undo: () => travel('undo'),
+      redo: () => travel('redo')
+    })
+  );
+
+  /*
+   * Undo, hung off the one place every write already goes through.
+   *
+   * A snapshot either side of each write, named by what that write said it was
+   * saving — so the twenty-one call sites are untouched and nothing else in
+   * this file knows the history is here.
+   *
+   * Read from the server rather than from what is on screen: the page draws
+   * the clip merged with defaults and with the layout derived off it, and an
+   * undo has to put back what was *stored*.
+   */
+  const history = new ClipHistory();
+
+  $effect(() => {
+    const id = selected.id;
+    autosave.watch = async (what, write) => {
+      /*
+       * Editing takes you to the edit.
+       *
+       * The strip stays live while Full is up — it is the transport as well as
+       * the editor — so it is perfectly possible to trim a shot while watching
+       * a file made an hour ago, and see nothing happen. Rather than locking
+       * the strip and leaving a dead control to wonder about, the first change
+       * puts the picture back on the thing being changed. Rendering is not a
+       * change and doesn't go through here, so pressing Re-render leaves you
+       * watching the render.
+       */
+      watching = 'edit';
+
+      // Nothing to put back if we never saw where it started — and nothing to
+      // record while an undo is the thing doing the writing.
+      const before = history.applying ? null : await takeClipSnapshot(id);
+      await write();
+      if (!before) return;
+      const after = await takeClipSnapshot(id);
+      if (after) history.push(what, before, after);
+    };
+    return () => {
+      autosave.watch = null;
+    };
+  });
+
+  /*
+   * A snapshot belongs to one clip; opening another starts again.
+   *
+   * Compared against a remembered id rather than tracked. `selected` is a
+   * derived *object*, rebuilt every time the loader hands down new data — and
+   * every save ends in `invalidateAll`. So an effect that reads `selected.id`
+   * re-runs after each write, and this one emptied the stack the instant
+   * something was pushed onto it: the step was recorded, the save finished,
+   * and the history was wiped before anyone could press undo.
+   */
+  let historyFor: number | null = null;
+  $effect(() => {
+    const id = selected.id;
+    if (historyFor === id) return;
+    historyFor = id;
+    untrack(() => history.clear());
+  });
+
+  /**
+   * Puts a snapshot back, without the putting back being recorded.
+   *
+   * `invalidateAll` afterwards because every other write does: the page reads
+   * the clip from the loader, and a restore that didn't reload would leave the
+   * screen showing the state it just replaced.
+   */
+  async function travel(to: 'undo' | 'redo') {
+    const step = to === 'undo' ? history.undo() : history.redo();
+    if (!step) return;
+
+    history.applying = true;
+    try {
+      await putClipSnapshot(to === 'undo' ? step.before : step.after);
+      await invalidateAll();
+      // Nothing is said about it. An undo shows itself — the strip moves, the
+      // picture changes — and the button already names what the next one would
+      // take back. Pressing undo four times earned four notifications for four
+      // things you had just watched happen.
+    } finally {
+      history.applying = false;
+    }
+  }
 
   /*
    * Leaving the page with something unsaved. Two different holes.
@@ -726,6 +844,8 @@
   const introShown = $derived.by(() => {
     const a = advanced;
     if (!config.intro) return 0;
+    // Said outright, on the strip. The dials below are only for when it wasn't.
+    if (a.introFixedSeconds != null && a.introFixedSeconds > 0) return a.introFixedSeconds;
 
     const first = timelineClips[0];
     const length = first ? first.end - first.start : 0;
@@ -838,8 +958,52 @@
    * it is setting: pressing play re-ran this and it stopped the clock again,
    * within the same frame, for as long as anyone cared to keep pressing.
    */
+  /** The rendered file in the pane, when Full is the one being watched. */
+  let renderEl = $state<HTMLVideoElement | null>(null);
+  /** How long that file turned out to be, which is the truth while you watch it. */
+  let renderLength = $state(0);
+
+  /**
+   * The file follows the clock, the way the shots do.
+   *
+   * Full used to be a video element with its own controls: its own play, its
+   * own scrubber, its own idea of the time — two of everything on screen, and
+   * neither aware of the other. There is one transport in this editor and one
+   * clock behind it; what differs between Preview and Full is which picture is
+   * made to agree with it.
+   */
   $effect(() => {
-    const length = layout.duration;
+    const el = renderEl;
+    if (!el || !watchingRender) return;
+
+    const at = clock.at;
+    const running = clock.playing;
+
+    // A quarter of a second of slack: a video seeks in whole keyframes and
+    // correcting every frame would stutter more than the drift shows.
+    if (Math.abs(el.currentTime - at) > 0.25) el.currentTime = at;
+    if (running && el.paused) void el.play().catch(() => {});
+    if (!running && !el.paused) el.pause();
+  });
+
+  // Switching away from it stops it: a file playing behind the edit is sound
+  // from nowhere.
+  $effect(() => {
+    if (watchingRender) return;
+    const el = renderEl;
+    if (el && !el.paused) el.pause();
+  });
+
+  $effect(() => {
+    /*
+     * While Full is up, the file's own length is the length.
+     *
+     * The edit is the authority everywhere else, but a render made from an
+     * older edit is its own thing, and parking the playhead short of its last
+     * half-second because the clip has since been trimmed is a transport
+     * lying about what it is playing.
+     */
+    const length = watchingRender && renderLength > 0 ? renderLength : layout.duration;
     untrack(() => {
       clock.duration = length;
       // A shot taken off the end can leave the playhead past the end of the clip.
@@ -974,12 +1138,27 @@
    * Every bed, not the selected one: the clip plays its own score now, so the
    * music under the picture is the music that will be in the file.
    */
+  /**
+   * How far the preview's clock runs ahead of the strip's.
+   *
+   * An intro with a run-up puts time at the head that the arrangement knows
+   * nothing about — so the clock counts from the first frame of the clip and
+   * the strip counts from the first frame of footage, and the two disagree by
+   * this much.
+   *
+   * Everything handed to the picture is moved along by it rather than the
+   * clock being moved back: the stage, the beds and the overlay all read the
+   * same clock, and one of them being told a different time is how a preview
+   * drifts out of step with itself.
+   */
+  const lead = $derived(layout.lead);
+
   const stageBeds = $derived<StageBed[]>(
     tracks.map((track) => ({
       id: track.id,
       url: mediaById.get(track.mediaId)?.url ?? '',
-      start: track.start,
-      end: track.end,
+      start: track.start + lead,
+      end: track.end == null ? track.end : track.end + lead,
       seek: track.seek,
       fadeIn: track.fadeIn,
       fadeOut: track.fadeOut,
@@ -1012,8 +1191,8 @@
       const item = mediaById.get(block.mediaId);
       return {
         id: block.id,
-        start: block.start,
-        end: block.end,
+        start: block.start + lead,
+        end: block.end + lead,
         from: block.from,
         speed: block.speed,
         // The proxy, which is why it exists: a 4K phone file decoding twice
@@ -1311,8 +1490,6 @@
    * click against — the same outside-click and Escape behaviour every other
    * menu here has.
    */
-  let graphicOpen = $state<BrandStage | null>(null);
-  let brandingRow = $state<HTMLElement | null>(null);
 
   /**
    * The graphic each stage will actually draw with, for its chip and the overlay.
@@ -1320,6 +1497,26 @@
    * The site default when the stage has no mark of its own — the same fallback
    * the renderer applies, so the chip shows what will come out.
    */
+  /**
+   * How long a mark is on screen with no footage under it.
+   *
+   * Which is the only time it has a background at all: lying over the picture,
+   * the picture is its background. Zero means the question doesn't arise.
+   */
+  const outsideFootage = $derived((stage: BrandStage) =>
+    stage === 'intro'
+      ? Math.max(0, advanced.introLeadSeconds ?? 0)
+      : stage === 'outro'
+        ? Math.max(
+            0,
+            advanced.outroSeconds - Math.min(advanced.outroOverlapSeconds, advanced.outroSeconds)
+          )
+        : 0
+  );
+
+  /** Which stage's colour wheel is out, since the three share one row shape. */
+  let colourOpen = $state<BrandStage | null>(null);
+
   const stageGraphic = $derived((stage: BrandStage) => {
     const id = stageGraphicId(config, stage) ?? data.defaultGraphicMediaId;
     return id ? (data.graphics.find((g) => g.id === id) ?? null) : null;
@@ -1689,11 +1886,12 @@
   let peekCaptionFace = $state<{ index: number; id: string | null } | null>(null);
 
   const previewCaptions = $derived(
-    peekCaptionFace
+    (peekCaptionFace
       ? captions.map((line, i) =>
           i === peekCaptionFace!.index ? { ...line, font: peekCaptionFace!.id } : line
         )
       : captions
+    ).map((line) => (lead ? { ...line, start: line.start + lead, end: line.end + lead } : line))
   );
 
   async function setCaptions(next: TimedCaption[]) {
@@ -1862,14 +2060,23 @@
   );
 </script>
 
-<!-- Bubble phase, so the thumbnail's own click has already run and the row
-     counts as inside. -->
 <svelte:window
-  onclick={(e) => {
-    if (graphicOpen && brandingRow && !brandingRow.contains(e.target as Node)) graphicOpen = null;
-  }}
   onkeydown={(e) => {
-    if (e.key === 'Escape') graphicOpen = null;
+    /*
+     * Undo and redo, where every keyboard puts them.
+     *
+     * Behind the same guard the transport keys use, and for the stronger
+     * reason: a text field has an undo of its own, and taking ⌘Z from it would
+     * mean a typo costs you the whole caption instead of a letter.
+     */
+    if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z') return;
+
+    const el = e.target as HTMLElement | null;
+    if (el?.isContentEditable) return;
+    if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
+
+    e.preventDefault();
+    void travel(e.shiftKey ? 'redo' : 'undo');
   }}
 />
 
@@ -1883,6 +2090,70 @@
   Sits on the label rather than under the field so it reads as being about the
   field, not another thing to fill in.
 -->
+<!-- One render dial: its name, whether it has been moved off the default, and
+     the number itself.
+     
+     A snippet rather than markup inside the Advanced loop, because the same row
+     now appears under a branding stage — a number belongs beside the thing it
+     describes, and the two lists should not drift into two spellings of the
+     same control. -->
+{#snippet dial(field: {
+  key: keyof ClipAdvancedConfig;
+  label: string;
+  step?: number;
+  hint?: string;
+})}
+  {@const isChanged = advanced[field.key] !== DEFAULT_ADVANCED_CONFIG[field.key]}
+  <div class="flex items-center gap-3 py-2">
+    <label class="min-w-0 flex-1 text-sm text-gray-400" for="adv-{field.key}">
+      {field.label}
+      {#if isChanged}
+        <span class="text-link">•</span>
+      {/if}
+      {#if field.hint}
+        <span class="mt-0.5 block text-xs text-gray-500">{field.hint}</span>
+      {/if}
+    </label>
+    <input
+      id="adv-{field.key}"
+      type="number"
+      step={field.step ?? 1}
+      class="{numberClass} w-24 shrink-0"
+      value={savedAdvanced[field.key] as number}
+      oninput={(e) => {
+        const raw = e.currentTarget.value;
+        if (raw === '' || Number.isNaN(Number(raw))) return;
+        advancedDraft = {
+          ...advancedDraft,
+          [field.key]: Number(raw)
+        };
+      }}
+      onblur={async (e) => {
+        const el = e.currentTarget;
+        const raw = el.value;
+        if (raw === '') return;
+        const ok = await patchAdvanced({
+          [field.key]: Number(raw)
+        } as never);
+        if (!ok) return;
+        const { [field.key]: _saved, ...rest } = advancedDraft;
+        advancedDraft = rest;
+        /*
+         * The server has the last word on what this says.
+         *
+         * `value` is bound to the saved number, so a save
+         * that quietly kept the old one leaves the
+         * expression unchanged and the field goes on
+         * showing what you typed — which is how three
+         * dials missing from the save schema looked
+         * exactly like three dials that worked.
+         */
+        el.value = String(savedAdvanced[field.key]);
+      }}
+    />
+  </div>
+{/snippet}
+
 {#snippet saveAsDefault(field: 'tags' | 'description')}
   <button
     type="button"
@@ -1988,7 +2259,7 @@
     'danger'
       ? 'text-gray-500 hover:bg-red-500/15 hover:text-red-300'
       : tone === 'primary'
-        ? 'text-link hover:bg-violet-500/20 hover:text-violet-200'
+        ? 'text-link light:hover:text-violet-800 hover:bg-violet-500/20 hover:text-violet-200'
         : 'hover:bg-raise/10 text-gray-500 hover:text-gray-200'}"
   >
     <svg
@@ -2781,21 +3052,6 @@
                       {/each}
                     </select>
                   </div>
-                  <div>
-                    <!-- The same wheel as every other colour here. It was the
-                         browser's own `type="color"`, the last one left in the
-                         editor — a different swatch, a different popup and no
-                         brand colours to pick from. -->
-                    <span class={labelClass}>Card background</span>
-                    <ColorWheel
-                      label=""
-                      title="The colour behind the closing card"
-                      value={advanced.cardBackground}
-                      swatches={brandColors}
-                      onkeep={keep}
-                      onchange={(c) => patchAdvanced({ cardBackground: c })}
-                    />
-                  </div>
                 </div>
 
                 {#each ADVANCED_GROUPS as group (group.label)}
@@ -2811,56 +3067,7 @@
                          the one you came for. -->
                     <div class="divide-y divide-gray-800/70 border-y border-gray-800/70">
                       {#each group.fields as field (field.key)}
-                        {@const isChanged =
-                          advanced[field.key] !== DEFAULT_ADVANCED_CONFIG[field.key]}
-                        <div class="flex items-center gap-3 py-2">
-                          <label class="min-w-0 flex-1 text-sm text-gray-400" for="adv-{field.key}">
-                            {field.label}
-                            {#if isChanged}
-                              <span class="text-link">•</span>
-                            {/if}
-                            {#if field.hint}
-                              <span class="mt-0.5 block text-xs text-gray-500">{field.hint}</span>
-                            {/if}
-                          </label>
-                          <input
-                            id="adv-{field.key}"
-                            type="number"
-                            step={field.step ?? 1}
-                            class="{numberClass} w-24 shrink-0"
-                            value={savedAdvanced[field.key] as number}
-                            oninput={(e) => {
-                              const raw = e.currentTarget.value;
-                              if (raw === '' || Number.isNaN(Number(raw))) return;
-                              advancedDraft = {
-                                ...advancedDraft,
-                                [field.key]: Number(raw)
-                              };
-                            }}
-                            onblur={async (e) => {
-                              const el = e.currentTarget;
-                              const raw = el.value;
-                              if (raw === '') return;
-                              const ok = await patchAdvanced({
-                                [field.key]: Number(raw)
-                              } as never);
-                              if (!ok) return;
-                              const { [field.key]: _saved, ...rest } = advancedDraft;
-                              advancedDraft = rest;
-                              /*
-                               * The server has the last word on what this says.
-                               *
-                               * `value` is bound to the saved number, so a save
-                               * that quietly kept the old one leaves the
-                               * expression unchanged and the field goes on
-                               * showing what you typed — which is how three
-                               * dials missing from the save schema looked
-                               * exactly like three dials that worked.
-                               */
-                              el.value = String(savedAdvanced[field.key]);
-                            }}
-                          />
-                        </div>
+                        {@render dial(field)}
                       {/each}
                     </div>
                   </div>
@@ -2893,7 +3100,7 @@
                    selected — its fades, its sound — and these are three facts
                    about the whole clip, set once rather than pressed while you
                    watch. -->
-              <div class="relative mb-5" bind:this={brandingRow}>
+              <div class="mb-5">
                 <span class={groupTitleClass}>Branding</span>
                 <div class="flex flex-wrap items-center gap-1.5">
                   {#each BRANDING_OPTIONS as option (option.key)}
@@ -2905,26 +3112,180 @@
                         ? 'border-violet-500 bg-violet-600/80'
                         : 'border-gray-700'}"
                     >
-                      <button
-                        type="button"
-                        onclick={() => (graphicOpen = graphicOpen === stage ? null : stage)}
+                      <!-- The thumbnail opens everything about the stage: which
+                           graphic it draws, and the handful of numbers that say
+                           how. One popover per stage, the way a colour is one
+                           popover — the chip row stays three chips wide however
+                           much there is to set behind it, and a number sits
+                           with the thing it describes instead of in a panel
+                           two sections away. -->
+                      <PopoverPanel
                         title={mark
-                          ? `Drawn with ${mark.filename} — press to change`
+                          ? `Drawn with ${mark.filename} — press for its settings`
                           : 'No graphic set — press to choose one'}
-                        aria-label="Graphic used for {option.label.toLowerCase()}"
-                        aria-expanded={graphicOpen === stage}
-                        class="flex w-9 shrink-0 items-center justify-center bg-black/30 px-1 transition-colors hover:bg-black/50"
+                        panelClass="w-72"
+                        triggerClass="flex w-9 shrink-0 items-center justify-center bg-black/30 px-1 transition-colors hover:bg-black/50"
                       >
-                        {#if mark}
-                          <img
-                            src={mark.thumbnailUrl || mark.url}
-                            alt=""
-                            class="h-4 w-full object-contain"
-                          />
-                        {:else}
-                          <span class="text-[10px] text-gray-500">?</span>
-                        {/if}
-                      </button>
+                        {#snippet trigger()}
+                          {#if mark}
+                            <img
+                              src={mark.thumbnailUrl || mark.url}
+                              alt=""
+                              class="h-4 w-full object-contain"
+                            />
+                          {:else}
+                            <span class="text-[10px] text-gray-500">?</span>
+                          {/if}
+                        {/snippet}
+
+                        <span class={groupTitleClass}>{option.label} graphic</span>
+                        <ul role="listbox" class="-mx-1 max-h-56 overflow-y-auto px-1">
+                          {#each graphicOptions as choice (choice.value)}
+                            {@const chosen =
+                              choice.value === String(stageGraphicId(config, stage) ?? '')}
+                            <li>
+                              <button
+                                type="button"
+                                role="option"
+                                aria-selected={chosen}
+                                onclick={() =>
+                                  patchConfig('the branding', {
+                                    [`${stage}GraphicMediaId`]:
+                                      choice.value === '' ? null : Number(choice.value)
+                                  } as never)}
+                                class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors {chosen
+                                  ? 'light:text-violet-800 bg-violet-600/20 text-violet-200'
+                                  : 'text-gray-300 hover:bg-gray-800 hover:text-white'}"
+                              >
+                                <!-- Site default and Random have no picture of
+                                     their own, so they keep the space to stay
+                                     in line with the rest. -->
+                                {#if 'image' in choice}
+                                  <img
+                                    src={choice.image}
+                                    alt=""
+                                    class="h-6 w-8 shrink-0 rounded bg-gray-950 object-contain"
+                                  />
+                                {:else}
+                                  <span class="h-6 w-8 shrink-0"></span>
+                                {/if}
+                                <span class="min-w-0 flex-1 truncate">{choice.label}</span>
+                              </button>
+                            </li>
+                          {/each}
+                        </ul>
+
+                        <!-- And what the stage does with it. Dimmed while the
+                             stage is off: the numbers still describe it, but
+                             nothing is drawing them yet, and that is worth
+                             saying without taking them away. -->
+                        <div class="mt-3 {on ? '' : 'opacity-50'}">
+                          <div class="divide-y divide-gray-800/70 border-t border-gray-800/70">
+                            {#each BRANDING_FIELDS[stage] as field (field.key)}
+                              {@render dial(field)}
+                            {/each}
+
+                            {#if stage === 'watermark'}
+                              <!-- Which corner, which is the whole of where it
+                                   goes. How far in from that corner is a
+                                   detail, and lives with the details. -->
+                              <div class="flex items-center gap-3 py-2">
+                                <span class="min-w-0 flex-1 text-sm text-gray-400">Corner</span>
+                                <div
+                                  class="flex shrink-0 items-stretch rounded-lg border border-gray-700 bg-gray-950/60 p-0.5 text-xs"
+                                  role="group"
+                                  aria-label="Which side the watermark sits on"
+                                >
+                                  {#each [{ side: 'left', label: 'Left' }, { side: 'right', label: 'Right' }] as choice (choice.side)}
+                                    {@const picked =
+                                      (advanced.watermarkAlign ?? 'left') === choice.side}
+                                    <button
+                                      type="button"
+                                      aria-pressed={picked}
+                                      onclick={() =>
+                                        patchAdvanced({
+                                          watermarkAlign: choice.side as 'left' | 'right'
+                                        })}
+                                      class="rounded-md px-2 py-1 transition-colors {picked
+                                        ? 'bg-gray-700 text-gray-50'
+                                        : 'text-gray-500 hover:text-gray-300'}"
+                                    >
+                                      {choice.label}
+                                    </button>
+                                  {/each}
+                                </div>
+                              </div>
+                            {/if}
+
+                            <!-- What is behind the mark, asked only when there
+                                 is anything behind it.
+
+                                 A mark that lies entirely over the footage has
+                                 no background: the footage is the background.
+                                 So the row appears with the run-up or the time
+                                 after, and the answer is a colour — or no
+                                 colour, which can only mean the picture you
+                                 were already watching stays where it is. That
+                                 was a switch and a colour, which is the same
+                                 question asked twice. -->
+                            {#if outsideFootage(stage) > 0}
+                              {@const held =
+                                stage === 'intro'
+                                  ? Boolean(config.introHold)
+                                  : Boolean(config.outroHold)}
+                              {@const frame = stage === 'intro' ? 'first' : 'last'}
+                              <div class="flex items-center gap-3 py-2">
+                                <span class="min-w-0 flex-1 text-sm text-gray-400">Background</span>
+                                <ColorWheel
+                                  label=""
+                                  compact
+                                  title="What sits behind the {option.label.toLowerCase()}"
+                                  value={held ? '' : advanced.cardBackground}
+                                  swatches={brandColors}
+                                  onkeep={keep}
+                                  actions={[
+                                    {
+                                      label: `Hold the ${frame} frame`,
+                                      onclick: () =>
+                                        patchConfig('the branding', {
+                                          [stage === 'intro' ? 'introHold' : 'outroHold']: true
+                                        } as never)
+                                    }
+                                  ]}
+                                  onchange={(c) => {
+                                    patchAdvanced({ cardBackground: c });
+                                    // Choosing a colour is choosing a colour.
+                                    if (held) {
+                                      patchConfig('the branding', {
+                                        [stage === 'intro' ? 'introHold' : 'outroHold']: false
+                                      } as never);
+                                    }
+                                  }}
+                                >
+                                  {#snippet trigger({ value, none })}
+                                    <!-- A colour is a swatch and its hex; no
+                                         colour is a sentence. An empty swatch
+                                         beside the words was a hole in the row
+                                         standing in for a thing that isn't
+                                         there, and the hex's monospace made a
+                                         phrase look like a value. -->
+                                    {#if none}
+                                      <span class="text-xs text-gray-300">The {frame} frame</span>
+                                    {:else}
+                                      <span
+                                        class="h-4 w-4 shrink-0 rounded-sm border border-white/20"
+                                        style="background-color: {value}"
+                                      ></span>
+                                      <span class="font-mono text-xs text-gray-400">{value}</span>
+                                    {/if}
+                                  {/snippet}
+                                </ColorWheel>
+                              </div>
+                            {/if}
+                          </div>
+                        </div>
+                      </PopoverPanel>
+
                       <button
                         type="button"
                         onclick={() => patchConfig('the branding', { [option.key]: !on } as never)}
@@ -2939,70 +3300,6 @@
                     </div>
                   {/each}
                 </div>
-
-                <!-- One list, under the row rather than under whichever thumbnail was
-               pressed — but it writes to the stage whose thumbnail opened it, so
-               the outro can carry something the watermark does not.
-
-               Opening upwards, which is not a style choice. The editor pane
-               scrolls, so it clips anything its children put outside it — and
-               this row sits near the bottom, so a list dropping down was cut
-               off at the timeline's edge with the options below that line
-               unreachable: they were behind the cut, so the presses landed on
-               whatever was drawn there instead. There is always room above,
-               because the presets are. -->
-                {#if graphicOpen}
-                  {@const stage = graphicOpen}
-                  <ul
-                    role="listbox"
-                    class="absolute bottom-full z-20 mb-1 max-h-64 w-64 overflow-y-auto rounded-lg border border-gray-700 bg-gray-900 p-1 shadow-xl"
-                  >
-                    {#each graphicOptions as option (option.value)}
-                      {@const chosen = option.value === String(stageGraphicId(config, stage) ?? '')}
-                      <li>
-                        <button
-                          type="button"
-                          role="option"
-                          aria-selected={chosen}
-                          onclick={() => {
-                            /*
-                             * Which stage, read before the list is closed.
-                             *
-                             * `{@const}` is a reactive binding, not a snapshot — so
-                             * `stage` follows `graphicOpen`, and clearing that first
-                             * turned the key into `nullGraphicMediaId`. The schema
-                             * drops what it does not recognise, so the save went
-                             * through, reported success, and changed nothing.
-                             */
-                            const target = stage;
-
-                            patchConfig('the branding', {
-                              [`${target}GraphicMediaId`]:
-                                option.value === '' ? null : Number(option.value)
-                            } as never);
-                            graphicOpen = null;
-                          }}
-                          class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors {chosen
-                            ? 'bg-violet-600/20 text-violet-200'
-                            : 'text-gray-300 hover:bg-gray-800 hover:text-white'}"
-                        >
-                          <!-- Site default and Random have no picture of their own,
-                         so they keep the space to stay in line with the rest. -->
-                          {#if 'image' in option}
-                            <img
-                              src={option.image}
-                              alt=""
-                              class="h-6 w-8 shrink-0 rounded bg-gray-950 object-contain"
-                            />
-                          {:else}
-                            <span class="h-6 w-8 shrink-0"></span>
-                          {/if}
-                          <span class="min-w-0 flex-1 truncate">{option.label}</span>
-                        </button>
-                      </li>
-                    {/each}
-                  </ul>
-                {/if}
               </div>
 
               <!-- One per row. They were a wrapping pair with a 9rem minimum,
@@ -3387,9 +3684,10 @@
           {#if outputMedia}
             <!-- svelte-ignore a11y_media_has_caption -->
             <video
+              bind:this={renderEl}
               src={outputMedia.url}
               poster={outputMedia.thumbnailUrl ?? undefined}
-              controls
+              onloadedmetadata={(e) => (renderLength = e.currentTarget.duration || 0)}
               class={previewMediaClass}
             ></video>
           {:else}
@@ -3437,6 +3735,10 @@
               stageGraphic('watermark')?.url ||
               null}
             introSeconds={introShown}
+            outroGraphic={stageGraphic('outro')?.thumbnailUrl || stageGraphic('outro')?.url || null}
+            bodySeconds={lead + layout.body}
+            leadSeconds={lead}
+            leadPoster={config.introHold ? (timelineClips[0]?.poster ?? null) : null}
             {accent}
           />
         </div>
@@ -3522,7 +3824,19 @@
       <!-- Three groups, so the transport is centred on the row rather than on
            whatever is left after the verbs: the selection changes how wide the
            left-hand group is, and play should not move when it does. -->
-      <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-1 pr-2">
+      <!-- The row keeps its own gutter. It used to come from the transport's
+           padding, which meant the one column that happened to have some gave
+           the whole row its height.
+
+           Minus whatever the drag separator above already contributes: that
+           row is transparent until you hover it, so with the strip open it
+           reads as part of the gutter, and adding a full one under it made the
+           controls sit lower when the strip was open than when it was away. -->
+      <div
+        class="grid grid-cols-[1fr_auto_1fr] items-center gap-1 pr-2 pb-1.5 {stripHidden
+          ? 'pt-1.5'
+          : ''}"
+      >
         <!-- The switches for whatever is selected, and nothing else.
              This row used to carry everything a block could be told, including
              buttons that only took you somewhere else to tell it. What has a
@@ -3575,7 +3889,7 @@
             )}
           {/if}
         </div>
-        <div class="flex items-center justify-self-center">
+        <div class="flex items-center gap-2 justify-self-center">
           <ClipTransport {clock} disabledReason={nothingToPlay} ready={sources.length > 0} />
           {#if canSwitchView}
             <!-- Which picture plays, beside the button that plays it.
@@ -3588,9 +3902,9 @@
                  render: that the edit has moved past it. While one is being
                  made the label carries the percentage instead, so the progress
                  is legible from the Preview side too. -->
-            <div class="ml-2 h-5 w-px shrink-0 bg-gray-700"></div>
+            <div class="h-5 w-px shrink-0 bg-gray-700"></div>
             <div
-              class="ml-2 flex items-stretch rounded-lg border border-gray-700 bg-gray-950/60 p-0.5 text-xs"
+              class="flex items-stretch rounded-lg border border-gray-700 bg-gray-950/60 p-0.5 text-xs"
               role="group"
               aria-label="Which picture plays"
             >
@@ -3632,6 +3946,12 @@
             </div>
 
             <!-- Making the file, beside the switch that shows it.
+                 One button in two states — "Re-render" and the progress it
+                 turns into — so it keeps its shape while a render runs rather
+                 than swapping one size and colour for another mid-row. Quiet
+                 chrome, like everything else here: it was a solid blue that
+                 appeared nowhere else in the admin, and the thing that has to
+                 catch the eye is the dot on Full, not the button.
                  It was a bar above the picture, which cost both views the same
                  strip of height whether or not there was anything to say. Here
                  it takes a row that already exists, appears only when there is
@@ -3641,7 +3961,7 @@
               <button
                 onclick={handleStop}
                 title="Stop the render"
-                class="relative ml-2 shrink-0 overflow-hidden rounded-lg border border-gray-700 bg-gray-800 px-2.5 py-1 text-xs whitespace-nowrap text-gray-200 hover:border-red-800 hover:bg-red-950/60 hover:text-red-200"
+                class="relative shrink-0 overflow-hidden rounded-lg border border-gray-700 bg-gray-800 px-2.5 py-1.5 text-xs whitespace-nowrap text-gray-200 hover:border-red-800 hover:bg-red-950/60 hover:text-red-200"
               >
                 <span
                   class="absolute inset-y-0 left-0 bg-violet-600/40 transition-all duration-300"
@@ -3657,7 +3977,7 @@
               <button
                 onclick={() => handleRender()}
                 title="The full-size render, with everything burned in — the only one anything downstream uses"
-                class="ml-2 shrink-0 rounded-lg bg-sky-700 px-2.5 py-1 text-xs font-medium whitespace-nowrap text-white transition-colors hover:bg-sky-600"
+                class="shrink-0 rounded-lg border border-gray-700 bg-gray-800 px-2.5 py-1.5 text-xs font-medium whitespace-nowrap text-gray-200 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-gray-50"
               >
                 {outputMedia ? 'Re-render' : 'Render'}
               </button>
@@ -3685,7 +4005,7 @@
                 step="1"
                 value={at}
                 aria-label="How much of the clip is on screen"
-                class="h-1 w-20 rounded-full bg-gray-700 accent-violet-500"
+                class="light:bg-gray-600 h-1 w-20 rounded-full bg-gray-700 accent-violet-500"
                 oninput={(e) => zoomTools?.set(Number(e.currentTarget.value))}
               />
               <button

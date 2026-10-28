@@ -415,11 +415,11 @@
     {#if data.clipsEnabled}
       <MediaDropZone
         title="Clip Graphics"
-        description="Drag logos here to use them on clips"
+        description="Drag graphics here to use them on clips"
         items={clipGraphicItems}
         ondropmedia={handleAddToClipGraphics}
         onremove={handleRemoveFromClipGraphics}
-        emptyLabel="Drag logos from below to use them on clips"
+        emptyLabel="Drag graphics from below to use them on clips"
       >
         {#snippet icon()}
           <svg class="text-link h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -632,12 +632,17 @@
               </div>
             {/if}
           {/if}
-          <!-- Info bar -->
+          <!-- Info bar.
+
+               White, not a grey from the ramp: the scrim under it is black in
+               both themes because it is there to lift words off a photograph,
+               and a themed grey inverted against it — light mode put near-black
+               text on a dark gradient over a dark picture. -->
           <div
             class="absolute right-0 bottom-0 left-0 bg-gradient-to-t from-black/80 to-transparent p-3 pt-6"
           >
-            <p class="truncate text-sm text-gray-50">{item.alt || item.filename}</p>
-            <p class="text-xs text-gray-400">{formatDate(item.createdAt)}</p>
+            <p class="truncate text-sm text-white">{item.alt || item.filename}</p>
+            <p class="text-xs text-white/70">{formatDate(item.createdAt)}</p>
           </div>
         </div>
       {/each}

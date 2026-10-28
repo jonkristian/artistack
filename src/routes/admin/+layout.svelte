@@ -847,7 +847,49 @@
          what it is doing in the same place instead: one corner answering "is
          my work safe", whichever kind of editor you are in. -->
     {#if autosaving.now}
-      <div class="p-3 {navSlim ? 'lg:p-2' : ''}">
+      <div class="flex flex-col gap-2 p-3 {navSlim ? 'lg:p-2' : ''}">
+        <!-- An editor that saves as it goes has nothing to publish, but it can
+             still have something to take back. Same corner, same pair of
+             buttons as Undo and Update — one answers "is my work safe", the
+             other "can I have that back" — so the two kinds of editor differ
+             in what the buttons do and not in where they are. -->
+        {#if autosaving.history}
+          {@const h = autosaving.history}
+          <div class="flex gap-2 {navSlim ? 'lg:flex-col' : ''}">
+            <button
+              onclick={() => h.undo()}
+              disabled={!h.canUndo}
+              title={h.undoLabel ? `Undo ${h.undoLabel}` : 'Nothing to undo'}
+              aria-label="Undo"
+              class="flex flex-1 items-center justify-center rounded-lg bg-gray-800 px-3 py-2 text-gray-400 transition-all duration-300 hover:text-gray-50 hover:brightness-90 disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M4 7h11a4 4 0 1 1 0 8h-1M4 7l3-3M4 7l3 3"
+                />
+              </svg>
+            </button>
+            <button
+              onclick={() => h.redo()}
+              disabled={!h.canRedo}
+              title={h.redoLabel ? `Redo ${h.redoLabel}` : 'Nothing to redo'}
+              aria-label="Redo"
+              class="flex flex-1 items-center justify-center rounded-lg bg-gray-800 px-3 py-2 text-gray-400 transition-all duration-300 hover:text-gray-50 hover:brightness-90 disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M20 7H9a4 4 0 1 0 0 8h1m10-8l-3-3m3 3l-3 3"
+                />
+              </svg>
+            </button>
+          </div>
+        {/if}
         <div
           class="flex items-center gap-2 rounded-lg bg-gray-800/60 px-3 py-2 text-xs {navSlim
             ? 'lg:justify-center lg:px-0'

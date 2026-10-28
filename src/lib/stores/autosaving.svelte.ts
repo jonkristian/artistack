@@ -13,7 +13,35 @@
  */
 import type { Autosave } from '$lib/utils/autosave.svelte';
 
+/**
+ * What the rail needs to offer an undo, without knowing whose it is.
+ *
+ * The draft pages undo by throwing away unsaved changes; the clip editor
+ * undoes by writing an earlier state back. Different mechanisms, same corner
+ * of the screen and the same word — so the rail is handed two functions and
+ * whether they can be pressed, and asks nothing else.
+ */
+export interface History {
+  readonly canUndo: boolean;
+  readonly canRedo: boolean;
+  readonly undoLabel: string | null;
+  readonly redoLabel: string | null;
+  undo(): void | Promise<void>;
+  redo(): void | Promise<void>;
+}
+
 let current = $state<Autosave | null>(null);
+
+/*
+ * `raw`, because this is an object of getters.
+ *
+ * Plain objects handed to `$state` are deeply proxied, and a proxy around
+ * getters reads them at the wrong moment — the rail would be told whether undo
+ * was available when the page registered rather than when it drew. The
+ * autosave above escapes this by being a class instance, which `$state` leaves
+ * alone.
+ */
+let currentHistory = $state.raw<History | null>(null);
 
 export const autosaving = {
   /** The autosave on screen, if this page has one. */
@@ -34,11 +62,18 @@ export const autosaving = {
     return current?.savedAt ?? null;
   },
 
+  /** The undo on screen, if this page has one that works step by step. */
+  get history(): History | null {
+    return currentHistory;
+  },
+
   /** Called by the page that owns it; returns its own teardown. */
-  register(autosave: Autosave) {
+  register(autosave: Autosave, history: History | null = null) {
     current = autosave;
+    currentHistory = history;
     return () => {
       if (current === autosave) current = null;
+      if (currentHistory === history) currentHistory = null;
     };
   }
 };

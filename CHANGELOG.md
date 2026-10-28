@@ -25,9 +25,24 @@
 - The admin has a light mode
 - Space, arrow keys, home and end work anywhere in the editor
 - Delete also removes a selected effect, and removals can be undone from the toast
+- Undo and redo in the clip editor, with the usual keys and the buttons used elsewhere
+- A rewind button beside play, and dragging the timecodes scrubs
+- Effects can be resized on the timeline, bursts included
+- Empty effect and caption rows say they can be double-clicked
+- Intro, watermark and outro each have their own graphic, and the outro its own size
+- Intro and outro ask for a time before and a duration; what is left over is time at either end
+- An intro can start before the footage, on a colour or on the first frame held
+- An outro can end on the last frame held instead of a card
+- The watermark sits in the left or right corner
+- The three marks fade in and out, and the watermark steps aside while another is up
+- Preview and Full share one transport, and editing anything returns to Preview
 - Fixed: changing a shot's effect now updates the preview immediately
 - Fixed: the colour wheel marker matches the selected colour
 - Fixed: the dissolve marker on a cut can be clicked
+- Fixed: the outro is shown in the preview, not only in the render
+- Fixed: the trim rail under a shot was invisible in light mode
+- Fixed: notices, toasts and warnings were unreadable in light mode
+- Fixed: the timeline no longer runs away when a block is dragged past the end
 
 # 1.7.0 (12-09-2026)
 

@@ -55,6 +55,19 @@
     watermarkGraphic = null,
     /** How long the intro logo stays up. Zero when there is no intro. */
     introSeconds = 0,
+    /** The closing card's graphic, when the clip ends on one. */
+    outroGraphic = null,
+    /**
+     * Where the footage stops, which is where the card starts coming up.
+     *
+     * The clip is longer than its strip once it ends on a card, so this is not
+     * something the overlay can work out from the time it is given.
+     */
+    bodySeconds = 0,
+    /** How long the clip runs before the footage does, when the intro leads. */
+    leadSeconds = 0,
+    /** The first frame, for a run-up that holds it rather than filling a card. */
+    leadPoster = null,
     accent = '#8b5cf6',
     rehearse = null
   }: {
@@ -65,6 +78,10 @@
     graphic?: string | null;
     watermarkGraphic?: string | null;
     introSeconds?: number;
+    outroGraphic?: string | null;
+    bodySeconds?: number;
+    leadSeconds?: number;
+    leadPoster?: string | null;
     accent?: string;
     /**
      * Run one caption's entrance here, without moving the clip.
@@ -222,7 +239,7 @@
   /*
    * The frame the renderer measures in, so pixel dials can be read as shares.
    *
-   * `watermarkX`, `watermarkY` and `captionMarginX` are pixel counts against
+   * `watermarkInset` and `captionMarginX` are pixel counts against
    * the finished clip's dimensions — 48px in a 1080-wide frame — and mean
    * nothing to an element a third that size. Divided by the nominal frame they
    * become percentages, which is what both the render and this agree on.
@@ -311,6 +328,69 @@
 
   /** The same band the render puts the big logo in, kept clear of the caption. */
   const logoBand = 0.36;
+
+  /**
+   * How far up a mark is, at a moment, given when it arrives and when it goes.
+   *
+   * The render fades every mark in and out over `markFadeSeconds`; this is the
+   * same ramp, so the preview doesn't pop something on that the file eases in.
+   * `null` for an end that never comes — a watermark on a clip with no outro
+   * is up until the picture stops.
+   */
+  function fadeAt(now: number, from: number, until: number | null): number {
+    const fade = Math.max(0.01, adv.markFadeSeconds);
+    if (now < from) return 0;
+    const up = Math.min(1, (now - from) / fade);
+    if (until == null) return up;
+    if (now >= until) return 0;
+    return Math.min(up, Math.max(0, (until - now) / fade));
+  }
+
+  /** When the closing mark starts, which is when the standing one leaves. */
+  const outroFrom = $derived(
+    outroGraphic && config.outro && bodySeconds > 0
+      ? Math.max(0, bodySeconds - Math.max(0, Math.min(adv.outroOverlapSeconds, adv.outroSeconds)))
+      : null
+  );
+
+  /*
+   * The closing card, worked out the way the renderer builds it.
+   *
+   * There, the card is its own little video — the background colour for
+   * `outroSeconds`, the graphic fading up over it — which the body crossfades
+   * into `outroOverlapSeconds` before it ends. So the clip runs past its last
+   * frame of footage by whatever the card has left over, and the overlay is
+   * the only thing on screen for that stretch.
+   *
+   * Said here rather than left to the render, because the whole point of the
+   * preview is to answer what the file will look like before there is one —
+   * and "the clip just stops" is the wrong answer to that.
+   */
+  const outro = $derived.by(() => {
+    if (!outroGraphic || !config.outro || bodySeconds <= 0) return null;
+
+    const overlap = Math.max(0, Math.min(adv.outroOverlapSeconds, adv.outroSeconds));
+    const from = Math.max(0, bodySeconds - overlap);
+    const into = at - from;
+    if (into < 0) return null;
+
+    /*
+     * Held, the picture stays and only the mark arrives: nothing dissolves,
+     * and the graphic comes up across the same stretch the dissolve would have
+     * taken, finishing as the footage runs out.
+     */
+    if (config.outroHold) {
+      return { cover: 0, mark: fadeAt(at, from, null) };
+    }
+
+    return {
+      // The dissolve itself: the card comes up over the footage across the
+      // overlap, and stands alone after it.
+      cover: overlap > 0 ? Math.max(0, Math.min(1, into / overlap)) : 1,
+      // And the graphic's own fade, on the card's own clock.
+      mark: fadeAt(at, from, null)
+    };
+  });
 </script>
 
 <!-- `container-type: size` so the text can be sized in `cqh` — a share of this
@@ -355,12 +435,24 @@
     </div>
   {/snippet}
 
-  {#each showing as caption, index (index)}
-    {@const fx = dressing(caption)}
-    {#each fx.under as copy, i (i)}{@render line(caption, copy.style, true)}{/each}
-    {@render line(caption, fx.style, false)}
-    {#each fx.over as copy, i (i)}{@render line(caption, copy.style, true)}{/each}
-  {/each}
+  <!-- The branding goes on before the words.
+
+       The render composites the logo and the watermark onto the picture and
+       burns the captions in after, so a caption that crosses the watermark
+       passes over it. Drawn last here, the preview did the opposite — the mark
+       sat on top of the caption, which is the one thing the preview exists to
+       be right about. -->
+  <!-- What the opening mark sits on, for as long as there is no footage under
+       it. The render makes this stretch with `tpad`: the first frame cloned,
+       or the card colour. Here it is the shot's own poster or that same
+       colour, which is the same picture by a cheaper route. -->
+  {#if config.intro && leadSeconds > 0 && at < leadSeconds}
+    {#if leadPoster}
+      <img src={leadPoster} alt="" class="absolute inset-0 h-full w-full object-cover" />
+    {:else}
+      <div class="absolute inset-0" style="background-color: {adv.cardBackground}"></div>
+    {/if}
+  {/if}
 
   <!-- The opening logo, at full opacity on the first frame and fading out — the
        same shape as the render's, which puts it there so the in-feed thumbnail
@@ -371,22 +463,58 @@
       alt=""
       class="absolute left-1/2 transition-opacity duration-300"
       style="width: {adv.logoWidthPercent}cqw; top: {logoBand *
-        100}%; transform: translate(-50%, -50%); opacity: {at > introSeconds - 0.4 ? 0 : 1}"
+        100}%; transform: translate(-50%, -50%); opacity: {fadeAt(at, 0, introSeconds)}"
     />
   {/if}
 
   <!-- And the standing one, which starts once the intro has gone.
 
-       Placed from `watermarkX`/`watermarkY`, which are offsets from the top
-       left — the corner the render's `overlay` measures from. It was drawn in
-       the opposite corner here, which looked deliberate and was simply wrong. -->
-  {#if (watermarkGraphic ?? graphic) && config.watermark && at >= introSeconds}
+       Inset from its own corner by the same amount both ways, which is the
+       corner the render's `overlay` measures from. It was drawn in the
+       opposite corner here, which looked deliberate and was simply wrong. -->
+  <!-- One mark at a time: it starts after the opening logo has gone and stops
+       when the closing one arrives. The card used to hide it at that end by
+       being opaque; a held frame doesn't. -->
+  {#if (watermarkGraphic ?? graphic) && config.watermark && at >= introSeconds && !outro}
     <img
       src={watermarkGraphic ?? graphic}
       alt=""
       class="absolute"
-      style="left: {(adv.watermarkX / frame.w) * 100}cqw; top: {(adv.watermarkY / frame.h) *
-        100}cqh; width: {adv.watermarkWidthPercent}cqw"
+      style="{adv.watermarkAlign === 'right' ? 'right' : 'left'}: {(adv.watermarkInset / frame.w) *
+        100}cqw; top: {(adv.watermarkInset / frame.w) *
+        100}cqw; width: {adv.watermarkWidthPercent}cqw; opacity: {fadeAt(
+        at,
+        introSeconds,
+        outroFrom
+      )}"
     />
   {/if}
+
+  <!-- The closing card. Over the branding because the render dissolves into it
+       after the logo and the watermark are on; under the captions because the
+       subtitles are burned in last of all, over everything. -->
+  {#if outro}
+    <!-- The colour is the card; held, there is no card, so the mark hangs over
+         whatever frame the picture stopped on. -->
+    <div
+      class="absolute inset-0 flex items-center justify-center"
+      style={config.outroHold
+        ? ''
+        : `background-color: ${adv.cardBackground}; opacity: ${outro.cover}`}
+    >
+      <!-- Centred on the card, like the render's `overlay=(W-w)/2:(H-h)/2`. -->
+      <img
+        src={outroGraphic}
+        alt=""
+        style="width: {adv.outroWidthPercent ?? adv.logoWidthPercent}cqw; opacity: {outro.mark}"
+      />
+    </div>
+  {/if}
+
+  {#each showing as caption, index (index)}
+    {@const fx = dressing(caption)}
+    {#each fx.under as copy, i (i)}{@render line(caption, copy.style, true)}{/each}
+    {@render line(caption, fx.style, false)}
+    {#each fx.over as copy, i (i)}{@render line(caption, copy.style, true)}{/each}
+  {/each}
 </div>

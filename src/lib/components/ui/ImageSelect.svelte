@@ -88,7 +88,7 @@
             onclick={() => pick(option.value)}
             class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors {option.value ===
             value
-              ? 'bg-violet-600/20 text-violet-200'
+              ? 'light:text-violet-800 bg-violet-600/20 text-violet-200'
               : 'text-gray-300 hover:bg-gray-800 hover:text-white'}"
           >
             {#if option.image}

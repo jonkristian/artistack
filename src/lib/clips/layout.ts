@@ -41,6 +41,25 @@ export interface ClipLayout {
   blocks: LayoutBlock[];
   /** How long the clip runs, including the outro. */
   duration: number;
+  /**
+   * How long the clip runs before the arrangement starts.
+   *
+   * An intro with a run-up is time the strip knows nothing about: it is over
+   * before the first shot begins. Everything else here is measured from the
+   * first frame of footage, so this is the one number that says the two are
+   * not the same moment.
+   */
+  lead: number;
+  /**
+   * Where the arrangement ends — the last frame of anything placed.
+   *
+   * Which is where the outro begins, and so the one number the preview needs
+   * to know when to bring the closing mark up. It was worked out a second time
+   * beside the clock, from the same two dials, and the two answers disagreed:
+   * `duration` already carried the outro, so adding it again ran the clip a
+   * dissolve's length past its own end.
+   */
+  body: number;
 }
 
 /** How long one source plays for, after its trim and the clip's speed. */
@@ -84,9 +103,25 @@ export function clipLayout(
   // including over each other and with nothing between them.
   const body = blocks.reduce((furthest, block) => Math.max(furthest, block.end), otherwiseUntil);
 
-  // The outro dissolves out of the end of the body, so it only adds whatever
-  // isn't already overlapping it.
-  const outro = config.outro ? Math.max(0, adv.outroSeconds - adv.outroOverlapSeconds) : 0;
+  /*
+   * The outro reaches back over the end of the body, so it only adds whatever
+   * isn't already lying over it. How much that is is the same question whether
+   * the mark arrives on a colour or over a frozen frame: what differs is what
+   * is underneath it, not where it starts.
+   */
+  const outro = config.outro
+    ? Math.max(0, adv.outroSeconds - Math.min(adv.outroOverlapSeconds, adv.outroSeconds))
+    : 0;
 
-  return { blocks, duration: Math.max(0.1, body + outro) };
+  /*
+   * And the same at the head, where it is time before anything else happens.
+   *
+   * Nothing on the strip moves because of it: the strip is the arrangement,
+   * and the arrangement is what it was. The clip is simply longer than the
+   * strip at both ends now, which is what `lead` and `duration` say and `body`
+   * does not.
+   */
+  const lead = config.intro ? Math.max(0, adv.introLeadSeconds ?? 0) : 0;
+
+  return { blocks, duration: Math.max(0.1, lead + body + outro), body, lead };
 }

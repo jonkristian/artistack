@@ -60,7 +60,15 @@ export class Autosave {
   async run<T>(what: string, write: () => Promise<T>): Promise<T | undefined> {
     this.#inFlight += 1;
     try {
-      const result = await write();
+      let result!: T;
+      const once = async () => {
+        result = await write();
+      };
+      // The watcher wraps the write rather than following it, because what it
+      // wants to see is the state on both sides and that only changes in the
+      // middle. Without one this is exactly what it was.
+      if (this.watch) await this.watch(what, once);
+      else await once();
       // Only the retried write clears the failure. A different field saving
       // fine says nothing about the one that didn't.
       if (this.#failure?.what === what) this.#failure = null;
@@ -75,6 +83,16 @@ export class Autosave {
       this.#inFlight -= 1;
     }
   }
+
+  /**
+   * Called around every write, when something wants to remember one.
+   *
+   * The clip editor's undo hangs off this: a snapshot either side of the
+   * write, recorded under the same words this already uses to say what it is
+   * saving. Set by whoever owns the autosave, so nothing else has to know the
+   * history exists — and so the twenty-one call sites stay as they are.
+   */
+  watch: ((what: string, write: () => Promise<unknown>) => Promise<void>) | null = null;
 
   /** Runs the failed write again, as itself, so a second failure still reports. */
   async retry(): Promise<void> {

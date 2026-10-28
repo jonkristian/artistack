@@ -14,7 +14,7 @@
    * size control — comes in as a snippet, because what those *do* is the
    * caller's business and where they sit is this one's.
    */
-  import { onMount, type Snippet } from 'svelte';
+  import { onMount, untrack, type Snippet } from 'svelte';
   import { Editor } from '@tiptap/core';
   import StarterKit from '@tiptap/starter-kit';
   import EmojiPicker from './EmojiPicker.svelte';
@@ -197,6 +197,31 @@
   let element: HTMLDivElement;
   let settling: ReturnType<typeof setTimeout> | undefined;
   let editor: Editor | undefined = $state();
+
+  /*
+   * Follow the content when it changes from outside.
+   *
+   * TipTap reads `content` once, when it is created, so anything that rewrites
+   * the value underneath — an undo, a reload, a default applied elsewhere —
+   * left the editor showing what it had. The step was recorded and reversed in
+   * the data, and the words on screen did not move.
+   *
+   * Only while the editor doesn't have focus. Typing is the one case where the
+   * value is already arriving *from* here, and setting it back would fight the
+   * caret on every keystroke — the caller may normalise what it stores, so
+   * what comes back is not always what was sent.
+   */
+  $effect(() => {
+    const incoming = content;
+    const e = editor;
+    if (!e || e.isFocused) return;
+    untrack(() => {
+      if (read(e) === incoming) return;
+      // `emitUpdate: false`, or putting the value in would be reported as a
+      // change and saved straight back out.
+      e.commands.setContent(asDocument(incoming), { emitUpdate: false });
+    });
+  });
 
   function insertEmoji(emoji: string) {
     editor?.chain().focus().insertContent(emoji).run();

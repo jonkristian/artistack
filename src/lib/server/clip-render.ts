@@ -1256,8 +1256,9 @@ async function renderCard(
   // ffmpeg's color source wants 0xRRGGBB, the config stores #RRGGBB.
   const background = adv.cardBackground.replace(/^#/, '0x');
   const overlay = fadeIn
-    ? `[2:v]format=rgba,fade=t=in:st=0.3:d=0.7:alpha=1[lg];` +
-      `[0:v][lg]overlay=(W-w)/2:(H-h)/2:${OVERLAY_STILL}[v]`
+    ? `[2:v]format=rgba,fade=t=in:st=0:d=${Math.max(0.01, adv.markFadeSeconds).toFixed(
+        2
+      )}:alpha=1[lg];` + `[0:v][lg]overlay=(W-w)/2:(H-h)/2:${OVERLAY_STILL}[v]`
     : `[0:v][2:v]overlay=(W-w)/2:(H-h)/2:${OVERLAY_STILL}[v]`;
 
   await runFfmpeg(
@@ -1822,6 +1823,7 @@ export async function renderClip(
 
     const logoWidth = Math.round((width * adv.logoWidthPercent) / 100);
     const watermarkWidth = Math.round((width * adv.watermarkWidthPercent) / 100);
+    const cardWidth = Math.round((width * (adv.outroWidthPercent ?? adv.logoWidthPercent)) / 100);
 
     const hasIntroGraphic = Boolean(input.introPath);
     const hasWatermarkGraphic = Boolean(input.watermarkPath);
@@ -1829,21 +1831,35 @@ export async function renderClip(
 
     if (input.introPath) await rasterize(input.introPath, 'logo.png', logoWidth);
     if (input.watermarkPath) await rasterize(input.watermarkPath, 'wm.png', watermarkWidth);
-    if (input.outroPath) await rasterize(input.outroPath, 'card.png', logoWidth);
+    if (input.outroPath) await rasterize(input.outroPath, 'card.png', cardWidth);
 
     // Intro length scales with the first clip's output duration.
     let introSeconds = adv.introFallbackSeconds;
     if (config.intro && hasIntroGraphic) {
-      const firstDuration = (await probeDuration(input.sources[0].path)) / config.speed;
-      if (firstDuration > 0) {
-        introSeconds = clamp(
-          firstDuration * adv.introPercent,
-          adv.introMinSeconds,
-          adv.introMaxSeconds
-        );
-        introSeconds = Math.min(introSeconds, firstDuration * INTRO_MAX_SHARE);
+      /*
+       * A length that was asked for beats one that was worked out.
+       *
+       * The share, the floor, the ceiling and the cap on the first shot are
+       * all answers to "nobody said how long" — so the moment someone drags
+       * the intro's edge on the strip, none of them apply. Including the cap:
+       * an intro over the whole of a short first shot is a thing people do on
+       * purpose, and the strip is where they said so.
+       */
+      if (adv.introFixedSeconds != null && adv.introFixedSeconds > 0) {
+        introSeconds = adv.introFixedSeconds;
+        onLog?.(`Intro: ${introSeconds.toFixed(2)}s (set)`);
+      } else {
+        const firstDuration = (await probeDuration(input.sources[0].path)) / config.speed;
+        if (firstDuration > 0) {
+          introSeconds = clamp(
+            firstDuration * adv.introPercent,
+            adv.introMinSeconds,
+            adv.introMaxSeconds
+          );
+          introSeconds = Math.min(introSeconds, firstDuration * INTRO_MAX_SHARE);
+        }
+        onLog?.(`Intro: ${introSeconds.toFixed(2)}s (clip ${firstDuration.toFixed(1)}s)`);
       }
-      onLog?.(`Intro: ${introSeconds.toFixed(2)}s (clip ${firstDuration.toFixed(1)}s)`);
     }
 
     // The big logo's vertical act, kept clear of wherever the caption lands.
@@ -2051,6 +2067,36 @@ export async function renderClip(
       );
     }
 
+    /*
+     * ---- 3a½) the intro's run-up ---------------------------------------
+     *
+     * Time at the head that the arrangement knows nothing about: the clip
+     * opens on the mark and the footage starts once it has gone by. `tpad`
+     * either clones the first frame into it or fills it with the card colour,
+     * and the sound is delayed to match — everything that was timed from the
+     * first frame of footage still is, because the footage moved and it moved
+     * with it. The captions are the exception: they are burned in later, over
+     * a picture that has already been shifted, so they are told separately.
+     */
+    const introLead =
+      config.intro && hasIntroGraphic
+        ? Math.max(0, Math.min(adv.introLeadSeconds ?? 0, introSeconds))
+        : 0;
+    if (introLead > 0) {
+      bodyGraph.push(
+        `${bodyVideo}tpad=start_duration=${introLead.toFixed(3)}:start_mode=${
+          config.introHold ? 'clone' : `add:color=${adv.cardBackground.replace(/^#/, '0x')}`
+        }[lead]`
+      );
+      bodyGraph.push(`${bodyAudio}adelay=${Math.round(introLead * 1000)}:all=1[leada]`);
+      bodyVideo = '[lead]';
+      bodyAudio = '[leada]';
+      bodyDuration += introLead;
+      onLog?.(
+        `Intro run-up: ${introLead.toFixed(2)}s on ${config.introHold ? 'the first frame' : 'a card'}`
+      );
+    }
+
     // ---- 3b) branding, on the finished picture --------------------------
     /*
      * The logo and the watermark go on here, over the whole clip, at the times
@@ -2059,10 +2105,19 @@ export async function renderClip(
      * the per-part version did by accident and this one does on purpose.
      */
     if (hasIntroGraphic && config.intro && introSeconds > 0) {
-      const fadeAt = introSeconds > 0.6 ? introSeconds - 0.4 : 0.2;
+      /*
+       * Out on a short fade; in on none.
+       *
+       * Frame one has to carry the mark at full strength — every platform
+       * grabs it as the cover — so the one fade an intro gets is its exit.
+       */
+      const fade = Math.max(0.01, adv.markFadeSeconds);
+      const fadeAt = Math.max(0.1, introSeconds - fade);
       bodyInputs.push('-loop', '1', '-i', join(tmp, 'logo.png'));
       bodyGraph.push(
-        `[${nextInput}:v]format=rgba,fade=t=out:st=${fadeAt.toFixed(2)}:d=0.4:alpha=1[big]`
+        `[${nextInput}:v]format=rgba,fade=t=out:st=${fadeAt.toFixed(2)}:d=${fade.toFixed(
+          2
+        )}:alpha=1[big]`
       );
       bodyGraph.push(
         `${bodyVideo}[big]overlay=(W-w)/2:H*${logoBand}-h/2:${OVERLAY_STILL}` +
@@ -2074,13 +2129,46 @@ export async function renderClip(
 
     if (hasWatermarkGraphic && config.watermark) {
       const from = config.intro && hasIntroGraphic ? introSeconds : 0;
+      /*
+       * And off again when the closing mark arrives.
+       *
+       * One mark at a time: the watermark exists to brand the stretch of clip
+       * that has no mark of its own, and the opening logo already pushes its
+       * start past the intro. The card used to cover it at the other end by
+       * accident — it is opaque — and the moment the card became a held frame
+       * the two were on screen together.
+       */
+      const until = willOutro
+        ? Math.max(from, bodyDuration - (config.outroHold ? 0 : adv.outroOverlapSeconds))
+        : 0;
+      const window =
+        until > from
+          ? `between(t,${from.toFixed(2)},${until.toFixed(2)})`
+          : `gte(t,${from.toFixed(2)})`;
+      /*
+       * And out again rather than off.
+       *
+       * It used to simply stop being drawn the moment the closing mark was
+       * due, which on a held frame is a logo vanishing between one frame and
+       * the next while nothing else changes.
+       */
+      const fade = Math.max(0.01, adv.markFadeSeconds);
+      const leaves =
+        until > from
+          ? `,fade=t=out:st=${(until - fade).toFixed(2)}:d=${fade.toFixed(2)}:alpha=1`
+          : '';
       bodyInputs.push('-loop', '1', '-i', join(tmp, 'wm.png'));
       bodyGraph.push(
-        `[${nextInput}:v]format=rgba,fade=t=in:st=${from.toFixed(2)}:d=0.3:alpha=1[wm]`
+        `[${nextInput}:v]format=rgba,fade=t=in:st=${from.toFixed(2)}:d=${fade.toFixed(
+          2
+        )}:alpha=1${leaves}[wm]`
       );
       bodyGraph.push(
-        `${bodyVideo}[wm]overlay=${adv.watermarkX}:${adv.watermarkY}:${OVERLAY_STILL}` +
-          `:enable='gte(t,${from.toFixed(2)})'[withwm]`
+        // From the near edge, whichever side that is: ffmpeg works `W-w` out
+        // per frame, so the mark sits the same distance in at any size.
+        `${bodyVideo}[wm]overlay=${
+          adv.watermarkAlign === 'right' ? `W-w-${adv.watermarkInset}` : adv.watermarkInset
+        }:${adv.watermarkInset}:${OVERLAY_STILL}` + `:enable='${window}'[withwm]`
       );
       bodyVideo = '[withwm]';
       nextInput += 1;
@@ -2088,7 +2176,52 @@ export async function renderClip(
 
     // ---- 4) the outro dissolve, as part of the same graph ----------------
     let totalDuration = bodyDuration;
-    if (config.outro && hasOutroGraphic) {
+    if (config.outro && hasOutroGraphic && config.outroHold) {
+      /*
+       * The last frame, held, with the mark coming up over it.
+       *
+       * No second picture, so no dissolve: `tpad` clones the final frame for
+       * as long as the card is meant to last and the graphic fades in over
+       * what is already there. Which is why the clip grows by the whole of
+       * `outroSeconds` here and by `outroSeconds` less the overlap below —
+       * there, the card spends its first moments dissolving over footage that
+       * is still playing; here, nothing is playing.
+       *
+       * The sound is padded with silence rather than held, because a frozen
+       * frame is a picture and a held sound is a stuck record. It fades across
+       * the same overlap, so the music lands on the mark rather than stopping
+       * with the footage.
+       */
+      const over = Math.min(adv.outroOverlapSeconds, adv.outroSeconds);
+      // What is left of the card once the part lying over the footage is
+      // taken off it: that is the only piece that adds to the clip.
+      const hold = Math.max(0, adv.outroSeconds - over);
+      const from = Math.max(0, bodyDuration - over);
+
+      bodyInputs.push('-loop', '1', '-i', join(tmp, 'card.png'));
+      bodyGraph.push(`${bodyVideo}tpad=stop_mode=clone:stop_duration=${hold.toFixed(3)}[held]`);
+      const fade = Math.max(0.01, Math.min(adv.markFadeSeconds, Math.max(over, 0.01)));
+      bodyGraph.push(
+        `[${nextInput}:v]format=rgba,fade=t=in:st=${from.toFixed(3)}:d=${fade.toFixed(
+          3
+        )}:alpha=1[endmark]`
+      );
+      bodyGraph.push(
+        `[held][endmark]overlay=(W-w)/2:(H-h)/2:${OVERLAY_STILL}` +
+          `:enable='gte(t,${from.toFixed(3)})'[ov]`
+      );
+      bodyGraph.push(
+        `${bodyAudio}afade=t=out:st=${from.toFixed(3)}:d=${Math.max(over, 0.1).toFixed(
+          3
+        )},apad=pad_dur=${hold.toFixed(3)}[oa]`
+      );
+      bodyVideo = '[ov]';
+      bodyAudio = '[oa]';
+      nextInput += 1;
+
+      totalDuration = bodyDuration + hold;
+      mark('outro');
+    } else if (config.outro && hasOutroGraphic) {
       const outroCard = await renderCard(
         tmp,
         'zz_outro.mp4',
@@ -2157,6 +2290,22 @@ export async function renderClip(
       const chosen = fontById(wanted);
       const picked = chosen || anyOwn ? await captionFont(wanted) : null;
 
+      /*
+       * Shifted by the run-up, because they are not.
+       *
+       * Everything else in the clip moved when `tpad` pushed the footage
+       * along; the subtitles are drawn onto the finished picture afterwards
+       * and would otherwise still be timed to where the footage used to
+       * start — every caption early by the length of the run-up.
+       */
+      const timed = introLead
+        ? captions.map((caption) => ({
+            ...caption,
+            start: caption.start + introLead,
+            end: caption.end + introLead
+          }))
+        : captions;
+
       const ass = buildAss(
         {
           width,
@@ -2166,7 +2315,7 @@ export async function renderClip(
           font: chosen ? chosen.name : await resolveFont(adv, onLog),
           accentColor
         },
-        captions
+        timed
       );
       const assPath = join(tmp, 'subs.ass');
       await writeFile(assPath, ass);

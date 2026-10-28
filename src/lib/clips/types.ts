@@ -437,6 +437,29 @@ export interface ClipAdvancedConfig {
   introMaxSeconds: number;
   /** Used when the first clip's duration can't be read. */
   introFallbackSeconds: number;
+  /**
+   * How long the intro holds, said outright.
+   *
+   * The length is otherwise a share of the first shot inside a floor and a
+   * ceiling — three dials producing a number you cannot see. Dragging the
+   * intro's edge on the strip is saying it directly, so it is stored directly,
+   * and the three dials go back to being what they always were: what to do
+   * when nobody has said.
+   */
+  introFixedSeconds?: number | null;
+  /**
+   * How much of the intro plays before the footage does.
+   *
+   * Zero — the way it has always been — means the whole intro lies over the
+   * opening shot. Anything else is a run-up: the clip begins on the mark, and
+   * the footage starts once that much of it has gone by. What the mark sits on
+   * for that stretch is `introHold`: the first frame, held, or a colour.
+   *
+   * Time the clip would not otherwise have, so everything in it moves along by
+   * this much — including the captions, which are burned in after the fact and
+   * have to be told.
+   */
+  introLeadSeconds?: number;
   outroSeconds: number;
   /** How long the body dissolves into the outro card. */
   outroOverlapSeconds: number;
@@ -448,10 +471,41 @@ export interface ClipAdvancedConfig {
   logoWidthPercent: number;
   /** Corner watermark width, as a percentage of frame width. */
   watermarkWidthPercent: number;
-  /** Watermark inset from the left edge, in pixels. */
-  watermarkX: number;
-  /** Watermark inset from the top edge, in pixels. Kept clear of platform UI. */
-  watermarkY: number;
+  /**
+   * Closing card graphic width, as a percentage of frame width.
+   *
+   * Its own number rather than the intro's, which it used to borrow. The two
+   * are the same mark at two sizes as often as not — an opening title fills
+   * the frame, a sign-off sits smaller over the last shot — and sharing one
+   * dial meant setting either changed both.
+   */
+  outroWidthPercent: number;
+  /**
+   * How long a mark takes to arrive or leave.
+   *
+   * Short on purpose: a mark that fades for half a second reads as an effect,
+   * and a mark that cuts in reads as a glitch. A quarter of a second is long
+   * enough not to snap and short enough not to be noticed as a fade.
+   */
+  markFadeSeconds: number;
+  /**
+   * Which side the watermark sits on.
+   *
+   * The position used to be two pixel counts against the finished frame, which
+   * is arithmetic done blind for a thing that only ever goes in a corner. The
+   * side is the whole decision; the insets below are how far in from it, and
+   * they are the same for either side.
+   */
+  watermarkAlign?: 'left' | 'right';
+  /**
+   * How far in from the corner it sits, in pixels, the same on both axes.
+   *
+   * One number rather than two. A mark in a corner is inset from that corner,
+   * and a pair that can disagree is a pair that does: thirty-two in from the
+   * side and forty down from the top is not a corner, it is a near miss that
+   * nobody chose.
+   */
+  watermarkInset: number;
 
   // --- Captions ---
   /** Left/right caption margin in pixels. */
@@ -517,14 +571,18 @@ export const DEFAULT_ADVANCED_CONFIG: ClipAdvancedConfig = {
   introMinSeconds: 1.2,
   introMaxSeconds: 2.5,
   introFallbackSeconds: 1.8,
+  introFixedSeconds: null,
+  introLeadSeconds: 0,
   outroSeconds: 2.0,
   outroOverlapSeconds: 0.6,
   cardBackground: '#0d0d0d',
 
   logoWidthPercent: 60,
   watermarkWidthPercent: 22,
-  watermarkX: 32,
-  watermarkY: 40,
+  outroWidthPercent: 60,
+  markFadeSeconds: 0.25,
+  watermarkAlign: 'left',
+  watermarkInset: 32,
 
   captionMarginX: 80,
   captionTopPercent: 72,
@@ -566,6 +624,58 @@ export const DEFAULT_ADVANCED_CONFIG: ClipAdvancedConfig = {
  *
  * Re-exposing one is a single line here.
  */
+/**
+ * A branding stage's own dials, shown under the stage rather than in Advanced.
+ *
+ * These were four lines in "Branding placement" and four more under "Timing" —
+ * a panel away from the three switches they describe, which is the one place
+ * nobody looks when the watermark is in the wrong corner. Advanced is for what
+ * is not reachable anywhere else; a number that belongs to a thing on screen
+ * belongs beside that thing.
+ *
+ * Only the ones worth reaching for. `introMinSeconds` and
+ * `introFallbackSeconds` stay in Advanced: they are the floor and the
+ * fallback, which matter when a first shot is unusually short or unreadable
+ * and never otherwise.
+ */
+export const BRANDING_FIELDS: Record<
+  BrandStage,
+  { key: keyof ClipAdvancedConfig; label: string; step?: number; hint?: string }[]
+> = {
+  // Time before, then how long it is, then what is behind it — the same three
+  // questions the outro answers, read from the other end of the clip.
+  intro: [
+    {
+      key: 'introLeadSeconds',
+      label: 'Time before (s)',
+      step: 0.1,
+      hint: 'Before the footage starts'
+    },
+    {
+      key: 'introFixedSeconds',
+      label: 'Duration (s)',
+      step: 0.1,
+      hint: 'Leave it empty to scale it to the opening shot'
+    }
+  ],
+  // Which side it goes, and nothing else: it is on screen for the whole clip,
+  // so it has no when to ask about.
+  watermark: [],
+  // The same two questions the intro answers, about the other end of the clip:
+  // when it starts relative to the footage, and how long it runs. What is left
+  // over — the run-up at the head, the time after at the tail — is the
+  // difference, and nobody has to be asked for a number they can subtract.
+  outro: [
+    {
+      key: 'outroOverlapSeconds',
+      label: 'Time before (s)',
+      step: 0.1,
+      hint: 'Before the footage ends'
+    },
+    { key: 'outroSeconds', label: 'Duration (s)', step: 0.1 }
+  ]
+};
+
 export const ADVANCED_GROUPS: {
   label: string;
   fields: { key: keyof ClipAdvancedConfig; label: string; step?: number; hint?: string }[];
@@ -573,15 +683,6 @@ export const ADVANCED_GROUPS: {
   {
     label: 'Output',
     fields: [{ key: 'crf', label: 'Quality (CRF)', step: 1, hint: 'Lower is better quality' }]
-  },
-  {
-    label: 'Branding placement',
-    fields: [
-      { key: 'logoWidthPercent', label: 'Intro graphic width (% of frame)', step: 1 },
-      { key: 'watermarkWidthPercent', label: 'Watermark width (%)', step: 1 },
-      { key: 'watermarkX', label: 'Watermark left (px)', step: 1 },
-      { key: 'watermarkY', label: 'Watermark top (px)', step: 1, hint: 'Kept clear of platform UI' }
-    ]
   },
   {
     label: 'Audio',
@@ -609,17 +710,41 @@ export const ADVANCED_GROUPS: {
     ]
   },
   {
+    /*
+     * The sizes and the inset: true of a mark wherever it is used, and not
+     * what anybody opens a stage to set. The stage itself asks when it shows
+     * and how much of the footage it lies over; this is what it looks like.
+     */
+    label: 'Branding',
+    fields: [
+      { key: 'logoWidthPercent', label: 'Intro graphic width (%)', step: 1 },
+      { key: 'watermarkWidthPercent', label: 'Watermark width (%)', step: 1 },
+      { key: 'outroWidthPercent', label: 'Outro graphic width (%)', step: 1 },
+      {
+        key: 'watermarkInset',
+        label: 'Watermark inset (px)',
+        step: 1,
+        hint: 'In from its corner, both ways'
+      },
+      {
+        key: 'markFadeSeconds',
+        label: 'Mark fade (s)',
+        step: 0.05,
+        hint: 'How long any of the three takes to arrive or leave'
+      }
+    ]
+  },
+  {
     label: 'Timing',
     fields: [
-      { key: 'introPercent', label: 'Intro length (fraction of clip)', step: 0.01 },
-      { key: 'introMaxSeconds', label: 'Intro max (s)', step: 0.1 },
-      { key: 'outroSeconds', label: 'Outro (s)', step: 0.1 },
       {
-        key: 'outroOverlapSeconds',
-        label: 'Outro dissolve (s)',
-        step: 0.1,
-        hint: 'How long the last shot takes to become the card'
+        key: 'introPercent',
+        label: 'Intro, share of the first shot',
+        step: 0.01,
+        hint: 'Only when the intro has no length of its own'
       },
+      { key: 'introMinSeconds', label: 'Intro, no shorter than (s)', step: 0.1 },
+      { key: 'introMaxSeconds', label: 'Intro, no longer than (s)', step: 0.1 },
       {
         key: 'clipFadeSeconds',
         label: 'Shot fade (s)',
@@ -782,6 +907,20 @@ export interface ClipRenderConfig {
   // Branding
   intro: boolean; // logo animates in over the first clip
   outro: boolean; // dissolve out to a logo card
+  /**
+   * Whether that card is the last frame, held, rather than a colour.
+   *
+   * A solid card ends the clip on a shape that was never in it. Holding the
+   * last frame ends it on the thing you were watching, with the mark coming up
+   * over it — which is what most of these clips want, and what a still at the
+   * end of a reel looks like on every platform they go to.
+   *
+   * Optional, like everything else stored only when it isn't the default: a
+   * clip made before this reads as `false` and renders exactly as it did.
+   */
+  outroHold?: boolean;
+  /** The same choice at the head: the first frame held, or a colour. */
+  introHold?: boolean;
   watermark: boolean; // persistent corner logo
   /**
    * A mark of its own for one of the three stages.
@@ -840,6 +979,8 @@ export const DEFAULT_CLIP_CONFIG: ClipRenderConfig = {
   audioFadeOut: true,
   intro: true,
   outro: false,
+  outroHold: false,
+  introHold: false,
   watermark: true,
   loudnorm: true,
   musicOnly: false
