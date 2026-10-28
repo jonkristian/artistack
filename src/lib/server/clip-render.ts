@@ -1538,7 +1538,16 @@ function buildAudioGraph(
    * silence and every placement.
    */
   clipAudio = '[0:a]',
-  bedOffset = 1
+  bedOffset = 1,
+  /**
+   * How much time the intro's run-up put in front of the arrangement.
+   *
+   * A bed is placed against the strip, and the strip starts at the first frame
+   * of footage. Push the footage along and the music has to go with it — the
+   * picture moved and the sound it was cut to did not, which is a bed a second
+   * out of step with the thing it was lined up against.
+   */
+  lead = 0
 ): string {
   /*
    * Padded back out to the clip's length before anything else.
@@ -1607,8 +1616,12 @@ function buildAudioGraph(
    * The input index is attached afterwards: which ffmpeg input a bed came in
    * on is the one part of this the player has no opinion about.
    */
-  const placed = placeBeds(tracks, totalDuration).map((bed) => ({
+  const placed = placeBeds(tracks, Math.max(0, totalDuration - lead)).map((bed) => ({
     ...bed,
+    // Laid out in the strip's time, then moved along with everything else it
+    // was laid out against.
+    start: bed.start + lead,
+    stop: bed.stop + lead,
     input: tracks.indexOf(bed.track) + bedOffset
   }));
 
@@ -2423,7 +2436,16 @@ export async function renderClip(
     const graph = [
       ...bodyGraph,
       `${bodyVideo}${videoChain}[v]`,
-      buildAudioGraph(tracks, config, adv, totalDuration, audioChain, bodyAudio, nextInput)
+      buildAudioGraph(
+        tracks,
+        config,
+        adv,
+        totalDuration,
+        audioChain,
+        bodyAudio,
+        nextInput,
+        introLead
+      )
     ];
 
     finalArgs.push(
